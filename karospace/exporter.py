@@ -131,6 +131,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .controls {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
         .control-group {{ display: flex; align-items: center; gap: 4px; }}
+        #expression-scale-section {{
+            flex-direction: column;
+            align-items: flex-start;
+        }}
         .control-group label {{ font-size: 11px; color: var(--muted-color); }}
         select, input[type="text"] {{
             padding: 5px 8px;
@@ -337,6 +341,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .color-tab-content.active {{
             display: flex;
+        }}
+        .scale-controls {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+        }}
+        .scale-controls input[type="number"] {{
+            width: 80px;
+        }}
+        .scale-sep {{
+            font-size: 11px;
+            color: var(--muted-color);
+        }}
+        .scale-hint {{
+            font-size: 10px;
+            color: var(--muted-color);
         }}
         .info-content {{
             display: grid;
@@ -883,6 +904,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <input type="text" id="gene-input" placeholder="e.g. Cd4, Gfap..." list="gene-list">
                 <datalist id="gene-list"></datalist>
             </div>
+            <div class="control-group" id="expression-scale-section" style="display: none;">
+                <label>Scale:</label>
+                <div class="scale-controls">
+                    <input type="number" id="expr-vmin" step="0.001" placeholder="min">
+                    <span class="scale-sep">to</span>
+                    <input type="number" id="expr-vmax" step="0.001" placeholder="max">
+                    <button class="legend-btn" id="expr-auto" type="button">Auto (1-99%)</button>
+                </div>
+                <div class="scale-hint" id="expr-scale-hint">Auto scale: 1-99 percentile.</div>
+            </div>
             <div class="control-group">
                 <label>Size:</label>
                 <div class="size-control">
@@ -1034,6 +1065,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     // State
     let currentColor = DATA.initial_color;
     let currentGene = null;
+    const geneScaleOverrides = {{}};
+    const geneScaleAuto = {{}};
+    const GENE_SCALE_PMIN = 1;
+    const GENE_SCALE_PMAX = 99;
+    const GENE_SCALE_MAX_SAMPLES = 200000;
     let hiddenCategories = new Set();
     let spotSize = {spot_size};
     let activeFilters = {{}};  // e.g. {{ course: new Set(['peak_I', 'peak_III']) }}
@@ -1150,12 +1186,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     // Color utilities
-    function viridis(t) {{
+    function magma(t) {{
         const colors = [
-            [0.267, 0.005, 0.329], [0.282, 0.141, 0.458], [0.254, 0.265, 0.530],
-            [0.207, 0.372, 0.553], [0.164, 0.471, 0.558], [0.128, 0.567, 0.551],
-            [0.135, 0.659, 0.518], [0.267, 0.749, 0.441], [0.478, 0.821, 0.318],
-            [0.741, 0.873, 0.150], [0.993, 0.906, 0.144]
+            [0.001, 0.000, 0.015], [0.092, 0.047, 0.256], [0.235, 0.073, 0.386],
+            [0.388, 0.100, 0.451], [0.531, 0.136, 0.430], [0.651, 0.188, 0.392],
+            [0.741, 0.259, 0.331], [0.813, 0.354, 0.255], [0.870, 0.477, 0.171],
+            [0.918, 0.624, 0.110], [0.987, 0.855, 0.185]
         ];
         const idx = Math.min(Math.floor(t * 10), 9);
         const frac = (t * 10) - idx;
@@ -1175,14 +1211,86 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     // Get current color config
     function getColorConfig() {{
         if (currentGene && DATA.genes_meta[currentGene]) {{
+            const autoScale = geneScaleAuto[currentGene];
+            const overrideScale = geneScaleOverrides[currentGene];
+            const base = DATA.genes_meta[currentGene];
+            const vmin = overrideScale?.vmin ?? autoScale?.vmin ?? base.vmin;
+            const vmax = overrideScale?.vmax ?? autoScale?.vmax ?? base.vmax;
             return {{
                 is_continuous: true,
                 categories: null,
-                vmin: DATA.genes_meta[currentGene].vmin,
-                vmax: DATA.genes_meta[currentGene].vmax
+                vmin,
+                vmax
             }};
         }}
         return DATA.colors_meta[currentColor] || {{ is_continuous: false, categories: [], vmin: 0, vmax: 1 }};
+    }}
+
+    function computeGenePercentiles(gene, pmin = GENE_SCALE_PMIN, pmax = GENE_SCALE_PMAX) {{
+        const samples = [];
+        let seen = 0;
+        DATA.sections.forEach(section => {{
+            const vals = section.genes?.[gene];
+            if (!vals) return;
+            for (let i = 0; i < vals.length; i++) {{
+                const v = vals[i];
+                if (v === null || v === undefined || Number.isNaN(v)) continue;
+                seen += 1;
+                if (samples.length < GENE_SCALE_MAX_SAMPLES) {{
+                    samples.push(v);
+                }} else {{
+                    const j = Math.floor(Math.random() * seen);
+                    if (j < GENE_SCALE_MAX_SAMPLES) samples[j] = v;
+                }}
+            }}
+        }});
+        if (samples.length === 0) return null;
+        samples.sort((a, b) => a - b);
+        const loIdx = Math.max(0, Math.floor((pmin / 100) * (samples.length - 1)));
+        const hiIdx = Math.max(0, Math.floor((pmax / 100) * (samples.length - 1)));
+        let vmin = samples[loIdx];
+        let vmax = samples[hiIdx];
+        if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return null;
+        if (vmin === vmax) {{
+            const minAll = samples[0];
+            const maxAll = samples[samples.length - 1];
+            if (minAll !== maxAll) {{
+                vmin = minAll;
+                vmax = maxAll;
+            }}
+        }}
+        return {{ vmin, vmax, pmin, pmax }};
+    }}
+
+    function ensureGeneAutoScale(gene) {{
+        if (!gene) return;
+        if (!geneScaleAuto[gene]) {{
+            const autoScale = computeGenePercentiles(gene);
+            if (autoScale) geneScaleAuto[gene] = autoScale;
+        }}
+    }}
+
+    function updateExpressionScaleUI() {{
+        const section = document.getElementById('expression-scale-section');
+        const vminInput = document.getElementById('expr-vmin');
+        const vmaxInput = document.getElementById('expr-vmax');
+        const hint = document.getElementById('expr-scale-hint');
+        if (!section || !vminInput || !vmaxInput || !hint) return;
+        if (!currentGene) {{
+            section.style.display = 'none';
+            return;
+        }}
+        section.style.display = 'block';
+        const config = getColorConfig();
+        vminInput.value = Number.isFinite(config.vmin) ? config.vmin.toFixed(3) : '';
+        vmaxInput.value = Number.isFinite(config.vmax) ? config.vmax.toFixed(3) : '';
+        if (geneScaleOverrides[currentGene]) {{
+            hint.textContent = 'Custom scale (manual).';
+        }} else if (geneScaleAuto[currentGene]) {{
+            hint.textContent = `Auto scale: ${{GENE_SCALE_PMIN}}-${{GENE_SCALE_PMAX}} percentile.`;
+        }} else {{
+            hint.textContent = 'Auto scale unavailable; using data range.';
+        }}
     }}
 
     // Get values for a section
@@ -1463,7 +1571,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 let color;
                 if (config.is_continuous) {{
                     const t = (val - config.vmin) / (config.vmax - config.vmin);
-                    color = viridis(Math.max(0, Math.min(1, t)));
+                    color = magma(Math.max(0, Math.min(1, t)));
                 }} else {{
                     const catIdx = Math.round(val);
                     color = getCategoryColor(catIdx);
@@ -1791,7 +1899,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             let isSelectedCat = false;
             if (config.is_continuous) {{
                 const t = (val - config.vmin) / (config.vmax - config.vmin);
-                color = viridis(Math.max(0, Math.min(1, t)));
+                color = magma(Math.max(0, Math.min(1, t)));
             }} else {{
                 const catIdx = Math.round(val);
                 const catName = config.categories[catIdx];
@@ -1947,7 +2055,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (config.is_continuous) {{
             const t = (val - config.vmin) / (config.vmax - config.vmin);
-            const color = viridis(Math.max(0, Math.min(1, t)));
+            const color = magma(Math.max(0, Math.min(1, t)));
             return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
                     <span class="cell-tooltip-label">${{colorLabel}}:</span>
                     <span class="cell-tooltip-value">${{val.toFixed(3)}}</span>`;
@@ -2073,7 +2181,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             let isSelectedCat = false;
             if (config.is_continuous) {{
                 const t = (val - config.vmin) / (config.vmax - config.vmin);
-                color = viridis(Math.max(0, Math.min(1, t)));
+                color = magma(Math.max(0, Math.min(1, t)));
             }} else {{
                 const catIdx = Math.round(val);
                 const catName = config.categories[catIdx];
@@ -2170,7 +2278,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             colorbar.height = 150 * dpr;
             ctx.scale(dpr, dpr);
             for (let i = 0; i < 150; i++) {{
-                ctx.fillStyle = viridis(1 - i / 149);
+                ctx.fillStyle = magma(1 - i / 149);
                 ctx.fillRect(0, i, 16, 1);
             }}
         }} else {{
@@ -2354,6 +2462,54 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         renderColorAggregation();
         renderCellTypeTrend();
         renderMarkerGenes();
+        updateExpressionScaleUI();
+
+        const exprVmin = document.getElementById('expr-vmin');
+        const exprVmax = document.getElementById('expr-vmax');
+        const exprAuto = document.getElementById('expr-auto');
+        if (exprVmin && exprVmax) {{
+            const applyExpressionScale = () => {{
+                if (!currentGene) return;
+                const vmin = parseFloat(exprVmin.value);
+                const vmax = parseFloat(exprVmax.value);
+                if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return;
+                let adjMin = vmin;
+                let adjMax = vmax;
+                if (adjMin === adjMax) {{
+                    adjMin -= 1e-6;
+                    adjMax += 1e-6;
+                }} else if (adjMin > adjMax) {{
+                    const tmp = adjMin;
+                    adjMin = adjMax;
+                    adjMax = tmp;
+                }}
+                geneScaleOverrides[currentGene] = {{ vmin: adjMin, vmax: adjMax }};
+                updateExpressionScaleUI();
+                renderLegend('legend');
+                renderLegend('modal-legend');
+                renderAllSections();
+                if (modalSection) renderModalSection();
+                if (umapVisible) renderUMAP();
+            }};
+            exprVmin.addEventListener('change', applyExpressionScale);
+            exprVmax.addEventListener('change', applyExpressionScale);
+        }}
+        if (exprAuto) {{
+            exprAuto.addEventListener('click', () => {{
+                if (!currentGene) return;
+                const autoScale = computeGenePercentiles(currentGene);
+                if (autoScale) {{
+                    geneScaleAuto[currentGene] = autoScale;
+                    delete geneScaleOverrides[currentGene];
+                    updateExpressionScaleUI();
+                    renderLegend('legend');
+                    renderLegend('modal-legend');
+                    renderAllSections();
+                    if (modalSection) renderModalSection();
+                    if (umapVisible) renderUMAP();
+                }}
+            }});
+        }}
     }}
 
     function renderColorList(query) {{
@@ -2382,6 +2538,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             document.getElementById('color-select').value = col;
             document.getElementById('gene-input').value = '';
             hiddenCategories.clear();
+            updateExpressionScaleUI();
                 renderLegend('legend');
                 renderLegend('modal-legend');
                 renderAllSections();
@@ -2802,6 +2959,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             modalTypeSelectEnabled = false;
             document.getElementById('gene-input').value = '';
             hiddenCategories.clear();
+            updateExpressionScaleUI();
             renderLegend('legend');
             renderLegend('modal-legend');
             renderAllSections();
@@ -2828,6 +2986,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 modalSelectedCategory = null;
                 modalTypeSelectEnabled = false;
                 hiddenCategories.clear();
+                ensureGeneAutoScale(currentGene);
+                updateExpressionScaleUI();
                 renderLegend('legend');
                 renderLegend('modal-legend');
                 renderAllSections();
@@ -2840,6 +3000,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }} else if (!gene) {{
                 currentGene = null;
                 hiddenCategories.clear();
+                updateExpressionScaleUI();
                 renderLegend('legend');
                 renderLegend('modal-legend');
                 renderAllSections();
@@ -3329,6 +3490,7 @@ def export_to_html(
             '</div>'
             '</div>'
         )
+    viewer_info_html_safe = viewer_info_html.replace('{', '{{').replace('}', '}}')
 
     # Get data with multiple color layers and genes
     data = dataset.to_json_data(
@@ -3375,7 +3537,7 @@ def export_to_html(
         metadata_labels_json=json.dumps(metadata_labels),
         outline_by_json=json.dumps(outline_by),
         viewer_info_html_json=json.dumps(viewer_info_html),
-        viewer_info_html=viewer_info_html,
+        viewer_info_html=viewer_info_html_safe,
         theme_icon=theme_icon,
         initial_theme=initial_theme,
         favicon_link=favicon_link,
