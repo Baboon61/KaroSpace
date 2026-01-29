@@ -106,7 +106,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 8px;
             transition: background 0.3s, border-color 0.3s;
         }}
+        .header-title {{
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+        }}
         .header h1 {{ font-size: 16px; font-weight: 600; }}
+        .info-trigger {{
+            padding: 4px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            font-size: 10px;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }}
+        .info-trigger:hover {{
+            background: var(--hover-bg);
+            border-color: var(--accent-strong);
+        }}
         .controls {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
         .control-group {{ display: flex; align-items: center; gap: 4px; }}
         .control-group label {{ font-size: 11px; color: var(--muted-color); }}
@@ -315,6 +337,59 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .color-tab-content.active {{
             display: flex;
+        }}
+        .info-content {{
+            display: grid;
+            gap: 10px;
+        }}
+        .info-block {{
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+        }}
+        .info-title {{
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: var(--muted-color);
+            margin-bottom: 6px;
+        }}
+        .info-text {{
+            font-size: 12px;
+            line-height: 1.5;
+        }}
+        .info-list {{
+            display: grid;
+            gap: 4px;
+            font-size: 12px;
+        }}
+        .info-link {{
+            color: inherit;
+            text-decoration: none;
+            border-bottom: 1px dotted var(--border-color);
+        }}
+        .info-link:hover {{
+            color: var(--accent-strong);
+            border-bottom-color: var(--accent-strong);
+        }}
+        .info-popover {{
+            position: absolute;
+            top: calc(100% + 8px);
+            left: 0;
+            z-index: 10;
+            width: 280px;
+            max-width: calc(100vw - 32px);
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: var(--panel-bg);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+            display: none;
+        }}
+        .info-popover.active {{
+            display: block;
         }}
         .color-list {{
             display: flex;
@@ -791,7 +866,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="loading-text">Loading data...</div>
     </div>
     <div class="header">
-        <h1>{title}</h1>
+        <div class="header-title">
+            <h1>{title}</h1>
+            <button class="info-trigger" id="info-trigger" type="button" title="Viewer info">Info</button>
+            <div class="info-popover" id="info-popover" aria-hidden="true">
+                <div class="info-content">{viewer_info_html}</div>
+            </div>
+        </div>
         <div class="controls">
             <div class="control-group">
                 <label>Color:</label>
@@ -918,6 +999,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const PALETTE = {palette_json};
     const METADATA_LABELS = {metadata_labels_json};
     const OUTLINE_BY = {outline_by_json};
+    const VIEWER_INFO_HTML = {viewer_info_html_json};
 
     // Outline color overrides (used for course by default)
     const OUTLINE_COLOR_OVERRIDES = {{
@@ -2176,6 +2258,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <div class="color-tabs">
                     <button class="color-tab active" id="color-tab-aggregate" type="button">Stats</button>
                     <button class="color-tab" id="color-tab-markers" type="button">Marker genes</button>
+                    <button class="color-tab" id="color-tab-info" type="button">Info</button>
                 </div>
                 <div class="color-tab-content active" id="color-tab-aggregate-content">
                     <div>
@@ -2202,6 +2285,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <input class="marker-search" id="marker-gene-search" type="text" placeholder="Search marker genes...">
                     <div class="marker-genes" id="marker-genes"></div>
                 </div>
+                <div class="color-tab-content" id="color-tab-info-content">
+                    <div class="info-content">${{VIEWER_INFO_HTML}}</div>
+                </div>
             </div>
         `;
 
@@ -2225,19 +2311,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const aggregateTab = document.getElementById('color-tab-aggregate');
         const markerTab = document.getElementById('color-tab-markers');
+        const infoTab = document.getElementById('color-tab-info');
         const aggregateContent = document.getElementById('color-tab-aggregate-content');
         const markerContent = document.getElementById('color-tab-markers-content');
+        const infoContent = document.getElementById('color-tab-info-content');
         aggregateTab.addEventListener('click', () => {{
             aggregateTab.classList.add('active');
             markerTab.classList.remove('active');
+            infoTab.classList.remove('active');
             aggregateContent.classList.add('active');
             markerContent.classList.remove('active');
+            infoContent.classList.remove('active');
         }});
         markerTab.addEventListener('click', () => {{
             markerTab.classList.add('active');
             aggregateTab.classList.remove('active');
+            infoTab.classList.remove('active');
             markerContent.classList.add('active');
             aggregateContent.classList.remove('active');
+            infoContent.classList.remove('active');
+        }});
+        infoTab.addEventListener('click', () => {{
+            infoTab.classList.add('active');
+            aggregateTab.classList.remove('active');
+            markerTab.classList.remove('active');
+            infoContent.classList.add('active');
+            aggregateContent.classList.remove('active');
+            markerContent.classList.remove('active');
         }});
 
         const markerSearch = document.getElementById('marker-gene-search');
@@ -2798,6 +2898,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             requestAnimationFrame(renderAllSections);
         }});
 
+        const infoTrigger = document.getElementById('info-trigger');
+        if (infoTrigger) {{
+            const infoPopover = document.getElementById('info-popover');
+            infoTrigger.addEventListener('click', (event) => {{
+                event.stopPropagation();
+                if (!infoPopover) return;
+                const isActive = infoPopover.classList.toggle('active');
+                infoPopover.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+            }});
+            document.addEventListener('click', (event) => {{
+                if (!infoPopover || !infoPopover.classList.contains('active')) return;
+                if (infoPopover.contains(event.target) || event.target === infoTrigger) return;
+                infoPopover.classList.remove('active');
+                infoPopover.setAttribute('aria-hidden', 'true');
+            }});
+            document.addEventListener('keydown', (event) => {{
+                if (!infoPopover || !infoPopover.classList.contains('active')) return;
+                if (event.key === 'Escape') {{
+                    infoPopover.classList.remove('active');
+                    infoPopover.setAttribute('aria-hidden', 'true');
+                }}
+            }});
+        }}
+
         // Neighborhood graph toggle
         if (DATA.has_neighbors) {{
             const graphBtn = document.getElementById('graph-toggle');
@@ -3093,6 +3217,7 @@ def export_to_html(
     vmin: Optional[float] = None,
     vmax: Optional[float] = None,
     outline_by: Optional[str] = "course",
+    viewer_info_html: Optional[str] = None,
     additional_colors: Optional[List[str]] = None,
     genes: Optional[List[str]] = None,
     hvg_limit: int = 20,
@@ -3126,6 +3251,8 @@ def export_to_html(
         Min/max for continuous color scale
     outline_by : str, optional
         Metadata column used to color panel outlines (default: "course")
+    viewer_info_html : str, optional
+        HTML string shown in the Info tab of the color panel.
     additional_colors : list, optional
         Additional obs columns to include for color switching
     genes : list, optional
@@ -3180,6 +3307,29 @@ def export_to_html(
     if outline_by and outline_by not in dataset.metadata_columns:
         print(f"  Warning: outline_by '{outline_by}' not in metadata columns; no outlines will be shown.")
 
+    if viewer_info_html is None:
+        viewer_info_html = (
+            '<div class="info-block">'
+            '<div class="info-title">Viewer</div>'
+            '<div class="info-text">KaroSpace interactive spatial viewer for exploring '
+            'sections, cell types, and gene expression.</div>'
+            '</div>'
+            '<div class="info-block">'
+            '<div class="info-title">Contact</div>'
+            '<div class="info-list">'
+            '<div>Karolinska Institutet, Stockholm</div>'
+            '<div><a class="info-link" href="mailto:christoffer.mattsson.langseth@ki.se">'
+            'christoffer.mattsson.langseth@ki.se</a></div>'
+            '<div><a class="info-link" href="https://ki.se/personer/christoffer-mattsson-langseth" '
+            'target="_blank" rel="noopener noreferrer">Profile</a></div>'
+            '<div><a class="info-link" href="https://orcid.org/0000-0003-2230-8594" '
+            'target="_blank" rel="noopener noreferrer">ORCID</a></div>'
+            '<div><a class="info-link" href="https://www.linkedin.com/in/christoffer-mattsson-langseth-76427011a" '
+            'target="_blank" rel="noopener noreferrer">LinkedIn</a></div>'
+            '</div>'
+            '</div>'
+        )
+
     # Get data with multiple color layers and genes
     data = dataset.to_json_data(
         color,
@@ -3224,6 +3374,8 @@ def export_to_html(
         palette_json=json.dumps(DEFAULT_CATEGORICAL_PALETTE),
         metadata_labels_json=json.dumps(metadata_labels),
         outline_by_json=json.dumps(outline_by),
+        viewer_info_html_json=json.dumps(viewer_info_html),
+        viewer_info_html=viewer_info_html,
         theme_icon=theme_icon,
         initial_theme=initial_theme,
         favicon_link=favicon_link,

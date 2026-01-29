@@ -30,6 +30,7 @@ print(f"Available color columns: {dataset.obs_columns[:10]}...")  # first 10
 # - True: use highly variable genes (if present, capped to 20)
 # - False: use the explicit genes list below
 USE_HVGS = True
+OUTLINE_BY = "course"
 
 # Export to HTML with full features
 # For your 107 sections with course/region metadata:
@@ -42,7 +43,7 @@ export_to_html(
     spot_size=1.5,  # smaller spots for dense data
     downsample=100000,  # limit cells per section to keep file manageable
     theme="light",  # or "dark"
-    outline_by="course",  # metadata column for panel outline colors
+    outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
     additional_colors=[
