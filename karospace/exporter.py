@@ -1085,6 +1085,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         'rgba(255, 105, 180, 0.9)',
     ];
     const expandedAggGroups = new Set();
+    const expandedNeighborGroups = new Set();
 
     // Modal state
     let modalSection = null;
@@ -2365,6 +2366,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <label>Details</label>
                 <div class="color-tabs">
                     <button class="color-tab active" id="color-tab-aggregate" type="button">Stats</button>
+                    <button class="color-tab" id="color-tab-neighbors" type="button">Neighbors</button>
                     <button class="color-tab" id="color-tab-markers" type="button">Marker genes</button>
                     <button class="color-tab" id="color-tab-info" type="button">Info</button>
                 </div>
@@ -2387,6 +2389,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                     <div class="color-aggregation" id="celltype-trend">
                         <div class="agg-group-meta">${{hasMetadata ? 'Search for a category to see counts across the selected metadata.' : 'No metadata columns available.'}}</div>
+                    </div>
+                </div>
+                <div class="color-tab-content" id="color-tab-neighbors-content">
+                    <div>
+                        <label>Search cell type</label>
+                        <input class="color-search" id="neighbor-search" type="text" placeholder="Search cell type...">
+                    </div>
+                    <div class="color-aggregation" id="neighbor-stats">
+                        <div class="agg-group-meta">Select a categorical color to view neighbor stats.</div>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-markers-content">
@@ -2418,33 +2429,51 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         const aggregateTab = document.getElementById('color-tab-aggregate');
+        const neighborTab = document.getElementById('color-tab-neighbors');
         const markerTab = document.getElementById('color-tab-markers');
         const infoTab = document.getElementById('color-tab-info');
         const aggregateContent = document.getElementById('color-tab-aggregate-content');
+        const neighborContent = document.getElementById('color-tab-neighbors-content');
         const markerContent = document.getElementById('color-tab-markers-content');
         const infoContent = document.getElementById('color-tab-info-content');
         aggregateTab.addEventListener('click', () => {{
             aggregateTab.classList.add('active');
+            neighborTab.classList.remove('active');
             markerTab.classList.remove('active');
             infoTab.classList.remove('active');
             aggregateContent.classList.add('active');
+            neighborContent.classList.remove('active');
+            markerContent.classList.remove('active');
+            infoContent.classList.remove('active');
+        }});
+        neighborTab.addEventListener('click', () => {{
+            neighborTab.classList.add('active');
+            aggregateTab.classList.remove('active');
+            markerTab.classList.remove('active');
+            infoTab.classList.remove('active');
+            neighborContent.classList.add('active');
+            aggregateContent.classList.remove('active');
             markerContent.classList.remove('active');
             infoContent.classList.remove('active');
         }});
         markerTab.addEventListener('click', () => {{
             markerTab.classList.add('active');
             aggregateTab.classList.remove('active');
+            neighborTab.classList.remove('active');
             infoTab.classList.remove('active');
             markerContent.classList.add('active');
             aggregateContent.classList.remove('active');
+            neighborContent.classList.remove('active');
             infoContent.classList.remove('active');
         }});
         infoTab.addEventListener('click', () => {{
             infoTab.classList.add('active');
             aggregateTab.classList.remove('active');
+            neighborTab.classList.remove('active');
             markerTab.classList.remove('active');
             infoContent.classList.add('active');
             aggregateContent.classList.remove('active');
+            neighborContent.classList.remove('active');
             markerContent.classList.remove('active');
         }});
 
@@ -2458,9 +2487,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderCellTypeTrend();
         }});
 
+        const neighborSearch = document.getElementById('neighbor-search');
+        neighborSearch.addEventListener('input', () => {{
+            renderNeighborStats();
+        }});
+
         renderColorList('');
         renderColorAggregation();
         renderCellTypeTrend();
+        renderNeighborStats();
         renderMarkerGenes();
         updateExpressionScaleUI();
 
@@ -2547,6 +2582,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderColorList(document.getElementById('color-search').value);
                 renderColorAggregation();
                 renderCellTypeTrend();
+                renderNeighborStats();
                 renderMarkerGenes();
             }});
         }});
@@ -2810,6 +2846,139 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         `;
     }}
 
+    function renderNeighborStats() {{
+        const container = document.getElementById('neighbor-stats');
+        if (!container) return;
+
+        if (!DATA.has_neighbors) {{
+            container.innerHTML = '<div class="agg-group-meta">No neighbor graph was found in this dataset.</div>';
+            return;
+        }}
+
+        if (currentGene) {{
+            container.innerHTML = '<div class="agg-group-meta">Clear the gene input to view neighbor stats.</div>';
+            return;
+        }}
+
+        const config = getColorConfig();
+        if (config.is_continuous) {{
+            container.innerHTML = '<div class="agg-group-meta">Neighbor stats are available for categorical colors only.</div>';
+            return;
+        }}
+
+        const stats = (DATA.neighbor_stats || {{}})[currentColor];
+        if (!stats || !stats.counts || !stats.categories) {{
+            container.innerHTML = '<div class="agg-group-meta">No neighbor stats available for this color.</div>';
+            return;
+        }}
+
+        const categories = stats.categories || [];
+        const counts = stats.counts || [];
+        const nCells = stats.n_cells || [];
+        const meanDegree = stats.mean_degree || [];
+        const zscores = stats.zscore || null;
+        const permN = stats.perm_n || 0;
+        if (categories.length === 0 || counts.length === 0) {{
+            container.innerHTML = '<div class="agg-group-meta">Neighbor stats are empty for this color.</div>';
+            return;
+        }}
+
+        const input = document.getElementById('neighbor-search');
+        const query = (input?.value || '').trim().toLowerCase();
+        const matches = categories
+            .map((cat, idx) => (query && !String(cat).toLowerCase().includes(query)) ? null : idx)
+            .filter(idx => idx !== null);
+
+        if (matches.length === 0) {{
+            container.innerHTML = '<div class="agg-group-meta">No matching cell types.</div>';
+            return;
+        }}
+
+        const rows = matches.map((idx) => {{
+            const source = String(categories[idx]);
+            const row = counts[idx] || [];
+            const total = row.reduce((sum, val) => sum + (Number.isFinite(val) ? val : 0), 0);
+            const entries = row
+                .map((val, j) => (Number.isFinite(val) && val > 0) ? [j, val] : null)
+                .filter(Boolean)
+                .sort((a, b) => b[1] - a[1]);
+            const key = `${{currentColor}}::${{idx}}`;
+            const isExpanded = expandedNeighborGroups.has(key);
+            const top = isExpanded ? entries : entries.slice(0, 6);
+            const shownTotal = top.reduce((sum, [, v]) => sum + v, 0);
+            const other = total - shownTotal;
+            const toggleLabel = isExpanded ? 'Show top 6' : 'Show all';
+            const formatCount = (value) => {{
+                if (!Number.isFinite(value)) return '0';
+                if (Math.abs(value - Math.round(value)) < 1e-6) return Math.round(value).toLocaleString();
+                return value.toFixed(2);
+            }};
+
+            const rowsHtml = top.map(([j, val]) => {{
+                const pct = total > 0 ? (val / total) * 100 : 0;
+                const target = String(categories[j] ?? 'unknown');
+                const color = j >= 0 ? getCategoryColor(j) : '#999';
+                let zLabel = '';
+                if (zscores && zscores[idx] && Number.isFinite(zscores[idx][j])) {{
+                    zLabel = ` z=${{zscores[idx][j].toFixed(2)}}`;
+                }}
+                return `
+                    <div class="agg-row">
+                        <span class="agg-dot" style="background: ${{color}}"></span>
+                        <span class="agg-label">${{target}}</span>
+                        <span class="agg-value">${{pct.toFixed(1)}}% (${{formatCount(val)}})${{zLabel}}</span>
+                    </div>
+                `;
+            }}).join('');
+
+            const otherRow = other > 0 ? `
+                <div class="agg-row">
+                    <span class="agg-dot" style="background: #bbb"></span>
+                    <span class="agg-label">Other</span>
+                    <span class="agg-value">${{((other / total) * 100).toFixed(1)}}% (${{formatCount(other)}})</span>
+                </div>
+            ` : '';
+
+            const totalLabel = formatCount(total);
+            const nLabel = (nCells[idx] ?? 0).toLocaleString();
+            const degreeLabel = Number.isFinite(meanDegree[idx]) ? meanDegree[idx].toFixed(2) : '0.00';
+            const permLabel = permN ? ` | perms=${{permN}}` : '';
+
+            if (entries.length === 0) {{
+                return `
+                    <div class="agg-group">
+                        <div class="agg-group-title">${{source}}</div>
+                        <div class="agg-group-meta">n=${{nLabel}} | mean degree=${{degreeLabel}}</div>
+                        <div class="agg-group-meta">No neighbors found for this cell type.</div>
+                    </div>
+                `;
+            }}
+
+            return `
+                <div class="agg-group">
+                    <div class="agg-group-title">${{source}}</div>
+                    <div class="agg-group-meta">n=${{nLabel}} | mean degree=${{degreeLabel}} | neighbor edges=${{totalLabel}}${{permLabel}}</div>
+                    <button class="legend-btn" data-neighbor-toggle="${{idx}}">${{toggleLabel}}</button>
+                    ${{rowsHtml}}
+                    ${{otherRow}}
+                </div>
+            `;
+        }}).join('');
+
+        container.innerHTML = rows;
+
+        container.querySelectorAll('[data-neighbor-toggle]').forEach(btn => {{
+            btn.addEventListener('click', () => {{
+                const idx = btn.getAttribute('data-neighbor-toggle');
+                if (idx === null) return;
+                const key = `${{currentColor}}::${{idx}}`;
+                if (expandedNeighborGroups.has(key)) expandedNeighborGroups.delete(key);
+                else expandedNeighborGroups.add(key);
+                renderNeighborStats();
+            }});
+        }});
+    }}
+
     function stepRange(rangeEl, delta) {{
         if (!rangeEl) return;
         const min = parseFloat(rangeEl.min || '0');
@@ -2968,6 +3137,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderColorList(document.getElementById('color-search')?.value || '');
             renderColorAggregation();
             renderCellTypeTrend();
+            renderNeighborStats();
             renderMarkerGenes();
         }});
 
@@ -2996,6 +3166,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderColorList(document.getElementById('color-search')?.value || '');
                 renderColorAggregation();
                 renderCellTypeTrend();
+                renderNeighborStats();
                 renderMarkerGenes();
             }} else if (!gene) {{
                 currentGene = null;
@@ -3009,6 +3180,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderColorList(document.getElementById('color-search')?.value || '');
                 renderColorAggregation();
                 renderCellTypeTrend();
+                renderNeighborStats();
                 renderMarkerGenes();
             }} else if (gene) {{
                 alert(`Gene "${{gene}}" was not pre-loaded.\\nTo view it, re-export with this gene included in the genes parameter or add it to highly variable genes.`);
@@ -3385,6 +3557,9 @@ def export_to_html(
     marker_genes_groupby: Optional[List[str]] = None,
     marker_genes_top_n: int = 30,
     use_hvgs: bool = True,
+    neighbor_stats_groupby: Optional[List[str]] = None,
+    neighbor_stats_permutations: int = 100,
+    neighbor_stats_seed: int = 0,
 ) -> str:
     """
     Export spatial dataset to a standalone HTML file.
@@ -3424,6 +3599,12 @@ def export_to_html(
         Obs columns to compute marker genes for (categorical only)
     marker_genes_top_n : int
         Number of top marker genes to keep per group
+    neighbor_stats_groupby : list, optional
+        Obs columns to compute neighbor composition stats for (categorical only)
+    neighbor_stats_permutations : int
+        Number of permutations for neighbor enrichment z-scores (0 disables)
+    neighbor_stats_seed : int
+        Random seed used for neighbor permutations
 
     Returns
     -------
@@ -3493,6 +3674,11 @@ def export_to_html(
     viewer_info_html_safe = viewer_info_html.replace('{', '{{').replace('}', '}}')
 
     # Get data with multiple color layers and genes
+    if neighbor_stats_groupby is None:
+        neighbor_stats_groupby = [color]
+        if additional_colors:
+            neighbor_stats_groupby.extend(additional_colors)
+
     data = dataset.to_json_data(
         color,
         downsample=downsample,
@@ -3502,6 +3688,9 @@ def export_to_html(
         genes=genes,
         marker_genes_groupby=marker_genes_groupby,
         marker_genes_top_n=marker_genes_top_n,
+        neighbor_stats_groupby=neighbor_stats_groupby,
+        neighbor_stats_permutations=neighbor_stats_permutations,
+        neighbor_stats_seed=neighbor_stats_seed,
     )
 
     # Theme settings

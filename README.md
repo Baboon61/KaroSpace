@@ -15,6 +15,7 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **Gene expression visualization** - Pre-load genes of interest and switch between them with a viridis colormap
 - **Multiple color columns** - Switch between different annotation columns (e.g., cell types, clusters, conditions)
 - **Insights panel** - Search color columns, view categorical stats, and marker genes by color
+- **Neighbor stats + enrichment** - Neighbor composition and permutation z-scores for categorical cell types
 - **Metadata filtering** - Filter sections by metadata like experimental condition, timepoint, or region
 - **Cell tooltips** - Hover over cells to see their type or expression value
 - **Course-based borders** - Section panels are outlined with colors indicating their experimental course/condition
@@ -87,6 +88,8 @@ export_to_html(
         "cell_type",
     ],
     marker_genes_top_n=30,       # Top N markers per group
+    neighbor_stats_permutations=100,  # Permutations for neighbor enrichment z-scores (0 disables)
+    neighbor_stats_seed=0,       # Random seed for permutations
 )
 ```
 
@@ -147,7 +150,8 @@ dataset = load_spatial_data(
 ### Optional neighborhood graph
 
 If `adata.obsp` contains a neighbor graph (e.g., `spatial_connectivities`, `connectivities`,
-`neighbors`, or `neighbor_graph`), KaroSpace will expose graph and neighbor-hover controls.
+`neighbors`, or `neighbor_graph`), KaroSpace will expose graph/neighbor-hover controls and
+compute neighbor composition plus optional permutation z-scores for categorical colors.
 
 ### Optional cell polygons
 
@@ -210,7 +214,7 @@ export_to_html(
 - **Legend items** - Click to toggle categories on/off
 - **Legend button** - Show/hide the legend panel
 - **Insights button** - Toggle the insights panel (colors + stats + marker genes)
-- **Insights usage** - Use the “Stats” tab to aggregate categorical colors by metadata; use the “Marker genes” tab to view top markers per category
+- **Insights usage** - Use “Stats” to aggregate categorical colors by metadata, “Neighbors” for neighbor composition + z-scores, and “Marker genes” for top markers
 - **Graph button** - Toggle neighborhood graph overlay (if available)
 - **Neighbors button** - Toggle neighbor rings on hover (if available)
 - **Hop selector** - Choose which neighbor hop(s) to display (if available)

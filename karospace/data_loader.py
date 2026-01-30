@@ -171,6 +171,9 @@ class SpatialDataset:
         genes: Optional[List[str]] = None,
         marker_genes_groupby: Optional[List[str]] = None,
         marker_genes_top_n: int = 30,
+        neighbor_stats_groupby: Optional[List[str]] = None,
+        neighbor_stats_permutations: int = 0,
+        neighbor_stats_seed: int = 0,
     ) -> Dict:
         """
         Export dataset to JSON-serializable format for the HTML viewer.
@@ -191,6 +194,12 @@ class SpatialDataset:
             Obs columns to compute marker genes for (categorical only)
         marker_genes_top_n : int
             Number of top marker genes to keep per group
+        neighbor_stats_groupby : list, optional
+            Obs columns to compute neighbor composition stats for (categorical only)
+        neighbor_stats_permutations : int
+            Number of permutations for neighbor enrichment z-scores (0 disables)
+        neighbor_stats_seed : int
+            Random seed used for neighbor permutations
 
         Returns
         -------
@@ -343,6 +352,87 @@ class SpatialDataset:
                 else:
                     print(f"  Warning: Unrecognized marker gene format for '{groupby}'.")
 
+        # Compute neighbor composition stats
+        neighbor_stats = {}
+        if neighbor_graph is not None and neighbor_stats_groupby:
+            for groupby in neighbor_stats_groupby:
+                if groupby not in self.adata.obs.columns:
+                    print(f"  Warning: neighbor stats groupby '{groupby}' not found in obs.")
+                    continue
+                col = self.adata.obs[groupby]
+                if pd.api.types.is_numeric_dtype(col):
+                    print(f"  Warning: neighbor stats '{groupby}' is numeric; skipping.")
+                    continue
+                if not pd.api.types.is_categorical_dtype(col):
+                    col = col.astype("category")
+                categories = list(col.cat.categories)
+                codes = col.cat.codes.to_numpy()
+                valid_mask = codes >= 0
+                if not valid_mask.any():
+                    print(f"  Warning: neighbor stats '{groupby}' has no valid categories.")
+                    continue
+
+                if valid_mask.all():
+                    graph = neighbor_graph
+                    labels = codes
+                else:
+                    valid_idx = np.flatnonzero(valid_mask)
+                    graph = neighbor_graph[valid_idx][:, valid_idx]
+                    labels = codes[valid_mask]
+
+                n_cells = np.bincount(labels, minlength=len(categories)).astype(int)
+                if graph is None or graph.shape[0] == 0:
+                    print(f"  Warning: neighbor stats '{groupby}' has empty graph.")
+                    continue
+
+                onehot = sp.csr_matrix(
+                    (np.ones(len(labels), dtype=float), (np.arange(len(labels)), labels)),
+                    shape=(len(labels), len(categories)),
+                )
+                counts = onehot.T.dot(graph).dot(onehot)
+                if issparse(counts):
+                    counts = counts.toarray()
+                counts = np.asarray(counts, dtype=float)
+                row_sums = counts.sum(axis=1)
+                mean_degree = np.zeros(len(categories), dtype=float)
+                valid_cells = n_cells > 0
+                mean_degree[valid_cells] = row_sums[valid_cells] / n_cells[valid_cells]
+
+                entry = {
+                    "categories": categories,
+                    "counts": counts.tolist(),
+                    "n_cells": n_cells.tolist(),
+                    "mean_degree": mean_degree.tolist(),
+                }
+                if neighbor_stats_permutations and neighbor_stats_permutations > 0:
+                    rng = np.random.default_rng(int(neighbor_stats_seed))
+                    perm_mean = np.zeros_like(counts, dtype=float)
+                    perm_m2 = np.zeros_like(counts, dtype=float)
+                    for i in range(int(neighbor_stats_permutations)):
+                        perm_labels = rng.permutation(labels)
+                        perm_onehot = sp.csr_matrix(
+                            (np.ones(len(perm_labels), dtype=float), (np.arange(len(perm_labels)), perm_labels)),
+                            shape=(len(perm_labels), len(categories)),
+                        )
+                        perm_counts = perm_onehot.T.dot(graph).dot(perm_onehot)
+                        if issparse(perm_counts):
+                            perm_counts = perm_counts.toarray()
+                        perm_counts = np.asarray(perm_counts, dtype=float)
+                        delta = perm_counts - perm_mean
+                        perm_mean += delta / (i + 1)
+                        perm_m2 += delta * (perm_counts - perm_mean)
+                    if neighbor_stats_permutations > 1:
+                        perm_var = perm_m2 / (neighbor_stats_permutations - 1)
+                    else:
+                        perm_var = np.zeros_like(counts, dtype=float)
+                    perm_std = np.sqrt(perm_var)
+                    zscore = np.zeros_like(counts, dtype=float)
+                    valid_std = perm_std > 0
+                    zscore[valid_std] = (counts[valid_std] - perm_mean[valid_std]) / perm_std[valid_std]
+                    entry["perm_n"] = int(neighbor_stats_permutations)
+                    entry["zscore"] = zscore.tolist()
+                neighbor_stats[groupby] = entry
+
         # Build section data with all color layers
         sections_data = []
         for section in self.sections:
@@ -441,6 +531,7 @@ class SpatialDataset:
             "umap_bounds": umap_bounds,
             "has_neighbors": neighbor_graph is not None,
             "neighbors_key": neighbor_graph_key,
+            "neighbor_stats": neighbor_stats,
         }
 
 
