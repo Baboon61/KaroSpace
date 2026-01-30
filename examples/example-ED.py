@@ -18,8 +18,15 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_name_updated",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
-    metadata_columns=[ 'ED', 'age',
-       'score EHS ', 'status', 'Erection per op', 'Diabetes'],
+    metadata_columns=[
+        "condition_subtype",
+        "Other pathologies",
+        "PAT-ID",
+        "score EHS ",
+        "age",
+        "Prostatectomy",
+    ],
+    metadata_value_order={"condition_subtype": ['control','Nerve_damage','Diabetes']},
     # metadata_max_columns=4,  # optional: limit number of metadata columns used
 )
 
@@ -30,7 +37,7 @@ print(f"Available color columns: {dataset.obs_columns[:10]}...")  # first 10
 # - True: use highly variable genes (if present, capped to 20)
 # - False: use the explicit genes list below
 USE_HVGS = True
-OUTLINE_BY = "course"
+OUTLINE_BY = "condition_subtype"
 
 # Export to HTML with full features
 # For your 107 sections with course/region metadata:
@@ -47,12 +54,16 @@ export_to_html(
 
     # Include additional color options for the dropdown
     additional_colors=[
+       'leiden_0.5', 'leiden_1', 'leiden_1.5',
        'leiden_2', 'leiden_2.5',
        'leiden_3', 'leiden_3.5', 'cytetype_annotation_leiden_3.5',
-        'cell_class', 'cell_subclass','cluster_cellcharter_5',
-       'cluster_cellcharter_10', 'cluster_cellcharter_15',
-       'cluster_cellcharter_20', 'cluster_cellcharter_25',
-       'cluster_cellcharter_30',
+        'cell_class', 'cell_subclass', 'PAT-ID','condition_subtype',
+        'leiden_mana_0.3',
+      'leiden_mana_0.5',
+      'leiden_mana_0.8',
+      'leiden_mana_1.0',
+      'leiden_mana_1.5',
+      'leiden_mana_2'
     ],
 
     # Pre-load specific genes for expression visualization
@@ -64,16 +75,22 @@ export_to_html(
 
     ],
     use_hvgs=USE_HVGS,
-    hvg_limit=20,
+    hvg_limit=50,
 
     # Compute marker genes for these categorical color columns
     # (appears in the Color panel under "Marker genes")
     marker_genes_groupby=[
-       'cytetype_annotation_leiden_3.5',
-        'cell_class', 'cell_subclass',
-       'cluster_cellcharter_30'
+       'leiden_0.5', 'leiden_1', 'leiden_1.5',
+       'leiden_2', 'leiden_2.5',
+       'leiden_3', 'leiden_3.5', 'cytetype_annotation_leiden_3.5',
+         'cell_class', 'cell_subclass','leiden_mana_0.3',
+      'leiden_mana_0.5',
+      'leiden_mana_0.8',
+      'leiden_mana_1.0',
+      'leiden_mana_1.5',
+      'leiden_mana_2', 'PAT-ID','condition_subtype'
     ],
-    marker_genes_top_n=50,
+    marker_genes_top_n=100,
 )
 
 # The viewer now supports:

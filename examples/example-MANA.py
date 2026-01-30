@@ -19,6 +19,9 @@ dataset = load_spatial_data(
     groupby="sample_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
     metadata_columns=["course", "region", "condition", "timepoint", "last_score", "last_day"],
+    metadata_value_order={
+        "course": [],
+    },
     # metadata_max_columns=4,  # optional: limit number of metadata columns used
 )
 

@@ -19,6 +19,9 @@ dataset = load_spatial_data(
     groupby="sample_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
     metadata_columns=['age', 'sex', 'genotype', 'condition'],
+    metadata_value_order={
+        "condition": [],
+    },
     # metadata_max_columns=3,  # optional: limit number of metadata columns used
 )
 

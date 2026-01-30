@@ -20,6 +20,9 @@ dataset = load_spatial_data(
     # Choose which obs columns appear as filter chips in the viewer
     metadata_columns=['condition',
        'tissue', 'genotype'],
+    metadata_value_order={
+        "condition": [],
+    },
     # metadata_max_columns=4,  # optional: limit number of metadata columns used
 )
 

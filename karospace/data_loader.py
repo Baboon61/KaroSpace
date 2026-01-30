@@ -46,6 +46,7 @@ class SpatialDataset:
     obs_columns: List[str]
     var_names: List[str]
     metadata_columns: List[str]
+    metadata_value_order: Optional[Dict[str, List[str]]] = None
 
     @property
     def n_sections(self) -> int:
@@ -131,8 +132,25 @@ class SpatialDataset:
         filters = {}
         for col in self.metadata_columns:
             if col in self.adata.obs.columns:
-                unique_vals = self.adata.obs[col].dropna().astype(str).unique()
-                if col == "last_day":
+                unique_vals = list(self.adata.obs[col].dropna().astype(str).unique())
+                custom_order = None
+                if self.metadata_value_order and col in self.metadata_value_order:
+                    custom_order = [str(v) for v in self.metadata_value_order[col]]
+                if custom_order:
+                    custom_set = set(custom_order)
+                    ordered = [v for v in custom_order if v in unique_vals]
+                    remaining = [v for v in unique_vals if v not in custom_set]
+                    if col == "last_day":
+                        def _sort_key(v):
+                            try:
+                                return (0, float(v))
+                            except ValueError:
+                                return (1, v)
+                        remaining = sorted(remaining, key=_sort_key)
+                    else:
+                        remaining = sorted(remaining)
+                    filters[col] = ordered + remaining
+                elif col == "last_day":
                     def _sort_key(v):
                         try:
                             return (0, float(v))
@@ -432,6 +450,7 @@ def load_spatial_data(
     spatial_key: str = "spatial",
     group_order: Optional[List[str]] = None,
     metadata_columns: Optional[List[str]] = None,
+    metadata_value_order: Optional[Dict[str, List[str]]] = None,
     metadata_max_columns: Optional[int] = None,
 ) -> SpatialDataset:
     """
@@ -449,6 +468,10 @@ def load_spatial_data(
         Custom order for sections
     metadata_columns : list, optional
         Obs columns to use for section metadata and filter chips
+    metadata_value_order : dict, optional
+        Custom ordering for metadata values per column (e.g. {"course": ["A", "B"]})
+        If group_order is not provided, the first key in this dict is used to order sections
+        by that metadata column (unknowns last, then section_id sort).
     metadata_max_columns : int, optional
         Limit the number of metadata columns used (order preserved)
 
@@ -469,12 +492,32 @@ def load_spatial_data(
 
     # Determine section order
     gser = adata.obs[groupby]
+    gser_str = gser.astype(str)
     if group_order is not None:
-        section_ids = [str(g) for g in group_order if str(g) in gser.astype(str).unique()]
-    elif pd.api.types.is_categorical_dtype(gser) and gser.cat.ordered:
-        section_ids = [str(c) for c in gser.cat.categories if str(c) in gser.astype(str).unique()]
+        section_ids = [str(g) for g in group_order if str(g) in gser_str.unique()]
     else:
-        section_ids = sorted(gser.astype(str).unique())
+        order_by_meta = None
+        if metadata_value_order:
+            order_by_meta = next(iter(metadata_value_order.keys()), None)
+        if order_by_meta and order_by_meta in adata.obs.columns:
+            desired_order = [str(v) for v in metadata_value_order.get(order_by_meta, [])]
+            desired_index = {v: i for i, v in enumerate(desired_order)}
+            section_ids = []
+            for sid in gser_str.unique():
+                mask = gser_str == str(sid)
+                vals = adata.obs.loc[mask, order_by_meta].dropna().astype(str).unique()
+                meta_value = vals[0] if len(vals) == 1 else "mixed"
+                section_ids.append((str(sid), meta_value))
+            def _order_key(item):
+                sid, meta_value = item
+                if meta_value in desired_index:
+                    return (0, desired_index[meta_value], sid)
+                return (1, meta_value, sid)
+            section_ids = [sid for sid, _ in sorted(section_ids, key=_order_key)]
+        elif pd.api.types.is_categorical_dtype(gser) and gser.cat.ordered:
+            section_ids = [str(c) for c in gser.cat.categories if str(c) in gser_str.unique()]
+        else:
+            section_ids = sorted(gser_str.unique())
 
     print(f"  Found {len(section_ids)} sections")
 
@@ -525,4 +568,5 @@ def load_spatial_data(
         obs_columns=obs_columns,
         var_names=list(adata.var_names),
         metadata_columns=metadata_columns,
+        metadata_value_order=metadata_value_order,
     )
