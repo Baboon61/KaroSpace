@@ -57,6 +57,11 @@ from karospace import load_spatial_data, export_to_html
 dataset = load_spatial_data(
     "your_data.h5ad",
     groupby="sample_id",  # Column identifying each section
+    # Optional: custom ordering for metadata values (affects filter chips + outlines)
+    # If group_order isn't set, the first key here is also used to order sections.
+    metadata_value_order={
+        "course": ["naive", "peak_I", "peak_II", "peak_III"],
+    },
 )
 
 # Export to HTML
@@ -123,6 +128,23 @@ For filtering functionality, include these columns in `adata.obs`:
 - `timepoint` - Time point
 
 Sections will be outlined with colors based on their `course` metadata if present.
+
+### Optional metadata ordering
+
+You can control the display order of metadata values (filter chips + outline legend)
+and section ordering by passing `metadata_value_order` to `load_spatial_data`.
+If `group_order` is not provided, sections are ordered by the first key in
+`metadata_value_order` (unknown values appear after the custom list).
+
+```python
+dataset = load_spatial_data(
+    "your_data.h5ad",
+    groupby="sample_id",
+    metadata_value_order={
+        "course": ["naive", "peak_I", "peak_II", "peak_III"],
+    },
+)
+```
 
 ### Optional neighborhood graph
 
