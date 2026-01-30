@@ -1,7 +1,7 @@
 # KaroSpace
 
 <p align="center">
-  <img src="assets/logo.png" alt="KaroSpace Logo" width="300">
+  <img src="assets/logo.png" alt="KaroSpace Logo" width="450">
 </p>
 
 **KaroSpace** is an interactive HTML viewer for exploring spatial transcriptomics data. It generates standalone HTML files from h5ad files that can be shared and viewed in any web browser without requiring a server or Python installation.
