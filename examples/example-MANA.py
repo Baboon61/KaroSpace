@@ -9,7 +9,7 @@ from karospace import load_spatial_data, export_to_html
 
 # Path to your h5ad file
 # Update this path to point to your EAE/MANA data
-H5AD_PATH = '/Volumes/processing2/RRmap/data/EAE_MANA_annotated_gmm_clust_with_scores_anno_comp.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
+H5AD_PATH = '/Volumes/processing2/RRmap/data/RRmap_metadata_fixed.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
 
 # Load the dataset
 # - groupby: column in adata.obs that identifies each section
@@ -18,9 +18,13 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
-    metadata_columns=["course", "region", "condition", "timepoint", "last_score", "last_day"],
+    metadata_columns=['stage', 'condition', 'day_of_sacrifice', 'score_sacrifice', 'region', 'sex', 'model'],
     metadata_value_order={
-        "course": [],
+        "stage": ['MOG CFA','PLP CFA',
+                  'NONSYMPTOM','OS1','ONSET1','ONSET2','MONOPHASIC',
+                  'PEAK1','REMISSION1','PEAK2','REMISSION2','PEAK3',
+                  'LONG'
+                  ],
     },
     # metadata_max_columns=4,  # optional: limit number of metadata columns used
 )
@@ -32,7 +36,7 @@ print(f"Available color columns: {dataset.obs_columns[:10]}...")  # first 10
 # - True: use highly variable genes (if present, capped to 20)
 # - False: use the explicit genes list below
 USE_HVGS = False
-OUTLINE_BY = "course"
+OUTLINE_BY = "stage"
 
 # Export to HTML with full features
 # For your 107 sections with course/region metadata:
@@ -53,7 +57,8 @@ export_to_html(
        'anno_L2', 
        'anno_L1',
        'leiden_3.5',
-       'compartment_mana'
+       'compartment_mana',
+       'stage', 'condition', 'day_of_sacrifice', 'score_sacrifice', 'region', 'sex', 'model'
     ],
 
     # Pre-load specific genes for expression visualization
@@ -97,7 +102,8 @@ export_to_html(
        'anno_L2', 
        'anno_L1',
        'leiden_3.5',
-       'compartment_mana'
+       'compartment_mana',
+        'stage','condition'
     ],
     marker_genes_top_n=50,
 )
