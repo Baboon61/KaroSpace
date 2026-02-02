@@ -9,7 +9,7 @@ from karospace import load_spatial_data, export_to_html
 
 # Path to your h5ad file
 # Update this path to point to your EAE/MANA data
-H5AD_PATH = '/Volumes/processing2/RRmap/data/RRmap_metadata_fixed.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
+H5AD_PATH = '/Volumes/processing2/RRmap/data/RRmap_metadata_fixed_update.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
 
 # Load the dataset
 # - groupby: column in adata.obs that identifies each section
@@ -58,7 +58,12 @@ export_to_html(
        'anno_L1',
        'leiden_3.5',
        'compartment_mana',
-       'stage', 'condition', 'day_of_sacrifice', 'score_sacrifice', 'region', 'sex', 'model'
+       'stage', 'condition', 
+       'day_of_sacrifice', 
+       'score_sacrifice', 
+       'region',
+         'sex', 
+         'model',   
     ],
 
     # Pre-load specific genes for expression visualization
