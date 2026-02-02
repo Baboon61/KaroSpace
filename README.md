@@ -242,6 +242,23 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 - **Clear** - Clear the current selection
 - **Size slider** - Adjust point size in the UMAP view
 - **Mouse wheel** - Zoom the UMAP view
+
+## Implementation, Deployment, and Use
+
+### Implementation
+- **Single-file HTML**: `export_to_html` writes one standalone HTML file that embeds all data (JSON) and viewer logic (CSS/JS) directly in the document.
+- **No backend required**: All interactions (filtering, coloring, legends, zoom/pan) run entirely in the browser.
+- **Data pipeline**: `load_spatial_data` reads `.h5ad`, builds section metadata, and serializes coordinates, colors, and optional gene vectors into JSON.
+
+### Deployment
+- **Local use**: Open the generated `.html` in any modern browser (Chrome, Firefox, Safari). No server needed.
+- **Static hosting**: You can host the HTML as a static asset (e.g., GitHub Pages, S3, lab intranet). Since it’s self-contained, there are no runtime dependencies.
+- **File size note**: Large datasets create large HTML files. Consider `downsample` and limiting `genes`/`additional_colors` to keep the file manageable.
+
+### Use
+- **Sharing**: Send the HTML file directly to collaborators; it will work offline once downloaded.
+- **Viewing**: Just double-click or drag into a browser. All controls work immediately.
+- **Updates**: Re-run `export_to_html` to refresh the file when annotations or metadata change.
 - **Click and drag** (without Magic Wand) - Pan the UMAP view
 
 Selected cells are highlighted with a yellow/gold outline in both UMAP and spatial views.
