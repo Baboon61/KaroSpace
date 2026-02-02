@@ -228,7 +228,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 8px;
             overflow: auto;
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax({min_panel_size}px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(clamp({min_panel_size}px, 18vw, {max_panel_size}px), 1fr));
             gap: 8px;
             align-content: start;
         }}
@@ -3716,10 +3716,12 @@ def export_to_html(
         "last_score": "disease score",
         "last_day": "day of sacrifice",
     }
+    max_panel_size = int(min_panel_size * 2)
 
     html = HTML_TEMPLATE.format(
         title=title,
         min_panel_size=min_panel_size,
+        max_panel_size=max_panel_size,
         spot_size=spot_size,
         data_json=json.dumps(data),
         palette_json=json.dumps(DEFAULT_CATEGORICAL_PALETTE),

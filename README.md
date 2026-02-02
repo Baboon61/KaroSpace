@@ -69,7 +69,7 @@ export_to_html(
     output_path="viewer.html",
     color="cell_type",           # Initial color column
     title="KaroSpace",
-    min_panel_size=150,          # Min panel width (grid auto-adjusts)
+    min_panel_size=150,          # Min panel width (responsive autoscaling)
     spot_size=2.0,               # Cell/spot size
     downsample=30000,            # Max cells per section (for large datasets)
     theme="light",               # "light" or "dark"
@@ -106,7 +106,7 @@ karospace your_data.h5ad -o viewer.html --color leiden --cols 6
 | `-o, --output` | Output HTML file path | `karospace.html` |
 | `-c, --color` | Initial color column | `leiden` |
 | `-g, --groupby` | Column to group sections by | `sample_id` |
-| `--min-panel-size` | Minimum panel width in pixels (grid auto-adjusts) | `150` |
+| `--min-panel-size` | Minimum panel width in pixels (responsive autoscaling) | `150` |
 | `--spot-size` | Cell/spot size | `2.0` |
 | `--downsample` | Max cells per section | None |
 | `--theme` | Color theme (`light` or `dark`) | `light` |
@@ -191,7 +191,7 @@ export_to_html(
     output_path="viewer.html",
     color="anno_L2",
     title="KaroSpace",
-    min_panel_size=120,
+    min_panel_size=120,          # Min panel width (responsive autoscaling)
     spot_size=1.5,
     downsample=30000,
     additional_colors=['anno_L3', 'anno_L2', 'anno_L1', 'leiden'],
