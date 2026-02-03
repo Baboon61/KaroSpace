@@ -223,8 +223,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .filter-chip.inactive {{ opacity: 0.4; }}
 
         .main-container {{ display: flex; flex: 1; min-height: 0; }}
+        .content-column {{
+            flex: 1;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+        }}
         .grid-container {{
             flex: 1;
+            min-height: 0;
             padding: 8px;
             overflow: auto;
             display: grid;
@@ -728,9 +735,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         /* UMAP panel styles */
         .umap-panel {{
-            width: 300px;
+            width: min(320px, 34vw);
+            aspect-ratio: 1 / 1;
+            height: auto;
+            margin: 8px;
+            align-self: flex-start;
             background: var(--panel-bg);
-            border-left: 1px solid var(--border-color);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
             display: none;
             flex-direction: column;
             transition: background 0.3s, border-color 0.3s;
@@ -749,7 +762,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .umap-canvas-container {{
             flex: 1;
             position: relative;
-            min-height: 250px;
+            min-height: 0;
         }}
         .umap-canvas {{
             position: absolute;
@@ -759,13 +772,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             height: 100%;
         }}
         .umap-controls {{
-            padding: 8px 12px;
-            border-top: 1px solid var(--border-color);
+            position: absolute;
+            left: 8px;
+            right: 8px;
+            bottom: 8px;
+            padding: 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
+            backdrop-filter: blur(6px);
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
             align-items: center;
-            transition: border-color 0.3s;
+            transition: border-color 0.3s, background 0.3s;
         }}
         .umap-btn {{
             padding: 5px 10px;
@@ -784,10 +804,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-color: var(--accent-strong);
         }}
         .umap-selection-info {{
+            position: absolute;
+            top: 8px;
+            left: 8px;
             font-size: 11px;
             color: var(--muted-color);
-            padding: 4px 12px;
-            border-top: 1px solid var(--border-color);
+            padding: 4px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
+            backdrop-filter: blur(6px);
         }}
         .umap-toggle, .legend-toggle, .graph-toggle {{
             background: var(--input-bg);
@@ -1008,26 +1034,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <div class="filter-bar" id="filter-bar"></div>
 
     <div class="main-container">
-        <div class="grid-container" id="grid"></div>
-        <div class="umap-panel" id="umap-panel">
-            <div class="umap-header">
-                <h3>UMAP</h3>
-            </div>
-            <div class="umap-canvas-container" id="umap-canvas-container">
-                <canvas class="umap-canvas" id="umap-canvas"></canvas>
-            </div>
-            <div class="umap-controls">
-                <button class="umap-btn" id="magic-wand-btn" title="Draw to select cells">Magic Wand</button>
-                <button class="umap-btn" id="clear-selection-btn" title="Clear selection">Clear</button>
-                <span style="margin-left: 6px; font-size: 11px; color: var(--muted-color);">Size:</span>
-                <div class="size-control">
-                    <button class="size-step" id="umap-spot-size-dec" type="button">−</button>
-                    <input type="range" id="umap-spot-size" min="0.1" max="6" step="0.1" value="2" style="width: 60px;">
-                    <button class="size-step" id="umap-spot-size-inc" type="button">+</button>
+        <div class="content-column" id="content-column">
+            <div class="grid-container" id="grid"></div>
+            <div class="umap-panel" id="umap-panel">
+                <div class="umap-header">
+                    <h3>UMAP</h3>
                 </div>
-                <span id="umap-spot-size-label" style="font-size: 11px; min-width: 20px;">2</span>
+                <div class="umap-canvas-container" id="umap-canvas-container">
+                    <canvas class="umap-canvas" id="umap-canvas"></canvas>
+                    <div class="umap-controls">
+                        <button class="umap-btn" id="magic-wand-btn" title="Draw to select cells">Magic Wand</button>
+                        <button class="umap-btn" id="clear-selection-btn" title="Clear selection">Clear</button>
+                        <span style="margin-left: 6px; font-size: 11px; color: var(--muted-color);">Size:</span>
+                        <div class="size-control">
+                            <button class="size-step" id="umap-spot-size-dec" type="button">−</button>
+                            <input type="range" id="umap-spot-size" min="0.1" max="6" step="0.1" value="2" style="width: 60px;">
+                            <button class="size-step" id="umap-spot-size-inc" type="button">+</button>
+                        </div>
+                        <span id="umap-spot-size-label" style="font-size: 11px; min-width: 20px;">2</span>
+                    </div>
+                    <div class="umap-selection-info" id="umap-selection-info">No cells selected</div>
+                </div>
             </div>
-            <div class="umap-selection-info" id="umap-selection-info">No cells selected</div>
         </div>
         <div class="color-panel collapsed" id="color-panel"></div>
         <div class="legend-container" id="legend"></div>

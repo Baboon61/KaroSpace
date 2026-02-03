@@ -39,7 +39,7 @@ OUTLINE_BY = "condition"
 export_to_html(
     dataset,
     output_path="mt-DSB-viewer.html",
-    color="cytetype_annotation_leiden_3",  # Initial color (categorical)
+    color="cell_class_updated",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size=1.5,  # smaller spots for dense data
@@ -79,6 +79,7 @@ export_to_html(
     # Compute marker genes for these categorical color columns
     # (appears in the Color panel under "Marker genes")
     marker_genes_groupby=[
+        'cell_class_updated',
         "cytetype_annotation_leiden_3",
           "leiden_mana_0.5" ,'leiden_mana_0.1'  # change to your cluster column (e.g. "leiden_mana_1.0")
     ],
