@@ -8,7 +8,7 @@ for interactive visualization of spatial transcriptomics data.
 import base64
 import json
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Union
 
 from .data_loader import SpatialDataset
 
@@ -450,11 +450,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-radius: 6px;
             padding: 8px;
             background: var(--input-bg);
-            max-height: 240px;
+            max-height: 420px;
             overflow: auto;
             display: flex;
             flex-direction: column;
             gap: 8px;
+            resize: vertical;
         }}
         .marker-search {{
             padding: 6px 8px;
@@ -505,6 +506,57 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-variant-numeric: tabular-nums;
         }}
         .trend-table th {{ color: var(--muted-color); font-weight: 600; }}
+
+        /* Dotplot */
+        .dotplot-controls {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }}
+        .dotplot-grid {{
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--input-bg);
+            overflow: auto;
+            max-height: 420px;
+        }}
+        .dotplot-row {{
+            display: grid;
+            grid-template-columns: 180px repeat(var(--dotplot-cols, 1), 24px);
+            align-items: center;
+            gap: 6px;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-color);
+        }}
+        .dotplot-row:last-child {{ border-bottom: none; }}
+        .dotplot-row.dotplot-header {{
+            position: sticky;
+            top: 0;
+            background: var(--panel-bg);
+            z-index: 1;
+        }}
+        .dotplot-label {{
+            font-size: 10px;
+            color: var(--text-color);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .dotplot-gene {{
+            font-size: 9px;
+            color: var(--muted-color);
+            text-align: center;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .dotplot-dot {{
+            width: 20px;
+            height: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }}
         .legend-title {{
             font-size: 13px;
             font-weight: 600;
@@ -1024,9 +1076,48 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     <div class="cell-tooltip" id="cell-tooltip"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
     <script>
-    const DATA = {data_json};
+    (function() {{
+        function hide() {{
+            const loader = document.getElementById('loading-overlay');
+            if (loader) loader.style.display = 'none';
+        }}
+        function showError(msg) {{
+            hide();
+            const el = document.createElement('div');
+            el.style.position = 'fixed';
+            el.style.left = '16px';
+            el.style.right = '16px';
+            el.style.bottom = '16px';
+            el.style.padding = '10px 12px';
+            el.style.background = 'rgba(20, 7, 15, 0.92)';
+            el.style.border = '1px solid rgba(255,255,255,0.15)';
+            el.style.borderRadius = '10px';
+            el.style.color = '#f5dbe7';
+            el.style.fontSize = '12px';
+            el.style.zIndex = '2000';
+            el.textContent = msg;
+            document.body.appendChild(el);
+        }}
+        window.addEventListener('error', (e) => {{
+            showError(`KaroSpace failed to start: ${{e.message || 'Unknown error'}} (open DevTools console).`);
+        }});
+        window.addEventListener('unhandledrejection', (e) => {{
+            showError('KaroSpace failed to start: Unhandled promise rejection (open DevTools console).');
+        }});
+        // Fallback: never keep the loader up forever.
+        setTimeout(() => {{
+            const loader = document.getElementById('loading-overlay');
+            if (loader && loader.style.display !== 'none') {{
+                showError('Still loading… If this persists, open DevTools console for errors.');
+            }}
+        }}, 4000);
+    }})();
+    </script>
+
+    <script id="karospace-data" type="application/json">{data_json}</script>
+    <script>
+    const DATA = JSON.parse(document.getElementById('karospace-data').textContent);
     const PALETTE = {palette_json};
     const METADATA_LABELS = {metadata_labels_json};
     const OUTLINE_BY = {outline_by_json};
@@ -1086,6 +1177,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     ];
     const expandedAggGroups = new Set();
     const expandedNeighborGroups = new Set();
+    let dotplotRenderToken = 0;
 
     // Modal state
     let modalSection = null;
@@ -1141,6 +1233,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return new Date().toISOString().replace(/[:.]/g, '-');
     }}
 
+    let html2canvasPromise = null;
+    function ensureHtml2CanvasLoaded() {{
+        if (typeof html2canvas === 'function') return Promise.resolve();
+        if (html2canvasPromise) return html2canvasPromise;
+        html2canvasPromise = new Promise((resolve, reject) => {{
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error('Failed to load html2canvas'));
+            document.head.appendChild(script);
+        }});
+        return html2canvasPromise;
+    }}
+
     function downloadCanvasImage(canvas, filename) {{
         if (!canvas) return;
         const link = document.createElement('a');
@@ -1171,19 +1278,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function screenshotFullPage() {{
         const name = `spatial-viewer-${{getScreenshotTimestamp()}}.png`;
-        if (typeof html2canvas !== 'function') {{
-            alert('Screenshot library failed to load. Please check your connection and try again.');
-            return;
-        }}
-        html2canvas(document.body, {{
-            backgroundColor: null,
-            scale: window.devicePixelRatio || 1,
-            useCORS: true
-        }}).then(canvas => {{
-            downloadCanvasImage(canvas, name);
-        }}).catch(() => {{
-            alert('Screenshot failed to render.');
-        }});
+        ensureHtml2CanvasLoaded()
+            .then(() => html2canvas(document.body, {{
+                backgroundColor: null,
+                scale: window.devicePixelRatio || 1,
+                useCORS: true
+            }}))
+            .then(canvas => {{
+                downloadCanvasImage(canvas, name);
+            }})
+            .catch(() => {{
+                alert('Screenshot failed (offline? blocked CDN?).');
+            }});
     }}
 
     // Color utilities
@@ -1229,28 +1335,80 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function computeGenePercentiles(gene, pmin = GENE_SCALE_PMIN, pmax = GENE_SCALE_PMAX) {{
         const samples = [];
-        let seen = 0;
+        let seenNonZero = 0;
+        let totalCells = 0;
+        let totalNonZero = 0;
         DATA.sections.forEach(section => {{
+            const sparse = section.genes_sparse?.[gene];
+            if (sparse && typeof sparse.vb64 === 'string') {{
+                const sectionCells = section.n_cells ?? section.x?.length ?? 0;
+                const vals = base64ToFloat32Array(sparse.vb64);
+                totalCells += sectionCells;
+                totalNonZero += vals.length;
+                for (let i = 0; i < vals.length; i++) {{
+                    const v = vals[i];
+                    if (v === null || v === undefined || Number.isNaN(v) || v === 0) continue;
+                    seenNonZero += 1;
+                    if (samples.length < GENE_SCALE_MAX_SAMPLES) {{
+                        samples.push(v);
+                    }} else {{
+                        const j = Math.floor(Math.random() * seenNonZero);
+                        if (j < GENE_SCALE_MAX_SAMPLES) samples[j] = v;
+                    }}
+                }}
+                return;
+            }}
+            if (sparse && Array.isArray(sparse.v)) {{
+                const sectionCells = section.n_cells ?? section.x?.length ?? 0;
+                totalCells += sectionCells;
+                totalNonZero += Array.isArray(sparse.i) ? sparse.i.length : sparse.v.length;
+                for (let i = 0; i < sparse.v.length; i++) {{
+                    const v = sparse.v[i];
+                    if (v === null || v === undefined || Number.isNaN(v) || v === 0) continue;
+                    seenNonZero += 1;
+                    if (samples.length < GENE_SCALE_MAX_SAMPLES) {{
+                        samples.push(v);
+                    }} else {{
+                        const j = Math.floor(Math.random() * seenNonZero);
+                        if (j < GENE_SCALE_MAX_SAMPLES) samples[j] = v;
+                    }}
+                }}
+                return;
+            }}
+
             const vals = section.genes?.[gene];
             if (!vals) return;
+            totalCells += vals.length;
             for (let i = 0; i < vals.length; i++) {{
                 const v = vals[i];
                 if (v === null || v === undefined || Number.isNaN(v)) continue;
-                seen += 1;
-                if (samples.length < GENE_SCALE_MAX_SAMPLES) {{
-                    samples.push(v);
-                }} else {{
-                    const j = Math.floor(Math.random() * seen);
-                    if (j < GENE_SCALE_MAX_SAMPLES) samples[j] = v;
+                if (v !== 0) {{
+                    totalNonZero += 1;
+                    seenNonZero += 1;
+                    if (samples.length < GENE_SCALE_MAX_SAMPLES) {{
+                        samples.push(v);
+                    }} else {{
+                        const j = Math.floor(Math.random() * seenNonZero);
+                        if (j < GENE_SCALE_MAX_SAMPLES) samples[j] = v;
+                    }}
                 }}
             }}
         }});
+        if (totalCells === 0) return null;
+        if (totalNonZero === 0) return {{ vmin: 0, vmax: 0, pmin, pmax }};
         if (samples.length === 0) return null;
         samples.sort((a, b) => a - b);
-        const loIdx = Math.max(0, Math.floor((pmin / 100) * (samples.length - 1)));
-        const hiIdx = Math.max(0, Math.floor((pmax / 100) * (samples.length - 1)));
-        let vmin = samples[loIdx];
-        let vmax = samples[hiIdx];
+        const nonZeroFrac = Math.max(0, Math.min(1, totalNonZero / totalCells));
+        const zeroFrac = 1 - nonZeroFrac;
+        const denom = Math.max(1e-12, 1 - zeroFrac);
+        const qLo = Math.max(0, Math.min(1, pmin / 100));
+        const qHi = Math.max(0, Math.min(1, pmax / 100));
+        const nonZeroQuantile = (q) => {{
+            const idx = Math.max(0, Math.floor(q * (samples.length - 1)));
+            return samples[idx];
+        }};
+        let vmin = qLo <= zeroFrac ? 0 : nonZeroQuantile((qLo - zeroFrac) / denom);
+        let vmax = qHi <= zeroFrac ? 0 : nonZeroQuantile((qHi - zeroFrac) / denom);
         if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return null;
         if (vmin === vmax) {{
             const minAll = samples[0];
@@ -1261,6 +1419,126 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }}
         return {{ vmin, vmax, pmin, pmax }};
+    }}
+
+    const geneDenseCache = new Map(); // key: sectionId::gene -> Float32Array
+
+    function base64ToBytes(b64) {{
+        const bin = atob(b64);
+        const bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        return bytes;
+    }}
+
+    function base64ToFloat32Array(b64) {{
+        const bytes = base64ToBytes(b64);
+        return new Float32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4));
+    }}
+
+    function base64ToUint32Array(b64) {{
+        const bytes = base64ToBytes(b64);
+        return new Uint32Array(bytes.buffer, bytes.byteOffset, Math.floor(bytes.byteLength / 4));
+    }}
+
+    function hydratePackedSections() {{
+        // Keep initial load fast: don't eagerly base64-decode large arrays here.
+        // Decode on-demand when a section is rendered (grid/modal/UMAP).
+        if (!DATA || !Array.isArray(DATA.sections)) return;
+        DATA.sections.forEach(section => {{
+            if (!section.colors) section.colors = {{}};
+            if (!section.colors_b64) section.colors_b64 = {{}};
+            if (!section._colorCache) section._colorCache = {{}};
+            if (!section._edgesCache) section._edgesCache = null;
+        }});
+    }}
+
+    function ensureSectionXY(section) {{
+        if (!section) return false;
+        if ((section.x === null || section.x === undefined) && typeof section.xb64 === 'string') {{
+            section.x = base64ToFloat32Array(section.xb64);
+            delete section.xb64;
+        }}
+        if ((section.y === null || section.y === undefined) && typeof section.yb64 === 'string') {{
+            section.y = base64ToFloat32Array(section.yb64);
+            delete section.yb64;
+        }}
+        if (section.x === null || section.x === undefined) section.x = [];
+        if (section.y === null || section.y === undefined) section.y = [];
+        return true;
+    }}
+
+    function ensureSectionUMAP(section) {{
+        if (!section) return false;
+        if ((section.umap_x === null || section.umap_x === undefined) && typeof section.umap_xb64 === 'string') {{
+            section.umap_x = base64ToFloat32Array(section.umap_xb64);
+            delete section.umap_xb64;
+        }}
+        if ((section.umap_y === null || section.umap_y === undefined) && typeof section.umap_yb64 === 'string') {{
+            section.umap_y = base64ToFloat32Array(section.umap_yb64);
+            delete section.umap_yb64;
+        }}
+        return true;
+    }}
+
+    function getSectionEdgesPacked(section) {{
+        if (Array.isArray(section.edges)) return section.edges;
+        if (section._edgesCache) return section._edgesCache;
+        if (typeof section.edges_b64 !== 'string') return null;
+        const pairs = base64ToUint32Array(section.edges_b64);
+        section._edgesCache = pairs;
+        return pairs;
+    }}
+
+    function getSectionColorValues(section, color) {{
+        const dense = section.colors?.[color];
+        if (dense) return dense;
+        const b64 = section.colors_b64?.[color];
+        if (typeof b64 !== 'string') return null;
+        section._colorCache = section._colorCache || {{}};
+        if (section._colorCache[color]) return section._colorCache[color];
+        const decoded = base64ToFloat32Array(b64);
+        section._colorCache[color] = decoded;
+        return decoded;
+    }}
+
+    function getSectionGeneValues(section, gene) {{
+        const dense = section.genes?.[gene];
+        if (dense) return dense;
+
+        const sparse = section.genes_sparse?.[gene];
+        if (!sparse) return null;
+
+        const key = `${{section.id}}::${{gene}}`;
+        const cached = geneDenseCache.get(key);
+        if (cached) return cached;
+
+        const n = section.n_cells ?? section.x?.length ?? 0;
+        const arr = new Float32Array(n);
+        if (typeof sparse.ib64 === 'string' && typeof sparse.vb64 === 'string') {{
+            const idxs = base64ToUint32Array(sparse.ib64);
+            const vals = base64ToFloat32Array(sparse.vb64);
+            const m = Math.min(idxs.length, vals.length);
+            for (let k = 0; k < m; k++) {{
+                const idx = idxs[k];
+                if (idx < n) arr[idx] = vals[k];
+            }}
+        }} else if (Array.isArray(sparse.i) && Array.isArray(sparse.v)) {{
+            const m = Math.min(sparse.i.length, sparse.v.length);
+            for (let k = 0; k < m; k++) {{
+                const idx = sparse.i[k];
+                if (idx >= 0 && idx < n) arr[idx] = sparse.v[k];
+            }}
+        }} else {{
+            return null;
+        }}
+        if (Array.isArray(sparse.nan)) {{
+            for (let k = 0; k < sparse.nan.length; k++) {{
+                const idx = sparse.nan[k];
+                if (idx >= 0 && idx < n) arr[idx] = NaN;
+            }}
+        }}
+        geneDenseCache.set(key, arr);
+        return arr;
     }}
 
     function ensureGeneAutoScale(gene) {{
@@ -1294,12 +1572,239 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
+    function parseGeneList(text) {{
+        if (!text) return [];
+        const parts = String(text)
+            .split(/[,\s]+/)
+            .map(s => s.trim())
+            .filter(Boolean);
+        const seen = new Set();
+        const genes = [];
+        parts.forEach(g => {{
+            if (seen.has(g)) return;
+            if (DATA.genes_meta && DATA.genes_meta[g]) {{
+                seen.add(g);
+                genes.push(g);
+            }}
+        }});
+        return genes;
+    }}
+
+    function getCategoricalColorColumns() {{
+        const cols = (DATA.available_colors || []).filter(col => {{
+            const meta = DATA.colors_meta?.[col];
+            return meta && !meta.is_continuous && Array.isArray(meta.categories);
+        }});
+        cols.sort((a, b) => a.localeCompare(b));
+        return cols;
+    }}
+
+    function updateDotplotAggregateValueOptions() {{
+        const aggSelect = document.getElementById('dotplot-aggregate-by');
+        const valueWrap = document.getElementById('dotplot-aggregate-value-wrap');
+        const valueSelect = document.getElementById('dotplot-aggregate-value');
+        if (!aggSelect || !valueWrap || !valueSelect) return;
+        const key = aggSelect.value;
+        if (!key) {{
+            valueWrap.style.display = 'none';
+            valueSelect.innerHTML = '';
+            return;
+        }}
+        const values = (DATA.metadata_filters && DATA.metadata_filters[key]) ? DATA.metadata_filters[key] : [];
+        valueWrap.style.display = 'block';
+        const opts = ['<option value="__ALL__">All</option>']
+            .concat(values.map(v => `<option value="${{v}}">${{v}}</option>`));
+        valueSelect.innerHTML = opts.join('');
+    }}
+
+    function renderDotplot() {{
+        const status = document.getElementById('dotplot-status');
+        const grid = document.getElementById('dotplot-grid');
+        const groupbySelect = document.getElementById('dotplot-groupby');
+        const genesInput = document.getElementById('dotplot-genes');
+        const aggSelect = document.getElementById('dotplot-aggregate-by');
+        const aggValueSelect = document.getElementById('dotplot-aggregate-value');
+        if (!status || !grid || !groupbySelect || !genesInput || !aggSelect) return;
+
+        const groupbyColor = groupbySelect.value;
+        if (!groupbyColor) {{
+            status.textContent = 'Pick a categorical color to group by.';
+            grid.innerHTML = '';
+            return;
+        }}
+        const meta = DATA.colors_meta?.[groupbyColor];
+        if (!meta || meta.is_continuous || !Array.isArray(meta.categories)) {{
+            status.textContent = 'Dotplot requires a categorical color column.';
+            grid.innerHTML = '';
+            return;
+        }}
+
+        const genes = parseGeneList(genesInput.value);
+        if (genes.length === 0) {{
+            status.textContent = 'Enter one or more genes (comma-separated).';
+            grid.innerHTML = '';
+            return;
+        }}
+
+        const aggKey = aggSelect.value || '';
+        const aggValue = (aggKey && aggValueSelect) ? (aggValueSelect.value || '__ALL__') : '__ALL__';
+        const aggLabel = aggKey ? `${{formatMetadataLabel(aggKey)}}=${{aggValue}}` : 'All sections';
+
+        dotplotRenderToken += 1;
+        const token = dotplotRenderToken;
+        status.textContent = `Computing dotplot (${{groupbyColor}}, genes=${{genes.length}}, ${{aggLabel}})…`;
+        grid.innerHTML = '';
+
+        setTimeout(() => {{
+            if (token !== dotplotRenderToken) return;
+
+            const categories = meta.categories;
+            const k = categories.length;
+
+            // Eligible sections + pre-count totals per category once.
+            const eligible = [];
+            const totals = new Uint32Array(k);
+            for (let s = 0; s < DATA.sections.length; s++) {{
+                if (token !== dotplotRenderToken) return;
+                const section = DATA.sections[s];
+                if (!sectionPassesFilter(section)) continue;
+                if (aggKey) {{
+                    const val = section.metadata?.[aggKey] || 'unknown';
+                    if (aggValue !== '__ALL__' && val !== aggValue) continue;
+                }}
+                const groupVals = getSectionColorValues(section, groupbyColor);
+                if (!groupVals || !groupVals.length) continue;
+                eligible.push({{ section, groupVals }});
+                for (let i = 0; i < groupVals.length; i++) {{
+                    const gv = groupVals[i];
+                    if (gv === null || gv === undefined || Number.isNaN(gv)) continue;
+                    const ci = Math.round(gv);
+                    if (ci >= 0 && ci < k) totals[ci] += 1;
+                }}
+            }}
+
+            if (eligible.length === 0) {{
+                status.textContent = 'No sections match the current filters.';
+                return;
+            }}
+
+            const sums = genes.map(() => new Float64Array(k));
+            const nnz = genes.map(() => new Uint32Array(k));
+            let usedDenseFallback = false;
+
+            for (let g = 0; g < genes.length; g++) {{
+                if (token !== dotplotRenderToken) return;
+                const gene = genes[g];
+                for (let e = 0; e < eligible.length; e++) {{
+                    const {{ section, groupVals }} = eligible[e];
+                    const sparse = section.genes_sparse?.[gene];
+                    if (sparse) {{
+                        if (typeof sparse.ib64 === 'string' && typeof sparse.vb64 === 'string') {{
+                            const idxs = base64ToUint32Array(sparse.ib64);
+                            const vals = base64ToFloat32Array(sparse.vb64);
+                            const m = Math.min(idxs.length, vals.length);
+                            for (let j = 0; j < m; j++) {{
+                                const idx = idxs[j];
+                                if (idx >= groupVals.length) continue;
+                                const gv = groupVals[idx];
+                                if (!Number.isFinite(gv)) continue;
+                                const ci = Math.round(gv);
+                                if (ci < 0 || ci >= k) continue;
+                                const v = vals[j];
+                                if (!Number.isFinite(v) || v === 0) continue;
+                                sums[g][ci] += v;
+                                nnz[g][ci] += 1;
+                            }}
+                            continue;
+                        }}
+                        if (Array.isArray(sparse.i) && Array.isArray(sparse.v)) {{
+                            const m = Math.min(sparse.i.length, sparse.v.length);
+                            for (let j = 0; j < m; j++) {{
+                                const idx = sparse.i[j];
+                                if (idx === null || idx === undefined) continue;
+                                if (idx < 0 || idx >= groupVals.length) continue;
+                                const gv = groupVals[idx];
+                                if (!Number.isFinite(gv)) continue;
+                                const ci = Math.round(gv);
+                                if (ci < 0 || ci >= k) continue;
+                                const v = sparse.v[j];
+                                if (!Number.isFinite(v) || v === 0) continue;
+                                sums[g][ci] += v;
+                                nnz[g][ci] += 1;
+                            }}
+                            continue;
+                        }}
+                    }}
+
+                    const dense = section.genes?.[gene];
+                    if (dense && dense.length) {{
+                        usedDenseFallback = true;
+                        const n = Math.min(dense.length, groupVals.length);
+                        for (let i = 0; i < n; i++) {{
+                            const v = dense[i];
+                            if (!Number.isFinite(v) || v === 0) continue;
+                            const gv = groupVals[i];
+                            if (!Number.isFinite(gv)) continue;
+                            const ci = Math.round(gv);
+                            if (ci < 0 || ci >= k) continue;
+                            sums[g][ci] += v;
+                            nnz[g][ci] += 1;
+                        }}
+                    }}
+                }}
+            }}
+
+            if (token !== dotplotRenderToken) return;
+            grid.style.setProperty('--dotplot-cols', String(genes.length));
+            const header = `
+                <div class="dotplot-row dotplot-header">
+                    <div class="dotplot-label">Cell type</div>
+                    ${{genes.map(g => `<div class="dotplot-gene" title="${{g}}">${{g}}</div>`).join('')}}
+                </div>
+            `;
+
+            const rows = categories.map((cat, ci) => {{
+                const total = totals[ci];
+                const cells = genes.map((gene, gi) => {{
+                    if (!total) return `<div class="dotplot-dot" title="No cells"></div>`;
+                    const mean = sums[gi][ci] / total;
+                    const frac = nnz[gi][ci] / total;
+                    const vmax = (DATA.genes_meta?.[gene]?.vmax ?? 0) || 0;
+                    const tRaw = vmax > 0 ? (mean / vmax) : 0;
+                    const t = Math.max(0, Math.min(1, tRaw));
+                    const color = magma(0.1 + 0.9 * t);
+                    const r = Math.max(0.5, Math.min(8, 8 * Math.sqrt(frac)));
+                    const title = `${{gene}} · mean=${{mean.toFixed(3)}} · %expr=${{(frac*100).toFixed(1)}} · n=${{total.toLocaleString()}}`;
+                    return `
+                        <div class="dotplot-dot" title="${{title}}">
+                            <svg width="20" height="20" viewBox="0 0 20 20">
+                                <circle cx="10" cy="10" r="${{r}}" fill="${{color}}" stroke="rgba(0,0,0,0.10)" stroke-width="1"></circle>
+                            </svg>
+                        </div>
+                    `;
+                }}).join('');
+                return `
+                    <div class="dotplot-row">
+                        <div class="dotplot-label" title="${{cat}}">${{cat}}</div>
+                        ${{cells}}
+                    </div>
+                `;
+            }}).join('');
+
+            grid.innerHTML = header + rows;
+            const denseNote = usedDenseFallback ? ' (some genes were dense; may be slower)' : '';
+            status.textContent = `Dotplot ready (${{eligible.length}} sections, ${{aggLabel}})${{denseNote}}.`;
+        }}, 0);
+    }}
+
     // Get values for a section
     function getSectionValues(section) {{
-        if (currentGene && section.genes[currentGene]) {{
-            return section.genes[currentGene];
+        if (currentGene) {{
+            const geneVals = getSectionGeneValues(section, currentGene);
+            if (geneVals) return geneVals;
         }}
-        return section.colors[currentColor] || [];
+        const colVals = getSectionColorValues(section, currentColor);
+        return colVals || [];
     }}
 
     // Check if section passes filters
@@ -1324,10 +1829,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function getSectionAdjacency(section) {{
         if (section._adj) return section._adj;
+        ensureSectionXY(section);
         const n = section.x.length;
         const adj = Array.from({{ length: n }}, () => []);
-        if (section.edges) {{
-            section.edges.forEach(edge => {{
+        const edges = getSectionEdgesPacked(section);
+        if (Array.isArray(edges)) {{
+            edges.forEach(edge => {{
                 const i = edge[0];
                 const j = edge[1];
                 if (i >= 0 && j >= 0 && i < n && j < n) {{
@@ -1335,13 +1842,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     adj[j].push(i);
                 }}
             }});
+        }} else if (edges instanceof Uint32Array) {{
+            for (let e = 0; e + 1 < edges.length; e += 2) {{
+                const i = edges[e];
+                const j = edges[e + 1];
+                if (i < n && j < n) {{
+                    adj[i].push(j);
+                    adj[j].push(i);
+                }}
+            }}
         }}
         section._adj = adj;
         return adj;
     }}
 
     function computeNeighborRings(section, startIdx, maxHops) {{
-        if (!section.edges || section.edges.length === 0) return [];
+        const edges = getSectionEdgesPacked(section);
+        if (!edges || edges.length === 0) return [];
         const adj = getSectionAdjacency(section);
         const visited = new Set([startIdx]);
         let frontier = [startIdx];
@@ -1368,7 +1885,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function updateHoverNeighbors(section, cellIdx) {{
         if (!neighborHoverEnabled) return false;
-        if (!section || !section.edges || section.edges.length === 0) {{
+        const edges = section ? getSectionEdgesPacked(section) : null;
+        if (!section || !edges || edges.length === 0) {{
             hoverNeighbors = null;
             return false;
         }}
@@ -1520,6 +2038,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ctx.fillStyle = '#888888';
             ctx.globalAlpha = 0.2;
             DATA.sections.forEach(section => {{
+                ensureSectionUMAP(section);
                 if (!section.umap_x || !section.umap_y) return;
                 const values = getSectionValues(section);
 
@@ -1547,6 +2066,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         // Second pass: draw visible categories with full color
         DATA.sections.forEach(section => {{
+            ensureSectionUMAP(section);
             if (!section.umap_x || !section.umap_y) return;
 
             const values = getSectionValues(section);
@@ -1637,6 +2157,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         // Check all cells in all sections
         DATA.sections.forEach(section => {{
+            ensureSectionUMAP(section);
             if (!section.umap_x || !section.umap_y) return;
 
             const values = getSectionValues(section);
@@ -1816,7 +2337,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     // Rendering
+    let renderAllJobId = 0;
+
+    function hideLoader() {{
+        const loader = document.getElementById('loading-overlay');
+        if (loader) loader.style.display = 'none';
+    }}
+
     function renderSection(section, canvas) {{
+        ensureSectionXY(section);
         const ctx = canvas.getContext('2d');
         const dpr = window.devicePixelRatio || 1;
         const rect = canvas.getBoundingClientRect();
@@ -1840,31 +2369,56 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const config = getColorConfig();
         const values = getSectionValues(section);
 
-        if (showGraph && section.edges && section.edges.length) {{
+        const edges = getSectionEdgesPacked(section);
+        if (showGraph && edges && edges.length) {{
             const graphColor = getGraphColor();
             ctx.strokeStyle = graphColor;
             ctx.lineWidth = Math.max(0.3, spotSize * 0.15);
             ctx.beginPath();
-            for (let e = 0; e < section.edges.length; e++) {{
-                const edge = section.edges[e];
-                const i = edge[0];
-                const j = edge[1];
-                const valI = values[i];
-                const valJ = values[j];
-                if (valI === null || valI === undefined || valJ === null || valJ === undefined) continue;
-                if (!config.is_continuous) {{
-                    const catIdxI = Math.round(valI);
-                    const catIdxJ = Math.round(valJ);
-                    const catNameI = config.categories[catIdxI];
-                    const catNameJ = config.categories[catIdxJ];
-                    if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) continue;
+            if (Array.isArray(edges)) {{
+                for (let e = 0; e < edges.length; e++) {{
+                    const edge = edges[e];
+                    const i = edge[0];
+                    const j = edge[1];
+                    const valI = values[i];
+                    const valJ = values[j];
+                    if (valI === null || valI === undefined || valJ === null || valJ === undefined) continue;
+                    if (!config.is_continuous) {{
+                        const catIdxI = Math.round(valI);
+                        const catIdxJ = Math.round(valJ);
+                        const catNameI = config.categories[catIdxI];
+                        const catNameJ = config.categories[catIdxJ];
+                        if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) continue;
+                    }}
+                    const x1 = offsetX + (section.x[i] - bounds.xmin) * scale;
+                    const y1 = height - (offsetY + (section.y[i] - bounds.ymin) * scale);
+                    const x2 = offsetX + (section.x[j] - bounds.xmin) * scale;
+                    const y2 = height - (offsetY + (section.y[j] - bounds.ymin) * scale);
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
                 }}
-                const x1 = offsetX + (section.x[i] - bounds.xmin) * scale;
-                const y1 = height - (offsetY + (section.y[i] - bounds.ymin) * scale);
-                const x2 = offsetX + (section.x[j] - bounds.xmin) * scale;
-                const y2 = height - (offsetY + (section.y[j] - bounds.ymin) * scale);
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
+            }} else if (edges instanceof Uint32Array) {{
+                for (let e = 0; e + 1 < edges.length; e += 2) {{
+                    const i = edges[e];
+                    const j = edges[e + 1];
+                    if (i >= section.x.length || j >= section.x.length) continue;
+                    const valI = values[i];
+                    const valJ = values[j];
+                    if (valI === null || valI === undefined || valJ === null || valJ === undefined) continue;
+                    if (!config.is_continuous) {{
+                        const catIdxI = Math.round(valI);
+                        const catIdxJ = Math.round(valJ);
+                        const catNameI = config.categories[catIdxI];
+                        const catNameJ = config.categories[catIdxJ];
+                        if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) continue;
+                    }}
+                    const x1 = offsetX + (section.x[i] - bounds.xmin) * scale;
+                    const y1 = height - (offsetY + (section.y[i] - bounds.ymin) * scale);
+                    const x2 = offsetX + (section.x[j] - bounds.xmin) * scale;
+                    const y2 = height - (offsetY + (section.y[j] - bounds.ymin) * scale);
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                }}
             }}
             ctx.stroke();
         }}
@@ -1951,9 +2505,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function renderAllSections() {{
+        renderAllJobId += 1;
+        const jobId = renderAllJobId;
         const panels = document.querySelectorAll('.section-panel');
+        const grid = document.getElementById('grid');
+        const gridRect = grid ? grid.getBoundingClientRect() : null;
+        const isInView = (panel) => {{
+            if (!gridRect) return true;
+            const r = panel.getBoundingClientRect();
+            const margin = 200;
+            return (
+                r.bottom >= gridRect.top - margin &&
+                r.top <= gridRect.bottom + margin &&
+                r.right >= gridRect.left - margin &&
+                r.left <= gridRect.right + margin
+            );
+        }};
         let visibleCount = 0;
         let totalCells = 0;
+        const drawList = [];
 
         DATA.sections.forEach((section, idx) => {{
             const panel = panels[idx];
@@ -1966,7 +2536,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 visibleCount++;
                 totalCells += section.n_cells;
                 const canvas = panel.querySelector('canvas');
-                if (canvas) renderSection(section, canvas);
+                if (canvas && isInView(panel)) drawList.push({{ section, canvas }});
             }}
         }});
 
@@ -1987,6 +2557,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }} else if (noResults) {{
             noResults.remove();
         }}
+
+        // Draw visible sections incrementally to keep the UI responsive.
+        let i = 0;
+        const step = () => {{
+            if (jobId !== renderAllJobId) return;
+            const start = performance.now();
+            while (i < drawList.length && (performance.now() - start) < 10) {{
+                const item = drawList[i++];
+                try {{
+                    renderSection(item.section, item.canvas);
+                }} catch (e) {{
+                    console.error('renderSection failed', e);
+                }}
+            }}
+            if (i < drawList.length) {{
+                requestAnimationFrame(step);
+            }}
+        }};
+        requestAnimationFrame(step);
     }}
 
     // Tooltip functionality
@@ -2009,6 +2598,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function findNearestCell(section, mouseX, mouseY, canvasRect, transform) {{
+        ensureSectionXY(section);
         // transform: {{ scale, offsetX, offsetY, centerX, centerY, dataCenterX, dataCenterY, isModal }}
         const config = getColorConfig();
         const values = getSectionValues(section);
@@ -2072,6 +2662,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     // Modal rendering
     function renderModalSection() {{
         if (!modalSection) return;
+        ensureSectionXY(modalSection);
 
         const canvas = document.getElementById('modal-canvas');
         const ctx = canvas.getContext('2d');
@@ -2114,35 +2705,45 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (typeToggleBtn) typeToggleBtn.disabled = config.is_continuous;
         if (typeClearBtn) typeClearBtn.disabled = config.is_continuous;
 
-        if (showGraph && modalSection.edges && modalSection.edges.length) {{
+        const modalEdges = getSectionEdgesPacked(modalSection);
+        if (showGraph && modalEdges && modalEdges.length) {{
             const graphColor = getGraphColor();
             ctx.strokeStyle = graphColor;
             ctx.lineWidth = Math.max(0.3, modalSpotSize * modalZoom * 0.12);
             ctx.beginPath();
-            for (let e = 0; e < modalSection.edges.length; e++) {{
-                const edge = modalSection.edges[e];
-                const i = edge[0];
-                const j = edge[1];
+            const n = modalSection.x.length;
+            const drawEdge = (i, j) => {{
+                if (i < 0 || j < 0 || i >= n || j >= n) return;
                 const valI = values[i];
                 const valJ = values[j];
-                if (valI === null || valI === undefined || valJ === null || valJ === undefined) continue;
+                if (valI === null || valI === undefined || valJ === null || valJ === undefined) return;
                 if (!config.is_continuous) {{
                     const catIdxI = Math.round(valI);
                     const catIdxJ = Math.round(valJ);
                     const catNameI = config.categories[catIdxI];
                     const catNameJ = config.categories[catIdxJ];
-                    if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) continue;
+                    if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) return;
                 }}
                 const x1 = centerX + (modalSection.x[i] - dataCenterX) * scale;
                 const y1 = centerY - (modalSection.y[i] - dataCenterY) * scale;
                 const x2 = centerX + (modalSection.x[j] - dataCenterX) * scale;
                 const y2 = centerY - (modalSection.y[j] - dataCenterY) * scale;
                 if (x1 < -adjustedSpotSize || x1 > width + adjustedSpotSize ||
-                    y1 < -adjustedSpotSize || y1 > height + adjustedSpotSize) continue;
+                    y1 < -adjustedSpotSize || y1 > height + adjustedSpotSize) return;
                 if (x2 < -adjustedSpotSize || x2 > width + adjustedSpotSize ||
-                    y2 < -adjustedSpotSize || y2 > height + adjustedSpotSize) continue;
+                    y2 < -adjustedSpotSize || y2 > height + adjustedSpotSize) return;
                 ctx.moveTo(x1, y1);
                 ctx.lineTo(x2, y2);
+            }};
+            if (Array.isArray(modalEdges)) {{
+                for (let e = 0; e < modalEdges.length; e++) {{
+                    const edge = modalEdges[e];
+                    drawEdge(edge[0], edge[1]);
+                }}
+            }} else if (modalEdges instanceof Uint32Array) {{
+                for (let e = 0; e + 1 < modalEdges.length; e += 2) {{
+                    drawEdge(modalEdges[e], modalEdges[e + 1]);
+                }}
             }}
             ctx.stroke();
         }}
@@ -2367,8 +2968,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <div class="color-tabs">
                     <button class="color-tab active" id="color-tab-aggregate" type="button">Stats</button>
                     <button class="color-tab" id="color-tab-neighbors" type="button">Neighbors</button>
-                    <button class="color-tab" id="color-tab-markers" type="button">Marker genes</button>
-                    <button class="color-tab" id="color-tab-info" type="button">Info</button>
+                    <button class="color-tab" id="color-tab-genes" type="button">Genes</button>
                 </div>
                 <div class="color-tab-content active" id="color-tab-aggregate-content">
                     <div>
@@ -2400,12 +3000,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <div class="agg-group-meta">Select a categorical color to view neighbor stats.</div>
                     </div>
                 </div>
-                <div class="color-tab-content" id="color-tab-markers-content">
-                    <input class="marker-search" id="marker-gene-search" type="text" placeholder="Search marker genes...">
-                    <div class="marker-genes" id="marker-genes"></div>
-                </div>
-                <div class="color-tab-content" id="color-tab-info-content">
-                    <div class="info-content">${{VIEWER_INFO_HTML}}</div>
+                <div class="color-tab-content" id="color-tab-genes-content">
+                    <div class="color-tabs">
+                        <button class="color-tab active" id="genes-tab-dotplot" type="button">Dotplot</button>
+                        <button class="color-tab" id="genes-tab-markers" type="button">Markers</button>
+                    </div>
+                    <div class="color-tab-content active" id="genes-tab-dotplot-content">
+                        <div class="dotplot-controls">
+                            <div>
+                                <label>Group by (categorical color)</label>
+                                <select id="dotplot-groupby"></select>
+                            </div>
+                            <div>
+                                <label>Aggregate by (metadata)</label>
+                                <select id="dotplot-aggregate-by" ${{!hasMetadata ? 'disabled' : ''}}>
+                                    ${{options}}
+                                </select>
+                            </div>
+                            <div id="dotplot-aggregate-value-wrap" style="display: none;">
+                                <label>Aggregate value</label>
+                                <select id="dotplot-aggregate-value"></select>
+                            </div>
+                            <div>
+                                <label>Genes (comma-separated)</label>
+                                <input class="color-search" id="dotplot-genes" type="text" placeholder="e.g. Cd4, Cd8a, Gfap">
+                                <div class="scale-hint">Dot size = % expressing; dot color = mean expression.</div>
+                            </div>
+                            <div style="display: flex; gap: 6px; justify-content: flex-end;">
+                                <button class="legend-btn" id="dotplot-use-hvgs" type="button">Use HVGs</button>
+                                <button class="legend-btn" id="dotplot-run" type="button">Update</button>
+                            </div>
+                            <div class="agg-group-meta" id="dotplot-status">Pick a categorical color + genes to compute a dotplot.</div>
+                            <div class="dotplot-grid" id="dotplot-grid"></div>
+                        </div>
+                    </div>
+                    <div class="color-tab-content" id="genes-tab-markers-content">
+                        <input class="marker-search" id="marker-gene-search" type="text" placeholder="Search marker genes...">
+                        <div class="marker-genes" id="marker-genes"></div>
+                    </div>
                 </div>
             </div>
         `;
@@ -2419,6 +3051,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         groupBy.addEventListener('change', () => {{
             renderColorAggregation();
             renderCellTypeTrend();
+            const dpAgg = document.getElementById('dotplot-aggregate-by');
+            if (dpAgg) dpAgg.value = groupBy.value;
+            updateDotplotAggregateValueOptions();
+            const genesTop = document.getElementById('color-tab-genes');
+            const genesDot = document.getElementById('genes-tab-dotplot');
+            if (genesTop?.classList.contains('active') && genesDot?.classList.contains('active')) {{
+                renderDotplot();
+            }}
         }});
 
         const aggregationToggle = document.getElementById('color-aggregation-toggle');
@@ -2430,56 +3070,72 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const aggregateTab = document.getElementById('color-tab-aggregate');
         const neighborTab = document.getElementById('color-tab-neighbors');
-        const markerTab = document.getElementById('color-tab-markers');
-        const infoTab = document.getElementById('color-tab-info');
+        const genesTab = document.getElementById('color-tab-genes');
         const aggregateContent = document.getElementById('color-tab-aggregate-content');
         const neighborContent = document.getElementById('color-tab-neighbors-content');
-        const markerContent = document.getElementById('color-tab-markers-content');
-        const infoContent = document.getElementById('color-tab-info-content');
+        const genesContent = document.getElementById('color-tab-genes-content');
+
+        const genesDotTab = document.getElementById('genes-tab-dotplot');
+        const genesMarkersTab = document.getElementById('genes-tab-markers');
+        const genesDotContent = document.getElementById('genes-tab-dotplot-content');
+        const genesMarkersContent = document.getElementById('genes-tab-markers-content');
         aggregateTab.addEventListener('click', () => {{
             aggregateTab.classList.add('active');
             neighborTab.classList.remove('active');
-            markerTab.classList.remove('active');
-            infoTab.classList.remove('active');
+            genesTab.classList.remove('active');
             aggregateContent.classList.add('active');
             neighborContent.classList.remove('active');
-            markerContent.classList.remove('active');
-            infoContent.classList.remove('active');
+            genesContent.classList.remove('active');
+            renderColorAggregation();
+            renderCellTypeTrend();
         }});
         neighborTab.addEventListener('click', () => {{
             neighborTab.classList.add('active');
             aggregateTab.classList.remove('active');
-            markerTab.classList.remove('active');
-            infoTab.classList.remove('active');
+            genesTab.classList.remove('active');
             neighborContent.classList.add('active');
             aggregateContent.classList.remove('active');
-            markerContent.classList.remove('active');
-            infoContent.classList.remove('active');
+            genesContent.classList.remove('active');
+            renderNeighborStats();
         }});
-        markerTab.addEventListener('click', () => {{
-            markerTab.classList.add('active');
+        genesTab.addEventListener('click', () => {{
+            genesTab.classList.add('active');
             aggregateTab.classList.remove('active');
             neighborTab.classList.remove('active');
-            infoTab.classList.remove('active');
-            markerContent.classList.add('active');
+            genesContent.classList.add('active');
             aggregateContent.classList.remove('active');
             neighborContent.classList.remove('active');
-            infoContent.classList.remove('active');
+            // Default to Dotplot subtab.
+            if (!genesDotTab.classList.contains('active') && !genesMarkersTab.classList.contains('active')) {{
+                genesDotTab.classList.add('active');
+                genesMarkersTab.classList.remove('active');
+                genesDotContent.classList.add('active');
+                genesMarkersContent.classList.remove('active');
+            }}
+            if (genesDotTab.classList.contains('active')) renderDotplot();
+            else renderMarkerGenes();
         }});
-        infoTab.addEventListener('click', () => {{
-            infoTab.classList.add('active');
-            aggregateTab.classList.remove('active');
-            neighborTab.classList.remove('active');
-            markerTab.classList.remove('active');
-            infoContent.classList.add('active');
-            aggregateContent.classList.remove('active');
-            neighborContent.classList.remove('active');
-            markerContent.classList.remove('active');
+
+        genesDotTab.addEventListener('click', () => {{
+            genesDotTab.classList.add('active');
+            genesMarkersTab.classList.remove('active');
+            genesDotContent.classList.add('active');
+            genesMarkersContent.classList.remove('active');
+            renderDotplot();
+        }});
+        genesMarkersTab.addEventListener('click', () => {{
+            genesMarkersTab.classList.add('active');
+            genesDotTab.classList.remove('active');
+            genesMarkersContent.classList.add('active');
+            genesDotContent.classList.remove('active');
+            renderMarkerGenes();
         }});
 
         const markerSearch = document.getElementById('marker-gene-search');
         markerSearch.addEventListener('input', () => {{
-            renderMarkerGenes();
+            if (genesTab.classList.contains('active') && genesMarkersTab.classList.contains('active')) {{
+                renderMarkerGenes();
+            }}
         }});
 
         const celltypeSearch = document.getElementById('celltype-search');
@@ -2492,11 +3148,43 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderNeighborStats();
         }});
 
+        // Dotplot setup
+        const dotplotGroupby = document.getElementById('dotplot-groupby');
+        const dotplotGenes = document.getElementById('dotplot-genes');
+        const dotplotRun = document.getElementById('dotplot-run');
+        const dotplotUseHvgs = document.getElementById('dotplot-use-hvgs');
+        const dotplotAgg = document.getElementById('dotplot-aggregate-by');
+        const dotplotAggValue = document.getElementById('dotplot-aggregate-value');
+
+        const catCols = getCategoricalColorColumns();
+        if (dotplotGroupby) {{
+            dotplotGroupby.innerHTML = catCols.map(c => `<option value="${{c}}">${{c}}</option>`).join('');
+            if (catCols.includes(currentColor)) dotplotGroupby.value = currentColor;
+            dotplotGroupby.addEventListener('change', () => renderDotplot());
+        }}
+        if (dotplotAgg) {{
+            dotplotAgg.value = groupBy.value;
+            dotplotAgg.addEventListener('change', () => {{
+                groupBy.value = dotplotAgg.value;
+                renderColorAggregation();
+                renderCellTypeTrend();
+                updateDotplotAggregateValueOptions();
+                renderDotplot();
+            }});
+        }}
+        updateDotplotAggregateValueOptions();
+        dotplotAggValue?.addEventListener('change', () => renderDotplot());
+        dotplotRun?.addEventListener('click', () => renderDotplot());
+        dotplotGenes?.addEventListener('change', () => renderDotplot());
+        dotplotUseHvgs?.addEventListener('click', () => {{
+            const hvgs = (DATA.available_genes || []).slice(0, 8);
+            if (dotplotGenes) dotplotGenes.value = hvgs.join(', ');
+            renderDotplot();
+        }});
+
+        // Keep initial load fast: only render the list. Other Insights content is computed on-demand
+        // when the panel/tab is opened.
         renderColorList('');
-        renderColorAggregation();
-        renderCellTypeTrend();
-        renderNeighborStats();
-        renderMarkerGenes();
         updateExpressionScaleUI();
 
         const exprVmin = document.getElementById('expr-vmin');
@@ -3108,6 +3796,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             panel.addEventListener('click', () => openModal(section.id));
             grid.appendChild(panel);
         }});
+
+        // Lazy render thumbnails while scrolling (skip offscreen panels).
+        grid.addEventListener('scroll', () => {{
+            requestAnimationFrame(renderAllSections);
+        }});
     }}
 
     // Controls
@@ -3121,12 +3814,37 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             colorSelect.appendChild(opt);
         }});
 
+        const isInsightsVisible = () => {{
+            const panel = document.getElementById('color-panel');
+            return panel && !panel.classList.contains('collapsed');
+        }};
+
+        const refreshInsights = () => {{
+            if (!isInsightsVisible()) return;
+            renderColorList(document.getElementById('color-search')?.value || '');
+            const isStats = document.getElementById('color-tab-aggregate')?.classList.contains('active');
+            const isNeighbors = document.getElementById('color-tab-neighbors')?.classList.contains('active');
+            const isGenes = document.getElementById('color-tab-genes')?.classList.contains('active');
+            if (isStats) {{
+                renderColorAggregation();
+                renderCellTypeTrend();
+            }} else if (isNeighbors) {{
+                renderNeighborStats();
+            }} else if (isGenes) {{
+                const isDot = document.getElementById('genes-tab-dotplot')?.classList.contains('active');
+                const isMarkers = document.getElementById('genes-tab-markers')?.classList.contains('active');
+                if (isDot) renderDotplot();
+                if (isMarkers) renderMarkerGenes();
+            }}
+        }};
+
         colorSelect.addEventListener('change', (e) => {{
             currentColor = e.target.value;
             currentGene = null;
             modalSelectedCategory = null;
             modalTypeSelectEnabled = false;
             document.getElementById('gene-input').value = '';
+            (DATA.sections || []).forEach(s => {{ if (s && s._colorCache) s._colorCache = {{}}; }});
             hiddenCategories.clear();
             updateExpressionScaleUI();
             renderLegend('legend');
@@ -3134,11 +3852,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderAllSections();
             if (modalSection) renderModalSection();
             if (umapVisible) renderUMAP();
-            renderColorList(document.getElementById('color-search')?.value || '');
-            renderColorAggregation();
-            renderCellTypeTrend();
-            renderNeighborStats();
-            renderMarkerGenes();
+            refreshInsights();
         }});
 
         const geneList = document.getElementById('gene-list');
@@ -3153,6 +3867,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const gene = geneInput.value.trim();
             if (gene && DATA.genes_meta[gene]) {{
                 currentGene = gene;
+                geneDenseCache.clear();
                 modalSelectedCategory = null;
                 modalTypeSelectEnabled = false;
                 hiddenCategories.clear();
@@ -3163,11 +3878,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderAllSections();
                 if (modalSection) renderModalSection();
                 if (umapVisible) renderUMAP();
-                renderColorList(document.getElementById('color-search')?.value || '');
-                renderColorAggregation();
-                renderCellTypeTrend();
-                renderNeighborStats();
-                renderMarkerGenes();
+                refreshInsights();
             }} else if (!gene) {{
                 currentGene = null;
                 hiddenCategories.clear();
@@ -3177,11 +3888,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderAllSections();
                 if (modalSection) renderModalSection();
                 if (umapVisible) renderUMAP();
-                renderColorList(document.getElementById('color-search')?.value || '');
-                renderColorAggregation();
-                renderCellTypeTrend();
-                renderNeighborStats();
-                renderMarkerGenes();
+                refreshInsights();
             }} else if (gene) {{
                 alert(`Gene "${{gene}}" was not pre-loaded.\\nTo view it, re-export with this gene included in the genes parameter or add it to highly variable genes.`);
             }}
@@ -3228,6 +3935,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         colorToggle.addEventListener('click', () => {{
             colorPanel.classList.toggle('collapsed');
             colorToggle.classList.toggle('active');
+            if (!colorPanel.classList.contains('collapsed')) {{
+                if (document.getElementById('color-tab-neighbors')?.classList.contains('active')) {{
+                    renderNeighborStats();
+                }} else if (document.getElementById('color-tab-genes')?.classList.contains('active')) {{
+                    if (document.getElementById('genes-tab-dotplot')?.classList.contains('active')) renderDotplot();
+                    if (document.getElementById('genes-tab-markers')?.classList.contains('active')) renderMarkerGenes();
+                }} else {{
+                    renderColorAggregation();
+                    renderCellTypeTrend();
+                }}
+            }}
             requestAnimationFrame(renderAllSections);
         }});
 
@@ -3513,8 +4231,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
-    // Initialize
-    window.addEventListener('load', () => {{
+    // Initialize (don't wait for external resources)
+    document.addEventListener('DOMContentLoaded', () => {{
+        hydratePackedSections();
         initTheme();
         initGrid();
         initControls();
@@ -3522,9 +4241,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         initModal();
         initUMAP();
         renderLegend('legend');
+        // Hide loader immediately; render incrementally afterwards.
+        hideLoader();
         requestAnimationFrame(renderAllSections);
-        const loader = document.getElementById('loading-overlay');
-        if (loader) loader.style.display = 'none';
     }});
     window.addEventListener('resize', () => {{
         renderAllSections();
@@ -3553,12 +4272,16 @@ def export_to_html(
     viewer_info_html: Optional[str] = None,
     additional_colors: Optional[List[str]] = None,
     genes: Optional[List[str]] = None,
+    gene_encoding: str = "auto",
+    gene_sparse_zero_threshold: float = 0.8,
+    pack_arrays: bool = True,
+    pack_arrays_min_len: int = 1024,
     hvg_limit: int = 20,
     marker_genes_groupby: Optional[List[str]] = None,
     marker_genes_top_n: int = 30,
     use_hvgs: bool = True,
     neighbor_stats_groupby: Optional[List[str]] = None,
-    neighbor_stats_permutations: int = 100,
+    neighbor_stats_permutations: Union[int, None] = None,
     neighbor_stats_seed: int = 0,
 ) -> str:
     """
@@ -3593,6 +4316,17 @@ def export_to_html(
         Additional obs columns to include for color switching
     genes : list, optional
         Gene names to include for expression visualization
+    gene_encoding : str
+        "dense", "sparse", or "auto" (default). "auto" uses sparse encoding for
+        zero-inflated genes to reduce HTML size.
+    gene_sparse_zero_threshold : float
+        Only used when gene_encoding="auto". Use sparse encoding when the
+        fraction of zeros is >= this threshold (default: 0.8).
+    pack_arrays : bool
+        Pack large per-section numeric arrays (coordinates, colors, UMAP) as base64 typed arrays
+        for smaller HTML and faster load. Default: True.
+    pack_arrays_min_len : int
+        Only pack per-section arrays when section cell count is >= this value. Default: 1024.
     hvg_limit : int
         Max number of highly variable genes to include (default 20)
     marker_genes_groupby : list, optional
@@ -3679,6 +4413,11 @@ def export_to_html(
         if additional_colors:
             neighbor_stats_groupby.extend(additional_colors)
 
+    if neighbor_stats_permutations is None:
+        # Auto-tune: permutation z-scores are expensive for very large datasets.
+        # Keep the feature (counts + mean degree) always, but skip permutations unless requested.
+        neighbor_stats_permutations = 0 if int(dataset.adata.n_obs) >= 200_000 else 100
+
     data = dataset.to_json_data(
         color,
         downsample=downsample,
@@ -3686,6 +4425,10 @@ def export_to_html(
         vmax=vmax,
         additional_colors=additional_colors,
         genes=genes,
+        gene_encoding=gene_encoding,
+        gene_sparse_zero_threshold=gene_sparse_zero_threshold,
+        section_array_pack=pack_arrays,
+        section_array_pack_min_len=pack_arrays_min_len,
         marker_genes_groupby=marker_genes_groupby,
         marker_genes_top_n=marker_genes_top_n,
         neighbor_stats_groupby=neighbor_stats_groupby,
@@ -3718,12 +4461,14 @@ def export_to_html(
     }
     max_panel_size = int(min_panel_size * 2)
 
+    data_json_safe = json.dumps(data, separators=(',', ':')).replace("</", "<\\/")
+
     html = HTML_TEMPLATE.format(
         title=title,
         min_panel_size=min_panel_size,
         max_panel_size=max_panel_size,
         spot_size=spot_size,
-        data_json=json.dumps(data),
+        data_json=data_json_safe,
         palette_json=json.dumps(DEFAULT_CATEGORICAL_PALETTE),
         metadata_labels_json=json.dumps(metadata_labels),
         outline_by_json=json.dumps(outline_by),
@@ -3747,5 +4492,10 @@ def export_to_html(
     print(f"  - {len(data['available_colors'])} color options")
     if genes:
         print(f"  - {len(data['genes_meta'])} genes loaded")
+        enc = data.get("gene_encodings") or {}
+        if enc:
+            n_sparse = sum(1 for v in enc.values() if v == "sparse")
+            n_dense = sum(1 for v in enc.values() if v == "dense")
+            print(f"  - gene encoding: {n_sparse} sparse, {n_dense} dense")
 
     return output_path

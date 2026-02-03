@@ -82,6 +82,11 @@ export_to_html(
         "Cd8a",
         "Gfap",
     ],
+    # For zero-inflated expression matrices, store gene vectors sparsely (smaller HTML)
+    gene_encoding="auto",        # "auto" | "dense" | "sparse"
+    gene_sparse_zero_threshold=0.8,
+    pack_arrays=True,            # Pack coords/colors/UMAP as base64 typed arrays (smaller + faster load)
+    pack_arrays_min_len=1024,
     use_hvgs=True,               # Use adata.var['highly_variable'] when available
     hvg_limit=20,                # Max number of HVGs to include
     marker_genes_groupby=[       # Compute marker genes for these categorical obs columns
@@ -111,6 +116,11 @@ karospace your_data.h5ad -o viewer.html --color leiden --cols 6
 | `--downsample` | Max cells per section | None |
 | `--theme` | Color theme (`light` or `dark`) | `light` |
 | `--title` | Page title | `KaroSpace` |
+| `--gene-encoding` | Gene vector encoding (`auto`, `dense`, `sparse`) | `auto` |
+| `--gene-sparse-zero-threshold` | Zero fraction threshold for `auto` sparse encoding | `0.8` |
+| `--no-pack-arrays` | Disable base64 packing of large per-section arrays | off |
+| `--pack-arrays-min-len` | Only pack arrays when section cell count ≥ this value | `1024` |
+| `--neighbor-permutations` | Permutations for neighbor enrichment z-scores (`auto`, `0`, `100`, …) | `auto` |
 
 ## Data Requirements
 

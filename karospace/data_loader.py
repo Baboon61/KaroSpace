@@ -169,6 +169,12 @@ class SpatialDataset:
         vmax: Optional[float] = None,
         additional_colors: Optional[List[str]] = None,
         genes: Optional[List[str]] = None,
+        gene_encoding: str = "auto",
+        gene_sparse_zero_threshold: float = 0.8,
+        gene_sparse_pack: bool = True,
+        gene_sparse_pack_min_nnz: int = 256,
+        section_array_pack: bool = True,
+        section_array_pack_min_len: int = 1024,
         marker_genes_groupby: Optional[List[str]] = None,
         marker_genes_top_n: int = 30,
         neighbor_stats_groupby: Optional[List[str]] = None,
@@ -190,6 +196,25 @@ class SpatialDataset:
             Additional obs columns to include for color switching
         genes : list, optional
             Gene names to include for expression visualization
+        gene_encoding : str
+            "dense", "sparse", or "auto" (default: "auto"). When "sparse" (or when
+            "auto" decides to use sparse), per-section gene vectors are stored as
+            (index, value) pairs for non-zero entries to reduce HTML size for
+            zero-inflated expression matrices.
+        gene_sparse_zero_threshold : float
+            Only used when gene_encoding="auto". Use sparse encoding when the
+            fraction of zeros is >= this threshold (default: 0.8).
+        gene_sparse_pack : bool
+            When using sparse gene encoding, store indices/values as base64 typed arrays
+            (smaller + faster JSON parse for large datasets). Default: True.
+        gene_sparse_pack_min_nnz : int
+            Only pack sparse arrays when non-zero entries in a section are >= this value.
+            Default: 256.
+        section_array_pack : bool
+            Pack large per-section numeric arrays (coordinates, colors, UMAP) as base64 typed arrays
+            for smaller HTML and faster JSON parse. Default: True.
+        section_array_pack_min_len : int
+            Only pack per-section arrays when section cell count is >= this value. Default: 1024.
         marker_genes_groupby : list, optional
             Obs columns to compute marker genes for (categorical only)
         marker_genes_top_n : int
@@ -293,6 +318,51 @@ class SpatialDataset:
                         }
                     except Exception as e:
                         print(f"  Warning: Could not load gene '{gene}': {e}")
+
+        gene_encoding = str(gene_encoding or "auto").lower()
+        if gene_encoding not in {"auto", "dense", "sparse"}:
+            raise ValueError("gene_encoding must be one of: 'auto', 'dense', 'sparse'")
+        if not (0.0 <= float(gene_sparse_zero_threshold) <= 1.0):
+            raise ValueError("gene_sparse_zero_threshold must be between 0 and 1")
+        if int(gene_sparse_pack_min_nnz) < 0:
+            raise ValueError("gene_sparse_pack_min_nnz must be >= 0")
+        if int(section_array_pack_min_len) < 0:
+            raise ValueError("section_array_pack_min_len must be >= 0")
+
+        gene_encodings: Dict[str, str] = {}
+        if gene_data:
+            for gene, gdata in gene_data.items():
+                if gene_encoding == "dense":
+                    gene_encodings[gene] = "dense"
+                elif gene_encoding == "sparse":
+                    gene_encodings[gene] = "sparse"
+                else:
+                    vals = np.asarray(gdata["values"])
+                    finite = np.isfinite(vals)
+                    nonzero = finite & (vals != 0)
+                    zero_frac = 1.0
+                    if vals.size:
+                        zero_frac = 1.0 - (float(np.count_nonzero(nonzero)) / float(vals.size))
+                    gene_encodings[gene] = "sparse" if zero_frac >= float(gene_sparse_zero_threshold) else "dense"
+
+        def _b64(arr: np.ndarray) -> str:
+            import base64
+            carr = np.ascontiguousarray(arr)
+            return base64.b64encode(carr.tobytes(order="C")).decode("ascii")
+
+        # Prepare float32 views to avoid per-section dtype conversions when packing arrays.
+        coords_f4 = np.asarray(coords, dtype=np.float32, order="C")
+        umap_f4 = None
+        if umap_coords is not None:
+            umap_f4 = np.asarray(umap_coords, dtype=np.float32, order="C")
+
+        if bool(section_array_pack):
+            for col, cdata in color_data.items():
+                if cdata.get("is_continuous"):
+                    cdata["_values_f4"] = np.asarray(cdata["values"], dtype=np.float32, order="C")
+                else:
+                    # Categorical codes are already numeric; keep float32 for compatibility (NaN for missing).
+                    cdata["_values_f4"] = np.asarray(cdata["values"], dtype=np.float32, order="C")
 
         # Get metadata filters
         metadata_filters = self.get_metadata_filters()
@@ -443,38 +513,69 @@ class SpatialDataset:
                 idx = rng.choice(idx, size=downsample, replace=False)
                 idx = np.sort(idx)
 
-            section_coords = coords[idx]
+            section_coords = coords_f4[idx]
 
             # Get UMAP coordinates for this section if available
             section_umap = None
-            if umap_coords is not None:
-                section_umap = umap_coords[idx]
+            if umap_f4 is not None:
+                section_umap = umap_f4[idx]
 
             # Build color values for this section
             section_colors = {}
+            section_colors_b64 = {}
             for col, cdata in color_data.items():
-                section_vals = cdata["values"][idx]
-                # Convert numpy types to native Python types for JSON serialization
-                section_colors[col] = [
-                    float(v) if np.isfinite(v) else None for v in section_vals
-                ]
+                if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
+                    section_vals = cdata.get("_values_f4", cdata["values"])[idx]
+                    section_colors_b64[col] = _b64(section_vals.astype("<f4", copy=False))
+                else:
+                    section_vals = cdata["values"][idx]
+                    # Convert numpy types to native Python types for JSON serialization
+                    section_colors[col] = [
+                        float(v) if np.isfinite(v) else None for v in section_vals
+                    ]
 
             # Build gene expression values for this section
-            section_genes = {}
+            section_genes_dense = {}
+            section_genes_sparse = {}
             for gene, gdata in gene_data.items():
                 section_vals = gdata["values"][idx]
-                section_genes[gene] = [
-                    float(v) if np.isfinite(v) else None for v in section_vals
-                ]
+                mode = gene_encodings.get(gene, "dense")
+                if mode == "sparse":
+                    finite = np.isfinite(section_vals)
+                    nonzero = finite & (section_vals != 0)
+                    nz_idx = np.flatnonzero(nonzero).astype(np.uint32)
+                    nz_vals = np.asarray(section_vals[nonzero], dtype=np.float32)
+                    if bool(gene_sparse_pack) and int(nz_idx.size) >= int(gene_sparse_pack_min_nnz):
+                        sparse_entry = {
+                            "ib64": _b64(np.asarray(nz_idx, dtype="<u4")),
+                            "vb64": _b64(np.asarray(nz_vals, dtype="<f4")),
+                        }
+                    else:
+                        sparse_entry = {
+                            "i": nz_idx.astype(int).tolist(),
+                            "v": nz_vals.astype(float).tolist(),
+                        }
+                    nan_idx = np.flatnonzero(np.isnan(section_vals)).astype(int)
+                    if nan_idx.size:
+                        sparse_entry["nan"] = nan_idx.tolist()
+                    section_genes_sparse[gene] = sparse_entry
+                else:
+                    section_genes_dense[gene] = [
+                        float(v) if np.isfinite(v) else None for v in section_vals
+                    ]
 
             section_entry = {
                 "id": section.section_id,
                 "metadata": section.metadata,
                 "n_cells": int(len(idx)),
-                "x": section_coords[:, 0].tolist(),
-                "y": section_coords[:, 1].tolist(),
+                "x": None,
+                "y": None,
+                "xb64": None,
+                "yb64": None,
                 "colors": section_colors,
-                "genes": section_genes,
+                "colors_b64": section_colors_b64,
+                "genes": section_genes_dense,
+                "genes_sparse": section_genes_sparse,
                 "bounds": {
                     "xmin": float(section_coords[:, 0].min()) if len(idx) > 0 else 0,
                     "xmax": float(section_coords[:, 0].max()) if len(idx) > 0 else 0,
@@ -485,16 +586,48 @@ class SpatialDataset:
 
             # Add UMAP coordinates if available
             if section_umap is not None:
-                section_entry["umap_x"] = section_umap[:, 0].tolist()
-                section_entry["umap_y"] = section_umap[:, 1].tolist()
+                section_entry["umap_x"] = None
+                section_entry["umap_y"] = None
+                section_entry["umap_xb64"] = None
+                section_entry["umap_yb64"] = None
+            else:
+                section_entry["umap_x"] = None
+                section_entry["umap_y"] = None
+                section_entry["umap_xb64"] = None
+                section_entry["umap_yb64"] = None
+
+            # Coordinates (pack when large)
+            if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
+                section_entry["xb64"] = _b64(section_coords[:, 0].astype("<f4", copy=False))
+                section_entry["yb64"] = _b64(section_coords[:, 1].astype("<f4", copy=False))
+                if section_umap is not None:
+                    section_entry["umap_xb64"] = _b64(section_umap[:, 0].astype("<f4", copy=False))
+                    section_entry["umap_yb64"] = _b64(section_umap[:, 1].astype("<f4", copy=False))
+            else:
+                section_entry["x"] = section_coords[:, 0].tolist()
+                section_entry["y"] = section_coords[:, 1].tolist()
+                if section_umap is not None:
+                    section_entry["umap_x"] = section_umap[:, 0].tolist()
+                    section_entry["umap_y"] = section_umap[:, 1].tolist()
 
             if neighbor_graph is not None:
                 subgraph = neighbor_graph[idx][:, idx]
                 if issparse(subgraph) and subgraph.nnz > 0:
                     upper = sp.triu(subgraph, k=1).tocoo()
-                    section_entry["edges"] = list(zip(upper.row.tolist(), upper.col.tolist()))
+                    rows = np.asarray(upper.row, dtype=np.uint32)
+                    cols = np.asarray(upper.col, dtype=np.uint32)
+                    if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
+                        pairs = np.empty(rows.size * 2, dtype=np.uint32)
+                        pairs[0::2] = rows
+                        pairs[1::2] = cols
+                        section_entry["edges"] = None
+                        section_entry["edges_b64"] = _b64(pairs.astype("<u4", copy=False))
+                    else:
+                        section_entry["edges"] = list(zip(rows.astype(int).tolist(), cols.astype(int).tolist()))
+                        section_entry["edges_b64"] = None
                 else:
                     section_entry["edges"] = []
+                    section_entry["edges_b64"] = None
 
             sections_data.append(section_entry)
 
@@ -520,6 +653,7 @@ class SpatialDataset:
             "initial_color": color,
             "colors_meta": colors_meta,
             "genes_meta": genes_meta,
+            "gene_encodings": gene_encodings,
             "metadata_filters": metadata_filters,
             "n_sections": len(sections_data),
             "total_cells": sum(s["n_cells"] for s in sections_data),

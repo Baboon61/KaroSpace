@@ -9,7 +9,7 @@ from karospace import load_spatial_data, export_to_html
 
 # Path to your h5ad file
 # Update this path to point to your EAE/MANA data
-H5AD_PATH = '/Volumes/processing2/oligo-mtDSB/data/mtDNA_DSB_5k_clustered_annotation_with_rbd_2_cytetype_brain_novae4.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
+H5AD_PATH = '/Volumes/processing2/oligo-mtDSB/data/mtDNA_DSB_5k_clustered_annotation_MANA.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
 
 # Load the dataset
 # - groupby: column in adata.obs that identifies each section
@@ -31,7 +31,7 @@ print(f"Available color columns: {dataset.obs_columns[:10]}...")  # first 10
 # Choose gene source for expression:
 # - True: use highly variable genes (if present, capped to 20)
 # - False: use the explicit genes list below
-USE_HVGS = False
+USE_HVGS = True
 OUTLINE_BY = "condition"
 
 # Export to HTML with full features
@@ -39,7 +39,7 @@ OUTLINE_BY = "condition"
 export_to_html(
     dataset,
     output_path="mt-DSB-viewer.html",
-    color="cell_class_updated",  # Initial color (categorical)
+    color="cytetype_annotation_leiden_3",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size=1.5,  # smaller spots for dense data
@@ -62,7 +62,9 @@ export_to_html(
         'rbd_domain_0.1',
         'rbd_domain_0.2', 
         'rbd_domain_0.5',
-        'rbd_domain_1.0'
+        'rbd_domain_1.0',
+        'leiden_mana_0.1',
+        "leiden_mana_0.5" 
     ],
 
     # Pre-load specific genes for expression visualization
@@ -77,7 +79,8 @@ export_to_html(
     # Compute marker genes for these categorical color columns
     # (appears in the Color panel under "Marker genes")
     marker_genes_groupby=[
-        "cell_class_updated",  # change to your cluster column (e.g. "leiden_mana_1.0")
+        "cytetype_annotation_leiden_3",
+          "leiden_mana_0.5" ,'leiden_mana_0.1'  # change to your cluster column (e.g. "leiden_mana_1.0")
     ],
     marker_genes_top_n=30,
 )

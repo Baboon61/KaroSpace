@@ -5,6 +5,7 @@ Command-line interface for KaroSpace.
 import argparse
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 def main():
@@ -64,6 +65,38 @@ def main():
         default="KaroSpace",
         help="Page title"
     )
+    parser.add_argument(
+        "--gene-encoding",
+        choices=["auto", "dense", "sparse"],
+        default="auto",
+        help="Gene vector encoding. 'sparse' stores only non-zero indices/values (smaller HTML for zero-inflated data). (default: auto)"
+    )
+    parser.add_argument(
+        "--gene-sparse-zero-threshold",
+        type=float,
+        default=0.8,
+        help="Only used with --gene-encoding auto. Use sparse encoding when zero fraction >= threshold. (default: 0.8)"
+    )
+    parser.add_argument(
+        "--no-pack-arrays",
+        dest="pack_arrays",
+        action="store_false",
+        help="Disable base64 packing of large per-section arrays (coords/colors/UMAP)."
+    )
+    parser.add_argument(
+        "--pack-arrays-min-len",
+        type=int,
+        default=1024,
+        help="Only pack arrays when section cell count >= this value. (default: 1024)"
+    )
+    parser.set_defaults(pack_arrays=True)
+
+    parser.add_argument(
+        "--neighbor-permutations",
+        type=str,
+        default="auto",
+        help="Neighbor enrichment permutation count. Use 0 to disable, or 'auto' (default) which disables for very large datasets."
+    )
 
     args = parser.parse_args()
 
@@ -79,6 +112,16 @@ def main():
     # Import here to avoid slow startup for --help
     from .data_loader import load_spatial_data
     from .exporter import export_to_html
+
+    neighbor_perms: Optional[int]
+    if str(args.neighbor_permutations).lower() == "auto":
+        neighbor_perms = None
+    else:
+        try:
+            neighbor_perms = int(args.neighbor_permutations)
+        except ValueError:
+            print("Error: --neighbor-permutations must be an integer or 'auto'", file=sys.stderr)
+            sys.exit(2)
 
     # Load and export
     print(f"Loading data from: {args.input}")
@@ -97,6 +140,11 @@ def main():
         spot_size=args.spot_size,
         downsample=args.downsample,
         theme=args.theme,
+        gene_encoding=args.gene_encoding,
+        gene_sparse_zero_threshold=args.gene_sparse_zero_threshold,
+        pack_arrays=args.pack_arrays,
+        pack_arrays_min_len=args.pack_arrays_min_len,
+        neighbor_stats_permutations=neighbor_perms,
     )
 
     print(f"Done! Open {output_path} in a browser to view.")
