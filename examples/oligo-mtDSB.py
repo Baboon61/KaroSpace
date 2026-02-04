@@ -85,12 +85,12 @@ export_to_html(
     ],
     marker_genes_top_n=30,
     # Explicitly enable neighbor enrichment z-scores for large datasets.
-    neighbor_stats_permutations=25,
+    neighbor_stats_permutations=10,
     neighbor_stats_seed=42,
     # Contact-conditioned interaction markers (source near target vs source not near target).
     interaction_markers_groupby=["cell_class_updated"],
-    interaction_markers_top_targets=6,
-    interaction_markers_top_genes=15,
+    interaction_markers_top_targets=4,
+    interaction_markers_top_genes=8,
     interaction_markers_min_cells=10,
     interaction_markers_min_neighbors=1,
 )
