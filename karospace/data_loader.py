@@ -661,6 +661,32 @@ class SpatialDataset:
                         n_pos = int(np.count_nonzero(pos_mask))
                         n_neg = int(np.count_nonzero(neg_mask))
                         if n_pos < min_cells or n_neg < min_cells:
+                            source_result[target_name] = {
+                                "available": False,
+                                "reason": "insufficient_cells",
+                                "genes": [],
+                                "logfoldchanges": [],
+                                "pvals_adj": [],
+                                "n_contact": n_pos,
+                                "n_non_contact": n_neg,
+                                "min_cells_required": min_cells,
+                                "pct_contact": float((100.0 * n_pos) / max(1, n_pos + n_neg)),
+                                "mean_target_neighbors_contact": float(
+                                    np.mean(target_neighbor_counts[pos_mask]) if n_pos > 0 else 0.0
+                                ),
+                                "mean_target_neighbors_non_contact": float(
+                                    np.mean(target_neighbor_counts[neg_mask]) if n_neg > 0 else 0.0
+                                ),
+                                "target_edge_count": float(row[target_idx]),
+                                "target_zscore": (
+                                    float(zscore[source_idx, target_idx])
+                                    if isinstance(zscore, np.ndarray)
+                                    and source_idx < zscore.shape[0]
+                                    and target_idx < zscore.shape[1]
+                                    and np.isfinite(zscore[source_idx, target_idx])
+                                    else None
+                                ),
+                            }
                             continue
 
                         selected_mask = pos_mask | neg_mask
@@ -706,6 +732,7 @@ class SpatialDataset:
                             )
 
                             source_result[target_name] = {
+                                "available": True,
                                 "genes": genes,
                                 "logfoldchanges": logfc,
                                 "pvals_adj": pvals_adj,

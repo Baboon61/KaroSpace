@@ -3250,6 +3250,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <label>Search cell type</label>
                         <input class="color-search" id="neighbor-search" type="text" placeholder="Search cell type...">
                     </div>
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button class="legend-btn" id="neighbor-stats-toggle" type="button">Collapse neighbor stats</button>
+                    </div>
                     <div class="color-aggregation" id="neighbor-stats">
                         <div class="agg-group-meta">Select a categorical color to view neighbor stats.</div>
                     </div>
@@ -3412,6 +3415,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const neighborSearch = document.getElementById('neighbor-search');
         neighborSearch.addEventListener('input', () => {{
             renderNeighborStats();
+        }});
+        const neighborStatsToggle = document.getElementById('neighbor-stats-toggle');
+        const neighborStatsContainer = document.getElementById('neighbor-stats');
+        neighborStatsToggle.addEventListener('click', () => {{
+            const isCollapsed = neighborStatsContainer.classList.toggle('collapsed');
+            neighborStatsToggle.textContent = isCollapsed ? 'Show neighbor stats' : 'Collapse neighbor stats';
         }});
         const interactionSource = document.getElementById('interaction-source');
         interactionSource.addEventListener('change', () => {{
@@ -4060,9 +4069,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const zLabel = entry.z === null ? 'n/a' : entry.z.toFixed(2);
             const markerLabel = entry.targetMarkers.length ? entry.targetMarkers.join(', ') : '—';
             const contactLabel = entry.contactMarkers.length ? entry.contactMarkers.join(', ') : '—';
-            const contactMeta = entry.contact
-                ? `n+ ${{entry.contact.n_contact}} / n- ${{entry.contact.n_non_contact}}`
-                : 'insufficient cells';
+            let contactMeta = 'not precomputed';
+            if (entry.contact) {{
+                const nPos = Number(entry.contact.n_contact ?? 0);
+                const nNeg = Number(entry.contact.n_non_contact ?? 0);
+                if (entry.contact.available === false) {{
+                    const minReq = Number(entry.contact.min_cells_required ?? 0);
+                    contactMeta = `n+ ${{nPos}} / n- ${{nNeg}} (need >= ${{minReq}} each)`;
+                }} else {{
+                    contactMeta = `n+ ${{nPos}} / n- ${{nNeg}}`;
+                }}
+            }}
             return `
                 <tr>
                     <td>

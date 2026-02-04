@@ -84,6 +84,15 @@ export_to_html(
           "leiden_mana_0.5" ,'leiden_mana_0.1'  # change to your cluster column (e.g. "leiden_mana_1.0")
     ],
     marker_genes_top_n=30,
+    # Explicitly enable neighbor enrichment z-scores for large datasets.
+    neighbor_stats_permutations=25,
+    neighbor_stats_seed=42,
+    # Contact-conditioned interaction markers (source near target vs source not near target).
+    interaction_markers_groupby=["cell_class_updated"],
+    interaction_markers_top_targets=6,
+    interaction_markers_top_genes=15,
+    interaction_markers_min_cells=10,
+    interaction_markers_min_neighbors=1,
 )
 
 # The viewer now supports: 
