@@ -17,7 +17,7 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **Multiple color columns** - Switch between different annotation columns (e.g., cell types, clusters, conditions)
 - **Insights panel** - Search color columns, view categorical stats, and marker genes by color
 - **Neighbor stats + enrichment** - Neighbor composition and permutation z-scores for categorical cell types
-- **Cell-cell interaction browser** - Pick a source cell type to rank neighboring targets with enrichment and markers
+- **Cell-cell interaction browser** - Pick a source cell type to rank neighboring targets with enrichment, type markers, and contact-conditioned markers
 - **Metadata filtering** - Filter sections by metadata like experimental condition, timepoint, or region
 - **Cell tooltips** - Hover over cells to see their type or expression value
 - **Course-based borders** - Section panels are outlined with colors indicating their experimental course/condition
@@ -101,6 +101,9 @@ export_to_html(
     interaction_markers_top_targets=8,          # Targets evaluated per source type
     interaction_markers_top_genes=20,           # Genes shown per source-target interaction
     interaction_markers_min_cells=30,           # Minimum cells in contact+ and contact- groups
+    interaction_markers_min_neighbors=1,        # Source cell needs >= this many target neighbors to be contact+
+    interaction_markers_method="wilcoxon",      # DE method for contact+ vs contact-
+    interaction_markers_layer="normalized",     # Layer used for DE (falls back to adata.X if missing)
 )
 ```
 
@@ -169,6 +172,14 @@ If `adata.obsp` contains a neighbor graph (e.g., `spatial_connectivities`, `conn
 `neighbors`, or `neighbor_graph`), KaroSpace will expose graph/neighbor-hover controls and
 compute neighbor composition plus optional permutation z-scores for categorical colors.
 
+To enable contact-conditioned interaction markers in the interaction browser, pass
+`interaction_markers_groupby=[...]` to `export_to_html` (typically the same categorical
+column used for coloring, e.g. `cell_type`).
+
+Interaction markers are defined per source-target pair as:
+- **contact+**: source cells with at least `interaction_markers_min_neighbors` neighbors of the target type
+- **contact-**: source cells of the same source type with zero neighbors of that target type
+
 ### Optional cell polygons
 
 If you have per-cell polygons, store them in `adata.uns["polygons"]` using a flat vertex
@@ -231,7 +242,7 @@ export_to_html(
 - **Spotlight button (legend)** - Enable linked spotlight; hover/click legend categories to dim others across grid + UMAP
 - **Legend button** - Show/hide the legend panel
 - **Insights button** - Toggle the insights panel (colors + stats + marker genes)
-- **Insights usage** - Use “Stats” to aggregate categorical colors by metadata, “Neighbors” for neighbor composition + z-scores + interaction browser, and “Marker genes” for top markers
+- **Insights usage** - Use “Stats” to aggregate categorical colors by metadata, “Neighbors” for neighbor composition + z-scores + interaction browser (Contact markers + Type markers), and “Marker genes” for top markers
 - **Graph button** - Toggle neighborhood graph overlay (if available)
 - **Neighbors button** - Toggle neighbor rings on hover (if available)
 - **Hop selector** - Choose which neighbor hop(s) to display (if available)
