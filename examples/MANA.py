@@ -111,6 +111,15 @@ export_to_html(
         'stage','condition'
     ],
     marker_genes_top_n=50,
+    # Force permutation z-scores (auto mode disables permutations for very large datasets).
+    neighbor_stats_permutations=25,
+    neighbor_stats_seed=42,
+    # Contact-conditioned interaction markers (source near target vs source not near target).
+    interaction_markers_groupby=["anno_L2"],
+    interaction_markers_top_targets=6,
+    interaction_markers_top_genes=15,
+    interaction_markers_min_cells=30,
+    interaction_markers_min_neighbors=1,
 )
 
 # The viewer now supports:

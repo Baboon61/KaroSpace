@@ -180,6 +180,13 @@ class SpatialDataset:
         neighbor_stats_groupby: Optional[List[str]] = None,
         neighbor_stats_permutations: int = 0,
         neighbor_stats_seed: int = 0,
+        interaction_markers_groupby: Optional[List[str]] = None,
+        interaction_markers_top_targets: int = 8,
+        interaction_markers_top_genes: int = 20,
+        interaction_markers_min_cells: int = 30,
+        interaction_markers_min_neighbors: int = 1,
+        interaction_markers_method: str = "wilcoxon",
+        interaction_markers_layer: Optional[str] = "normalized",
     ) -> Dict:
         """
         Export dataset to JSON-serializable format for the HTML viewer.
@@ -225,6 +232,21 @@ class SpatialDataset:
             Number of permutations for neighbor enrichment z-scores (0 disables)
         neighbor_stats_seed : int
             Random seed used for neighbor permutations
+        interaction_markers_groupby : list, optional
+            Obs columns to compute contact-conditioned interaction markers for.
+            For each source/target pair: source cells contacting target vs source cells not contacting target.
+        interaction_markers_top_targets : int
+            Number of target cell types to evaluate per source (ranked by z-score or edge count).
+        interaction_markers_top_genes : int
+            Number of top genes to keep per source-target interaction.
+        interaction_markers_min_cells : int
+            Minimum cells required in both contact+ and contact- groups.
+        interaction_markers_min_neighbors : int
+            Minimum number of target neighbors for a source cell to be labeled contact+.
+        interaction_markers_method : str
+            Differential expression method for scanpy.tl.rank_genes_groups (e.g. "wilcoxon", "t-test").
+        interaction_markers_layer : str, optional
+            AnnData layer to use for DE, if available (default: "normalized").
 
         Returns
         -------
@@ -328,6 +350,14 @@ class SpatialDataset:
             raise ValueError("gene_sparse_pack_min_nnz must be >= 0")
         if int(section_array_pack_min_len) < 0:
             raise ValueError("section_array_pack_min_len must be >= 0")
+        if int(interaction_markers_top_targets) < 1:
+            raise ValueError("interaction_markers_top_targets must be >= 1")
+        if int(interaction_markers_top_genes) < 1:
+            raise ValueError("interaction_markers_top_genes must be >= 1")
+        if int(interaction_markers_min_cells) < 1:
+            raise ValueError("interaction_markers_min_cells must be >= 1")
+        if int(interaction_markers_min_neighbors) < 1:
+            raise ValueError("interaction_markers_min_neighbors must be >= 1")
 
         gene_encodings: Dict[str, str] = {}
         if gene_data:
@@ -424,6 +454,7 @@ class SpatialDataset:
 
         # Compute neighbor composition stats
         neighbor_stats = {}
+        neighbor_stats_context = {}
         if neighbor_graph is not None and neighbor_stats_groupby:
             for groupby in neighbor_stats_groupby:
                 if groupby not in self.adata.obs.columns:
@@ -468,6 +499,7 @@ class SpatialDataset:
                 valid_cells = n_cells > 0
                 mean_degree[valid_cells] = row_sums[valid_cells] / n_cells[valid_cells]
 
+                zscore = None
                 entry = {
                     "categories": categories,
                     "counts": counts.tolist(),
@@ -502,6 +534,211 @@ class SpatialDataset:
                     entry["perm_n"] = int(neighbor_stats_permutations)
                     entry["zscore"] = zscore.tolist()
                 neighbor_stats[groupby] = entry
+                neighbor_stats_context[groupby] = {
+                    "categories": categories,
+                    "labels": labels.astype(np.int32, copy=False),
+                    "graph": graph.tocsr(),
+                    "obs_idx": (
+                        np.arange(self.adata.n_obs, dtype=np.int64)
+                        if valid_mask.all()
+                        else np.flatnonzero(valid_mask).astype(np.int64)
+                    ),
+                    "counts": counts,
+                    "zscore": zscore,
+                    "n_cells": n_cells,
+                    "mean_degree": mean_degree,
+                }
+
+        # Compute contact-conditioned interaction markers:
+        # for source S and target T, compare source cells contacting T vs source cells not contacting T.
+        interaction_markers = {}
+        if neighbor_graph is not None and interaction_markers_groupby:
+            method = str(interaction_markers_method or "wilcoxon")
+            top_targets = int(interaction_markers_top_targets)
+            top_genes = int(interaction_markers_top_genes)
+            min_cells = int(interaction_markers_min_cells)
+            min_neighbors = int(interaction_markers_min_neighbors)
+            de_layer = None
+            if interaction_markers_layer:
+                if interaction_markers_layer in self.adata.layers:
+                    de_layer = str(interaction_markers_layer)
+                else:
+                    print(
+                        f"  Warning: interaction markers layer '{interaction_markers_layer}' not found; "
+                        "using adata.X."
+                    )
+
+            def _extract_group_values(
+                obj: Union[pd.DataFrame, np.ndarray, List],
+                group: str,
+                n: int,
+                cast=None,
+            ) -> List:
+                vals = []
+                if obj is None:
+                    return vals
+                if isinstance(obj, pd.DataFrame):
+                    if group in obj.columns:
+                        vals = obj[group].tolist()
+                    elif obj.shape[1] > 0:
+                        vals = obj.iloc[:, 0].tolist()
+                elif isinstance(obj, np.ndarray) and obj.dtype.names:
+                    g = group if group in obj.dtype.names else obj.dtype.names[0]
+                    vals = list(obj[g])
+                else:
+                    vals = list(np.asarray(obj).ravel())
+                vals = vals[:n]
+                if cast is None:
+                    return vals
+                out = []
+                for v in vals:
+                    try:
+                        out.append(cast(v))
+                    except Exception:
+                        out.append(None)
+                return out
+
+            for groupby in interaction_markers_groupby:
+                ctx = neighbor_stats_context.get(groupby)
+                if ctx is None:
+                    print(
+                        f"  Warning: interaction markers '{groupby}' unavailable "
+                        "(missing neighbor stats for this groupby)."
+                    )
+                    continue
+
+                categories = [str(c) for c in ctx["categories"]]
+                labels = np.asarray(ctx["labels"], dtype=np.int32)
+                graph = ctx["graph"]
+                obs_idx = np.asarray(ctx["obs_idx"], dtype=np.int64)
+                counts = np.asarray(ctx["counts"], dtype=float)
+                zscore = ctx.get("zscore")
+                n_cells = np.asarray(ctx["n_cells"], dtype=int)
+
+                if graph.shape[0] != len(labels):
+                    print(
+                        f"  Warning: interaction markers '{groupby}' graph/label size mismatch; skipping."
+                    )
+                    continue
+
+                group_interactions = {}
+                for source_idx, source_name in enumerate(categories):
+                    if source_idx >= len(n_cells) or int(n_cells[source_idx]) <= 0:
+                        continue
+                    source_mask = labels == source_idx
+                    if not source_mask.any():
+                        continue
+                    row = counts[source_idx] if source_idx < counts.shape[0] else None
+                    if row is None:
+                        continue
+
+                    candidate_targets = [
+                        t for t in range(len(categories))
+                        if t != source_idx and t < len(row) and float(row[t]) > 0
+                    ]
+                    if not candidate_targets:
+                        continue
+
+                    def _target_sort_key(tidx: int):
+                        zval = None
+                        if isinstance(zscore, np.ndarray):
+                            if source_idx < zscore.shape[0] and tidx < zscore.shape[1]:
+                                zval = zscore[source_idx, tidx]
+                        if zval is not None and np.isfinite(zval):
+                            return (0, -float(zval), -float(row[tidx]), categories[tidx])
+                        return (1, 0.0, -float(row[tidx]), categories[tidx])
+
+                    ranked_targets = sorted(candidate_targets, key=_target_sort_key)[:top_targets]
+                    source_result = {}
+
+                    for target_idx in ranked_targets:
+                        target_name = categories[target_idx]
+                        target_vec = (labels == target_idx).astype(np.float32, copy=False)
+                        target_neighbor_counts = np.asarray(graph.dot(target_vec)).ravel()
+
+                        pos_mask = source_mask & (target_neighbor_counts >= min_neighbors)
+                        neg_mask = source_mask & (target_neighbor_counts == 0)
+                        n_pos = int(np.count_nonzero(pos_mask))
+                        n_neg = int(np.count_nonzero(neg_mask))
+                        if n_pos < min_cells or n_neg < min_cells:
+                            continue
+
+                        selected_mask = pos_mask | neg_mask
+                        selected_idx = np.flatnonzero(selected_mask)
+                        if selected_idx.size == 0:
+                            continue
+
+                        adata_idx = obs_idx[selected_idx]
+                        try:
+                            pair_adata = self.adata[adata_idx].copy()
+                            contact_labels = np.where(pos_mask[selected_idx], "contact+", "contact-")
+                            pair_adata.obs["_karospace_contact_group"] = pd.Categorical(
+                                contact_labels,
+                                categories=["contact+", "contact-"],
+                            )
+
+                            rg_kwargs = {
+                                "groupby": "_karospace_contact_group",
+                                "groups": ["contact+"],
+                                "reference": "contact-",
+                                "method": method,
+                                "pts": False,
+                                "key_added": "_karospace_interaction_markers",
+                                "n_genes": top_genes,
+                            }
+                            if de_layer is not None:
+                                rg_kwargs["layer"] = de_layer
+                            sc.tl.rank_genes_groups(pair_adata, **rg_kwargs)
+                            rg = pair_adata.uns.get("_karospace_interaction_markers", {})
+
+                            genes = _extract_group_values(rg.get("names"), "contact+", top_genes, cast=str)
+                            logfc = _extract_group_values(
+                                rg.get("logfoldchanges"),
+                                "contact+",
+                                top_genes,
+                                cast=lambda x: float(x) if np.isfinite(float(x)) else None,
+                            )
+                            pvals_adj = _extract_group_values(
+                                rg.get("pvals_adj"),
+                                "contact+",
+                                top_genes,
+                                cast=lambda x: float(x) if np.isfinite(float(x)) else None,
+                            )
+
+                            source_result[target_name] = {
+                                "genes": genes,
+                                "logfoldchanges": logfc,
+                                "pvals_adj": pvals_adj,
+                                "n_contact": n_pos,
+                                "n_non_contact": n_neg,
+                                "pct_contact": float((100.0 * n_pos) / max(1, n_pos + n_neg)),
+                                "mean_target_neighbors_contact": float(
+                                    np.mean(target_neighbor_counts[pos_mask]) if n_pos > 0 else 0.0
+                                ),
+                                "mean_target_neighbors_non_contact": float(
+                                    np.mean(target_neighbor_counts[neg_mask]) if n_neg > 0 else 0.0
+                                ),
+                                "target_edge_count": float(row[target_idx]),
+                                "target_zscore": (
+                                    float(zscore[source_idx, target_idx])
+                                    if isinstance(zscore, np.ndarray)
+                                    and source_idx < zscore.shape[0]
+                                    and target_idx < zscore.shape[1]
+                                    and np.isfinite(zscore[source_idx, target_idx])
+                                    else None
+                                ),
+                            }
+                        except Exception as e:
+                            print(
+                                f"  Warning: interaction markers failed for '{groupby}' "
+                                f"{source_name}->{target_name}: {e}"
+                            )
+
+                    if source_result:
+                        group_interactions[source_name] = source_result
+
+                if group_interactions:
+                    interaction_markers[groupby] = group_interactions
 
         # Build section data with all color layers
         sections_data = []
@@ -666,6 +903,7 @@ class SpatialDataset:
             "has_neighbors": neighbor_graph is not None,
             "neighbors_key": neighbor_graph_key,
             "neighbor_stats": neighbor_stats,
+            "interaction_markers": interaction_markers,
         }
 
 

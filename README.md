@@ -12,10 +12,12 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **Interactive zoom and pan** - Click any section to open a detailed view with mouse wheel zoom and drag-to-pan
 - **UMAP view with Magic Wand selection** - Toggle UMAP panel, draw to select cells, highlights sync across views
 - **Category toggling** - Click legend items to show/hide specific cell types or clusters; hidden cells appear as grey
+- **Linked spotlight mode** - Spotlight a legend category across grid + UMAP for faster visual comparison
 - **Gene expression visualization** - Pre-load genes of interest and switch between them with a viridis colormap
 - **Multiple color columns** - Switch between different annotation columns (e.g., cell types, clusters, conditions)
 - **Insights panel** - Search color columns, view categorical stats, and marker genes by color
 - **Neighbor stats + enrichment** - Neighbor composition and permutation z-scores for categorical cell types
+- **Cell-cell interaction browser** - Pick a source cell type to rank neighboring targets with enrichment and markers
 - **Metadata filtering** - Filter sections by metadata like experimental condition, timepoint, or region
 - **Cell tooltips** - Hover over cells to see their type or expression value
 - **Course-based borders** - Section panels are outlined with colors indicating their experimental course/condition
@@ -95,6 +97,10 @@ export_to_html(
     marker_genes_top_n=30,       # Top N markers per group
     neighbor_stats_permutations=100,  # Permutations for neighbor enrichment z-scores (0 disables)
     neighbor_stats_seed=0,       # Random seed for permutations
+    interaction_markers_groupby=["cell_type"],  # Optional: contact-conditioned DE for interaction browser
+    interaction_markers_top_targets=8,          # Targets evaluated per source type
+    interaction_markers_top_genes=20,           # Genes shown per source-target interaction
+    interaction_markers_min_cells=30,           # Minimum cells in contact+ and contact- groups
 )
 ```
 
@@ -222,9 +228,10 @@ export_to_html(
 - **Size slider** - Adjust spot size (drag or +/- buttons)
 - **Filter chips** - Click to filter sections by metadata
 - **Legend items** - Click to toggle categories on/off
+- **Spotlight button (legend)** - Enable linked spotlight; hover/click legend categories to dim others across grid + UMAP
 - **Legend button** - Show/hide the legend panel
 - **Insights button** - Toggle the insights panel (colors + stats + marker genes)
-- **Insights usage** - Use “Stats” to aggregate categorical colors by metadata, “Neighbors” for neighbor composition + z-scores, and “Marker genes” for top markers
+- **Insights usage** - Use “Stats” to aggregate categorical colors by metadata, “Neighbors” for neighbor composition + z-scores + interaction browser, and “Marker genes” for top markers
 - **Graph button** - Toggle neighborhood graph overlay (if available)
 - **Neighbors button** - Toggle neighbor rings on hover (if available)
 - **Hop selector** - Choose which neighbor hop(s) to display (if available)
@@ -247,6 +254,8 @@ export_to_html(
 ### UMAP View (if available)
 If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP toggle button appears:
 - **UMAP button** - Toggle the UMAP panel on/off
+- **Dock button (TR/TL/BR/BL)** - Cycle the panel corner placement
+- **Panel +/-** - Resize the UMAP panel
 - **Magic Wand** - Activate lasso selection mode
 - **Draw selection** - Click and drag to draw a selection area
 - **Clear** - Clear the current selection

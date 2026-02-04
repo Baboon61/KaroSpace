@@ -228,6 +228,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             min-height: 0;
             display: flex;
             flex-direction: column;
+            position: relative;
         }}
         .grid-container {{
             flex: 1;
@@ -513,6 +514,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-variant-numeric: tabular-nums;
         }}
         .trend-table th {{ color: var(--muted-color); font-weight: 600; }}
+        .interaction-target {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .interaction-markers {{
+            font-size: 10px;
+            color: var(--muted-color);
+            line-height: 1.35;
+        }}
 
         /* Dotplot */
         .dotplot-controls {{
@@ -584,6 +595,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.3s, border-color 0.3s, color 0.3s;
         }}
         .legend-btn:hover {{ background: var(--hover-bg); }}
+        .legend-btn.active {{
+            background: var(--accent-strong);
+            color: #fff;
+            border-color: var(--accent-strong);
+        }}
         .legend-item {{
             display: flex;
             align-items: center;
@@ -597,6 +613,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .legend-item:hover {{ background: var(--hover-bg); }}
         .legend-item.hidden {{ opacity: 0.3; text-decoration: line-through; }}
+        .legend-item.spotlight {{
+            background: color-mix(in srgb, var(--accent-strong) 10%, transparent);
+            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-strong) 35%, transparent);
+        }}
+        .legend-item.dimmed {{ opacity: 0.45; }}
         .legend-color {{
             width: 12px;
             height: 12px;
@@ -735,19 +756,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         /* UMAP panel styles */
         .umap-panel {{
-            width: min(320px, 34vw);
+            width: 320px;
+            max-width: min(560px, 90vw);
             aspect-ratio: 1 / 1;
             height: auto;
-            margin: 8px;
-            align-self: flex-start;
+            margin: 0;
+            position: absolute;
+            z-index: 20;
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
             border-radius: 8px;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
             overflow: hidden;
             display: none;
             flex-direction: column;
             transition: background 0.3s, border-color 0.3s;
         }}
+        .umap-panel.dock-top-right {{ top: 8px; right: 8px; left: auto; bottom: auto; }}
+        .umap-panel.dock-top-left {{ top: 8px; left: 8px; right: auto; bottom: auto; }}
+        .umap-panel.dock-bottom-right {{ bottom: 8px; right: 8px; left: auto; top: auto; }}
+        .umap-panel.dock-bottom-left {{ bottom: 8px; left: 8px; right: auto; top: auto; }}
         .umap-panel.visible {{ display: flex; }}
         .umap-header {{
             padding: 8px 12px;
@@ -759,6 +787,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.3s, border-color 0.3s;
         }}
         .umap-header h3 {{ font-size: 13px; font-weight: 600; }}
+        .umap-header-actions {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }}
         .umap-canvas-container {{
             flex: 1;
             position: relative;
@@ -1036,9 +1069,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <div class="main-container">
         <div class="content-column" id="content-column">
             <div class="grid-container" id="grid"></div>
-            <div class="umap-panel" id="umap-panel">
+            <div class="umap-panel dock-top-right" id="umap-panel">
                 <div class="umap-header">
                     <h3>UMAP</h3>
+                    <div class="umap-header-actions">
+                        <button class="umap-btn" id="umap-dock-btn" title="Cycle panel corner">TR</button>
+                        <button class="umap-btn" id="umap-panel-smaller" title="Smaller panel">−</button>
+                        <button class="umap-btn" id="umap-panel-larger" title="Larger panel">+</button>
+                    </div>
                 </div>
                 <div class="umap-canvas-container" id="umap-canvas-container">
                     <canvas class="umap-canvas" id="umap-canvas"></canvas>
@@ -1190,6 +1228,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const GENE_SCALE_PMAX = 99;
     const GENE_SCALE_MAX_SAMPLES = 200000;
     let hiddenCategories = new Set();
+    let linkedSpotlightEnabled = false;
+    let spotlightPinnedCategory = null;
+    let spotlightHoverCategory = null;
     let spotSize = {spot_size};
     let activeFilters = {{}};  // e.g. {{ course: new Set(['peak_I', 'peak_III']) }}
     let currentTheme = '{initial_theme}';
@@ -1205,6 +1246,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     ];
     const expandedAggGroups = new Set();
     const expandedNeighborGroups = new Set();
+    let interactionSourceCategory = null;
     let dotplotRenderToken = 0;
 
     // Modal state
@@ -1223,6 +1265,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let umapZoom = 1;
     let umapPanX = 0, umapPanY = 0;
     let umapSpotSize = 2;
+    let umapPanelDock = 'top-right';
+    let umapPanelSize = 320;
+    const UMAP_PANEL_DOCKS = ['top-right', 'bottom-right', 'bottom-left', 'top-left'];
+    const UMAP_PANEL_SIZE_STEP = 24;
+    const UMAP_PANEL_MIN_SIZE = 220;
+    const UMAP_PANEL_MAX_SIZE = 560;
+    const UMAP_PANEL_STORAGE_KEY = 'spatial-viewer-umap-panel';
     let isUmapDragging = false;
     let umapDragStartX = 0, umapDragStartY = 0;
     let umapLastPanX = 0, umapLastPanY = 0;
@@ -1359,6 +1408,50 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }};
         }}
         return DATA.colors_meta[currentColor] || {{ is_continuous: false, categories: [], vmin: 0, vmax: 1 }};
+    }}
+
+    function getLinkedSpotlightCategory(config = getColorConfig()) {{
+        if (!linkedSpotlightEnabled) return null;
+        if (!config || config.is_continuous) return null;
+        const categories = config.categories || [];
+        const candidate = spotlightHoverCategory || spotlightPinnedCategory;
+        if (!candidate) return null;
+        if (!categories.includes(candidate)) return null;
+        if (hiddenCategories.has(candidate)) return null;
+        return candidate;
+    }}
+
+    function updateLegendSpotlightClasses(targetId = 'legend') {{
+        const legend = document.getElementById(targetId);
+        if (!legend) return;
+        const config = getColorConfig();
+        const activeSpotlight = getLinkedSpotlightCategory(config);
+        legend.querySelectorAll('.legend-item').forEach(item => {{
+            const cat = item.dataset.category;
+            const isSpotlight = !!activeSpotlight && cat === activeSpotlight;
+            const isDimmed = !!activeSpotlight && cat !== activeSpotlight;
+            item.classList.toggle('spotlight', isSpotlight);
+            item.classList.toggle('dimmed', isDimmed);
+        }});
+        const toggleBtn = document.getElementById(`${{targetId}}-spotlight-toggle`);
+        if (toggleBtn) toggleBtn.classList.toggle('active', linkedSpotlightEnabled);
+    }}
+
+    function updateAllLegendSpotlightClasses() {{
+        updateLegendSpotlightClasses('legend');
+        updateLegendSpotlightClasses('modal-legend');
+    }}
+
+    function rerenderForSpotlightChange() {{
+        renderAllSections();
+        if (modalSection) renderModalSection();
+        if (umapVisible) renderUMAP();
+    }}
+
+    function formatNeighborCount(value) {{
+        if (!Number.isFinite(value)) return '0';
+        if (Math.abs(value - Math.round(value)) < 1e-6) return Math.round(value).toLocaleString();
+        return value.toFixed(2);
     }}
 
     function computeGenePercentiles(gene, pmin = GENE_SCALE_PMIN, pmax = GENE_SCALE_PMAX) {{
@@ -2057,6 +2150,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const config = getColorConfig();
         const adjustedSpotSize = Math.max(1, umapSpotSize * umapZoom * 0.5);
+        const activeSpotlight = getLinkedSpotlightCategory(config);
+        const hasSpotlight = !!activeSpotlight;
 
         // Check if any categories are hidden
         const hasHidden = hiddenCategories.size > 0 && !config.is_continuous;
@@ -2118,15 +2213,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     y < -adjustedSpotSize || y > height + adjustedSpotSize) continue;
 
                 let color;
+                let isSpotlightCategory = false;
                 if (config.is_continuous) {{
                     const t = (val - config.vmin) / (config.vmax - config.vmin);
                     color = magma(Math.max(0, Math.min(1, t)));
                 }} else {{
                     const catIdx = Math.round(val);
+                    const catName = config.categories[catIdx];
+                    isSpotlightCategory = hasSpotlight && catName === activeSpotlight;
                     color = getCategoryColor(catIdx);
                 }}
 
-                ctx.fillStyle = color;
+                if (hasSpotlight && !isSpotlightCategory) {{
+                    ctx.fillStyle = '#bbbbbb';
+                    ctx.globalAlpha = 0.12;
+                }} else {{
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = 1;
+                }}
                 ctx.beginPath();
                 ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
                 ctx.fill();
@@ -2139,6 +2243,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }}
             }}
         }});
+        ctx.globalAlpha = 1;
 
         // Draw lasso path if currently drawing
         if (isDrawingLasso && lassoPath.length > 1) {{
@@ -2235,6 +2340,64 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (modalSection) renderModalSection();
     }}
 
+    function clampUMAPPanelSize(size) {{
+        const viewportLimit = Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.8);
+        const maxSize = Math.max(UMAP_PANEL_MIN_SIZE, Math.min(UMAP_PANEL_MAX_SIZE, viewportLimit));
+        if (!Number.isFinite(size)) return Math.min(320, maxSize);
+        return Math.max(UMAP_PANEL_MIN_SIZE, Math.min(maxSize, Math.round(size)));
+    }}
+
+    function getUMAPDockLabel(dock) {{
+        if (dock === 'top-right') return 'TR';
+        if (dock === 'top-left') return 'TL';
+        if (dock === 'bottom-right') return 'BR';
+        if (dock === 'bottom-left') return 'BL';
+        return 'TR';
+    }}
+
+    function loadUMAPPanelState() {{
+        try {{
+            const saved = localStorage.getItem(UMAP_PANEL_STORAGE_KEY);
+            if (!saved) return;
+            const parsed = JSON.parse(saved);
+            if (parsed && typeof parsed === 'object') {{
+                if (UMAP_PANEL_DOCKS.includes(parsed.dock)) umapPanelDock = parsed.dock;
+                if (Number.isFinite(parsed.size)) umapPanelSize = clampUMAPPanelSize(parsed.size);
+            }}
+        }} catch (err) {{
+            // Ignore malformed localStorage values.
+        }}
+    }}
+
+    function saveUMAPPanelState() {{
+        try {{
+            localStorage.setItem(
+                UMAP_PANEL_STORAGE_KEY,
+                JSON.stringify({{ dock: umapPanelDock, size: umapPanelSize }})
+            );
+        }} catch (err) {{
+            // Ignore storage failures (private mode, quota, etc.).
+        }}
+    }}
+
+    function applyUMAPPanelState() {{
+        const panel = document.getElementById('umap-panel');
+        if (!panel) return;
+        umapPanelSize = clampUMAPPanelSize(umapPanelSize);
+        panel.classList.remove('dock-top-right', 'dock-top-left', 'dock-bottom-right', 'dock-bottom-left');
+        panel.classList.add(`dock-${{umapPanelDock}}`);
+        panel.style.width = `${{umapPanelSize}}px`;
+        const dockBtn = document.getElementById('umap-dock-btn');
+        if (dockBtn) dockBtn.textContent = getUMAPDockLabel(umapPanelDock);
+        saveUMAPPanelState();
+    }}
+
+    function adjustUMAPPanelSize(delta) {{
+        umapPanelSize = clampUMAPPanelSize(umapPanelSize + delta);
+        applyUMAPPanelState();
+        if (umapVisible) renderUMAP();
+    }}
+
     // Toggle UMAP panel
     function toggleUMAP() {{
         umapVisible = !umapVisible;
@@ -2256,6 +2419,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         // Show UMAP toggle button
         document.getElementById('umap-toggle').style.display = 'inline-block';
         document.getElementById('umap-toggle').addEventListener('click', toggleUMAP);
+        loadUMAPPanelState();
+        applyUMAPPanelState();
+
+        const dockBtn = document.getElementById('umap-dock-btn');
+        if (dockBtn) {{
+            dockBtn.addEventListener('click', () => {{
+                const idx = UMAP_PANEL_DOCKS.indexOf(umapPanelDock);
+                umapPanelDock = UMAP_PANEL_DOCKS[(idx + 1 + UMAP_PANEL_DOCKS.length) % UMAP_PANEL_DOCKS.length];
+                applyUMAPPanelState();
+                if (umapVisible) renderUMAP();
+            }});
+        }}
+        document.getElementById('umap-panel-smaller')?.addEventListener('click', () => {{
+            adjustUMAPPanelSize(-UMAP_PANEL_SIZE_STEP);
+        }});
+        document.getElementById('umap-panel-larger')?.addEventListener('click', () => {{
+            adjustUMAPPanelSize(UMAP_PANEL_SIZE_STEP);
+        }});
 
         // Magic wand button
         document.getElementById('magic-wand-btn').addEventListener('click', () => {{
@@ -2473,7 +2654,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         // Second pass: draw visible categories on top (with optional selected-category focus)
-        const hasTypeFocus = !config.is_continuous && modalSelectedCategory;
+        const activeSpotlight = getLinkedSpotlightCategory(config);
+        const focusCategory = activeSpotlight || modalSelectedCategory;
+        const hasTypeFocus = !config.is_continuous && focusCategory;
         for (let i = 0; i < section.x.length; i++) {{
             const val = values[i];
             if (val === null || val === undefined) continue;
@@ -2487,7 +2670,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const catIdx = Math.round(val);
                 const catName = config.categories[catIdx];
                 if (hiddenCategories.has(catName)) continue;  // Skip hidden, already drawn as grey
-                isSelectedCat = modalSelectedCategory && catName === modalSelectedCategory;
+                isSelectedCat = focusCategory && catName === focusCategory;
                 color = getCategoryColor(catIdx);
             }}
 
@@ -2802,7 +2985,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         // Second pass: draw visible categories on top (with optional selected-category focus)
-        const hasTypeFocus = !config.is_continuous && modalSelectedCategory;
+        const activeSpotlight = getLinkedSpotlightCategory(config);
+        const focusCategory = activeSpotlight || modalSelectedCategory;
+        const hasTypeFocus = !config.is_continuous && focusCategory;
         for (let i = 0; i < modalSection.x.length; i++) {{
             const val = values[i];
             if (val === null || val === undefined) continue;
@@ -2816,7 +3001,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const catIdx = Math.round(val);
                 const catName = config.categories[catIdx];
                 if (hiddenCategories.has(catName)) continue;
-                isSelectedCat = modalSelectedCategory && catName === modalSelectedCategory;
+                isSelectedCat = focusCategory && catName === focusCategory;
                 color = getCategoryColor(catIdx);
             }}
 
@@ -2912,17 +3097,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 ctx.fillRect(0, i, 16, 1);
             }}
         }} else {{
+            const activeSpotlight = getLinkedSpotlightCategory(config);
             let html = `
                 <div class="legend-title">${{colorLabel}}</div>
                 <div class="legend-actions">
                     <button class="legend-btn" id="${{targetId}}-show-all">Show All</button>
                     <button class="legend-btn" id="${{targetId}}-hide-all">Hide All</button>
+                    <button class="legend-btn ${{linkedSpotlightEnabled ? 'active' : ''}}" id="${{targetId}}-spotlight-toggle" title="Hover or click a category to spotlight">Spotlight</button>
                 </div>
             `;
             (config.categories || []).forEach((cat, idx) => {{
                 const hiddenClass = hiddenCategories.has(cat) ? 'hidden' : '';
                 const selectedClass = modalSelectedCategory && cat === modalSelectedCategory ? 'selected' : '';
-                html += `<div class="legend-item ${{hiddenClass}} ${{selectedClass}}" data-category="${{cat}}">
+                const spotlightClass = activeSpotlight && cat === activeSpotlight ? 'spotlight' : '';
+                const dimmedClass = activeSpotlight && cat !== activeSpotlight ? 'dimmed' : '';
+                html += `<div class="legend-item ${{hiddenClass}} ${{selectedClass}} ${{spotlightClass}} ${{dimmedClass}}" data-category="${{cat}}">
                     <div class="legend-color" style="background: ${{getCategoryColor(idx)}}"></div>
                     <span>${{cat}}</span>
                 </div>`;
@@ -2954,9 +3143,45 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (umapVisible) renderUMAP();
             }});
 
+            document.getElementById(`${{targetId}}-spotlight-toggle`)?.addEventListener('click', () => {{
+                linkedSpotlightEnabled = !linkedSpotlightEnabled;
+                if (!linkedSpotlightEnabled) {{
+                    spotlightPinnedCategory = null;
+                    spotlightHoverCategory = null;
+                }}
+                updateAllLegendSpotlightClasses();
+                rerenderForSpotlightChange();
+            }});
+
             legend.querySelectorAll('.legend-item').forEach(item => {{
+                item.addEventListener('mouseenter', () => {{
+                    if (!linkedSpotlightEnabled) return;
+                    const cat = item.dataset.category;
+                    if (!cat || spotlightHoverCategory === cat) return;
+                    spotlightHoverCategory = cat;
+                    updateAllLegendSpotlightClasses();
+                    rerenderForSpotlightChange();
+                }});
+                item.addEventListener('mouseleave', () => {{
+                    if (!linkedSpotlightEnabled) return;
+                    const cat = item.dataset.category;
+                    if (!cat || spotlightHoverCategory !== cat) return;
+                    spotlightHoverCategory = null;
+                    updateAllLegendSpotlightClasses();
+                    rerenderForSpotlightChange();
+                }});
                 item.addEventListener('click', () => {{
                     const cat = item.dataset.category;
+                    if (linkedSpotlightEnabled) {{
+                        if (hiddenCategories.has(cat)) hiddenCategories.delete(cat);
+                        if (spotlightPinnedCategory === cat) spotlightPinnedCategory = null;
+                        else spotlightPinnedCategory = cat;
+                        spotlightHoverCategory = null;
+                        renderLegend('legend');
+                        renderLegend('modal-legend');
+                        rerenderForSpotlightChange();
+                        return;
+                    }}
                     if (hiddenCategories.has(cat)) hiddenCategories.delete(cat);
                     else hiddenCategories.add(cat);
                     renderLegend('legend');
@@ -2966,6 +3191,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     if (umapVisible) renderUMAP();
                 }});
             }});
+            updateLegendSpotlightClasses(targetId);
         }}
     }}
 
@@ -3026,6 +3252,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                     <div class="color-aggregation" id="neighbor-stats">
                         <div class="agg-group-meta">Select a categorical color to view neighbor stats.</div>
+                    </div>
+                    <div>
+                        <label>Interaction source</label>
+                        <select id="interaction-source"></select>
+                    </div>
+                    <div>
+                        <label>Target filter</label>
+                        <input class="color-search" id="interaction-search" type="text" placeholder="Filter target cell types...">
+                    </div>
+                    <div class="color-aggregation" id="interaction-browser">
+                        <div class="agg-group-meta">Select a source cell type to browse interactions.</div>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-genes-content">
@@ -3125,6 +3362,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             aggregateContent.classList.remove('active');
             genesContent.classList.remove('active');
             renderNeighborStats();
+            renderInteractionBrowser();
         }});
         genesTab.addEventListener('click', () => {{
             genesTab.classList.add('active');
@@ -3174,6 +3412,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const neighborSearch = document.getElementById('neighbor-search');
         neighborSearch.addEventListener('input', () => {{
             renderNeighborStats();
+        }});
+        const interactionSource = document.getElementById('interaction-source');
+        interactionSource.addEventListener('change', () => {{
+            interactionSourceCategory = interactionSource.value || null;
+            renderInteractionBrowser();
+        }});
+        const interactionSearch = document.getElementById('interaction-search');
+        interactionSearch.addEventListener('input', () => {{
+            renderInteractionBrowser();
         }});
 
         // Dotplot setup
@@ -3299,6 +3546,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderColorAggregation();
                 renderCellTypeTrend();
                 renderNeighborStats();
+                renderInteractionBrowser();
                 renderMarkerGenes();
             }});
         }});
@@ -3695,6 +3943,169 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
+    function renderInteractionBrowser() {{
+        const container = document.getElementById('interaction-browser');
+        const sourceSelect = document.getElementById('interaction-source');
+        if (!container || !sourceSelect) return;
+
+        if (!DATA.has_neighbors) {{
+            container.innerHTML = '<div class="agg-group-meta">No neighbor graph was found in this dataset.</div>';
+            sourceSelect.innerHTML = '';
+            return;
+        }}
+        if (currentGene) {{
+            container.innerHTML = '<div class="agg-group-meta">Clear the gene input to browse cell-cell interactions.</div>';
+            sourceSelect.innerHTML = '';
+            return;
+        }}
+
+        const config = getColorConfig();
+        if (config.is_continuous) {{
+            container.innerHTML = '<div class="agg-group-meta">Interaction browser is available for categorical colors only.</div>';
+            sourceSelect.innerHTML = '';
+            return;
+        }}
+
+        const stats = (DATA.neighbor_stats || {{}})[currentColor];
+        if (!stats || !stats.counts || !stats.categories) {{
+            container.innerHTML = '<div class="agg-group-meta">No neighbor stats available for this color.</div>';
+            sourceSelect.innerHTML = '';
+            return;
+        }}
+
+        const categories = (stats.categories || []).map(cat => String(cat));
+        const counts = stats.counts || [];
+        const zscores = stats.zscore || null;
+        const nCells = stats.n_cells || [];
+        const meanDegree = stats.mean_degree || [];
+        const markers = (DATA.marker_genes || {{}})[currentColor] || {{}};
+        const interactionMarkersByColor = (DATA.interaction_markers || {{}})[currentColor] || {{}};
+        const hasInteractionMarkers = Object.keys(interactionMarkersByColor).length > 0;
+        if (categories.length === 0 || counts.length === 0) {{
+            container.innerHTML = '<div class="agg-group-meta">Interaction data is empty for this color.</div>';
+            sourceSelect.innerHTML = '';
+            return;
+        }}
+
+        const currentOptions = Array.from(sourceSelect.options).map(opt => opt.value);
+        const needsOptionsUpdate = (
+            currentOptions.length !== categories.length ||
+            currentOptions.some((value, idx) => value !== categories[idx])
+        );
+        if (needsOptionsUpdate) {{
+            sourceSelect.innerHTML = '';
+            categories.forEach(cat => {{
+                const opt = document.createElement('option');
+                opt.value = cat;
+                opt.textContent = cat;
+                sourceSelect.appendChild(opt);
+            }});
+        }}
+
+        if (interactionSourceCategory && categories.includes(interactionSourceCategory)) {{
+            sourceSelect.value = interactionSourceCategory;
+        }} else if (sourceSelect.value && categories.includes(sourceSelect.value)) {{
+            interactionSourceCategory = sourceSelect.value;
+        }} else {{
+            interactionSourceCategory = categories[0];
+            sourceSelect.value = interactionSourceCategory;
+        }}
+
+        const source = interactionSourceCategory;
+        const sourceIdx = categories.indexOf(source);
+        if (sourceIdx < 0) {{
+            container.innerHTML = '<div class="agg-group-meta">Choose a source cell type.</div>';
+            return;
+        }}
+        const sourceInteractionMarkers = interactionMarkersByColor[source] || {{}};
+
+        const row = counts[sourceIdx] || [];
+        const total = row.reduce((sum, value) => sum + (Number.isFinite(value) ? value : 0), 0);
+        const targetQuery = (document.getElementById('interaction-search')?.value || '').trim().toLowerCase();
+        const sourceMarkers = (markers[source] || []).slice(0, 6);
+        const sortedEntries = categories
+            .map((target, targetIdx) => {{
+                const count = Number(row[targetIdx] ?? 0);
+                const pct = total > 0 ? (count / total) * 100 : 0;
+                const z = (zscores && zscores[sourceIdx] && Number.isFinite(zscores[sourceIdx][targetIdx]))
+                    ? Number(zscores[sourceIdx][targetIdx])
+                    : null;
+                const targetMarkers = (markers[target] || []).slice(0, 4);
+                const contact = sourceInteractionMarkers[target] || null;
+                const contactMarkers = contact && Array.isArray(contact.genes)
+                    ? contact.genes.slice(0, 4).filter(Boolean)
+                    : [];
+                return {{ target, targetIdx, count, pct, z, targetMarkers, contact, contactMarkers }};
+            }})
+            .filter(entry => !targetQuery || entry.target.toLowerCase().includes(targetQuery))
+            .filter(entry => entry.count > 0 || (entry.z !== null && entry.z > 0))
+            .sort((a, b) => {{
+                if (a.z !== null && b.z !== null && a.z !== b.z) return b.z - a.z;
+                if (a.count !== b.count) return b.count - a.count;
+                return a.target.localeCompare(b.target);
+            }});
+
+        if (sortedEntries.length === 0) {{
+            container.innerHTML = '<div class="agg-group-meta">No target cell types match the current filter.</div>';
+            return;
+        }}
+
+        const topEntries = sortedEntries.slice(0, 12);
+        const sourceMarkerLabel = sourceMarkers.length ? sourceMarkers.join(', ') : 'No marker genes available.';
+        const sourceN = (nCells[sourceIdx] ?? 0).toLocaleString();
+        const degreeLabel = Number.isFinite(meanDegree[sourceIdx]) ? meanDegree[sourceIdx].toFixed(2) : '0.00';
+        const withContactMarkers = topEntries.filter(entry => !!entry.contact).length;
+        const rows = topEntries.map(entry => {{
+            const color = getCategoryColor(entry.targetIdx);
+            const zLabel = entry.z === null ? 'n/a' : entry.z.toFixed(2);
+            const markerLabel = entry.targetMarkers.length ? entry.targetMarkers.join(', ') : '—';
+            const contactLabel = entry.contactMarkers.length ? entry.contactMarkers.join(', ') : '—';
+            const contactMeta = entry.contact
+                ? `n+ ${{entry.contact.n_contact}} / n- ${{entry.contact.n_non_contact}}`
+                : 'insufficient cells';
+            return `
+                <tr>
+                    <td>
+                        <div class="interaction-target">
+                            <span class="agg-dot" style="background: ${{color}}"></span>
+                            <span>${{entry.target}}</span>
+                        </div>
+                    </td>
+                    <td>${{entry.pct.toFixed(1)}}%</td>
+                    <td>${{formatNeighborCount(entry.count)}}</td>
+                    <td>${{zLabel}}</td>
+                    <td class="interaction-markers">${{contactLabel}}<br><span style="opacity:0.75;">${{contactMeta}}</span></td>
+                    <td class="interaction-markers">${{markerLabel}}</td>
+                </tr>
+            `;
+        }}).join('');
+
+        container.innerHTML = `
+            <div class="agg-group">
+                <div class="agg-group-title">${{source}} → targets</div>
+                <div class="agg-group-meta">n=${{sourceN}} | mean degree=${{degreeLabel}} | neighbor edges=${{formatNeighborCount(total)}}</div>
+                <div class="agg-group-meta">Source markers: ${{sourceMarkerLabel}}</div>
+                <div class="agg-group-meta">Contact-conditioned markers available for ${{withContactMarkers}}/${{topEntries.length}} shown targets.</div>
+                ${{hasInteractionMarkers ? '' : '<div class="agg-group-meta">Contact markers not precomputed for this color (set interaction_markers_groupby during export).</div>'}}
+            </div>
+            <table class="trend-table">
+                <thead>
+                    <tr>
+                        <th>Target</th>
+                        <th>Share</th>
+                        <th>Edges</th>
+                        <th>Z</th>
+                        <th>Contact markers</th>
+                        <th>Type markers</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${{rows}}
+                </tbody>
+            </table>
+        `;
+    }}
+
     function stepRange(rangeEl, delta) {{
         if (!rangeEl) return;
         const min = parseFloat(rangeEl.min || '0');
@@ -3858,6 +4269,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderCellTypeTrend();
             }} else if (isNeighbors) {{
                 renderNeighborStats();
+                renderInteractionBrowser();
             }} else if (isGenes) {{
                 const isDot = document.getElementById('genes-tab-dotplot')?.classList.contains('active');
                 const isMarkers = document.getElementById('genes-tab-markers')?.classList.contains('active');
@@ -3966,6 +4378,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!colorPanel.classList.contains('collapsed')) {{
                 if (document.getElementById('color-tab-neighbors')?.classList.contains('active')) {{
                     renderNeighborStats();
+                    renderInteractionBrowser();
                 }} else if (document.getElementById('color-tab-genes')?.classList.contains('active')) {{
                     if (document.getElementById('genes-tab-dotplot')?.classList.contains('active')) renderDotplot();
                     if (document.getElementById('genes-tab-markers')?.classList.contains('active')) renderMarkerGenes();
@@ -4274,6 +4687,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         requestAnimationFrame(renderAllSections);
     }});
     window.addEventListener('resize', () => {{
+        if (DATA.has_umap) applyUMAPPanelState();
         renderAllSections();
         if (modalSection) renderModalSection();
         if (umapVisible) renderUMAP();
@@ -4311,6 +4725,13 @@ def export_to_html(
     neighbor_stats_groupby: Optional[List[str]] = None,
     neighbor_stats_permutations: Union[int, None] = None,
     neighbor_stats_seed: int = 0,
+    interaction_markers_groupby: Optional[List[str]] = None,
+    interaction_markers_top_targets: int = 8,
+    interaction_markers_top_genes: int = 20,
+    interaction_markers_min_cells: int = 30,
+    interaction_markers_min_neighbors: int = 1,
+    interaction_markers_method: str = "wilcoxon",
+    interaction_markers_layer: Optional[str] = "normalized",
 ) -> str:
     """
     Export spatial dataset to a standalone HTML file.
@@ -4367,6 +4788,20 @@ def export_to_html(
         Number of permutations for neighbor enrichment z-scores (0 disables)
     neighbor_stats_seed : int
         Random seed used for neighbor permutations
+    interaction_markers_groupby : list, optional
+        Obs columns to compute contact-conditioned interaction markers for.
+    interaction_markers_top_targets : int
+        Number of target cell types to evaluate per source.
+    interaction_markers_top_genes : int
+        Number of top DE genes to keep per source-target interaction.
+    interaction_markers_min_cells : int
+        Minimum cells required in both contact+ and contact- groups.
+    interaction_markers_min_neighbors : int
+        Minimum target neighbors to classify source cells as contact+.
+    interaction_markers_method : str
+        Method passed to scanpy.tl.rank_genes_groups (e.g. "wilcoxon", "t-test").
+    interaction_markers_layer : str, optional
+        Layer used for interaction DE (default: "normalized" if present).
 
     Returns
     -------
@@ -4462,6 +4897,13 @@ def export_to_html(
         neighbor_stats_groupby=neighbor_stats_groupby,
         neighbor_stats_permutations=neighbor_stats_permutations,
         neighbor_stats_seed=neighbor_stats_seed,
+        interaction_markers_groupby=interaction_markers_groupby,
+        interaction_markers_top_targets=interaction_markers_top_targets,
+        interaction_markers_top_genes=interaction_markers_top_genes,
+        interaction_markers_min_cells=interaction_markers_min_cells,
+        interaction_markers_min_neighbors=interaction_markers_min_neighbors,
+        interaction_markers_method=interaction_markers_method,
+        interaction_markers_layer=interaction_markers_layer,
     )
 
     # Theme settings
