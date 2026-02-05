@@ -97,6 +97,24 @@ def main():
         default="auto",
         help="Neighbor enrichment permutation count. Use 0 to disable, or 'auto' (default) which disables for very large datasets."
     )
+    parser.add_argument(
+        "--neighbor-stats-groupby",
+        type=str,
+        default="auto",
+        help="Comma-separated obs columns to compute neighbor composition stats for. Use 'auto' (default) to match the initial color; empty disables."
+    )
+    parser.add_argument(
+        "--marker-genes-groupby",
+        type=str,
+        default="",
+        help="Comma-separated obs columns to compute marker genes for. Empty disables (default)."
+    )
+    parser.add_argument(
+        "--interaction-markers-groupby",
+        type=str,
+        default="",
+        help="Comma-separated obs columns to compute contact-conditioned interaction markers for. Empty disables (default)."
+    )
 
     args = parser.parse_args()
 
@@ -122,6 +140,16 @@ def main():
         except ValueError:
             print("Error: --neighbor-permutations must be an integer or 'auto'", file=sys.stderr)
             sys.exit(2)
+    def _parse_csv(value: str):
+        cleaned = [v.strip() for v in str(value).split(",") if v.strip()]
+        return cleaned or None
+
+    if str(args.neighbor_stats_groupby).lower() == "auto":
+        neighbor_stats_groupby = [args.color]
+    else:
+        neighbor_stats_groupby = _parse_csv(args.neighbor_stats_groupby)
+    marker_genes_groupby = _parse_csv(args.marker_genes_groupby)
+    interaction_markers_groupby = _parse_csv(args.interaction_markers_groupby)
 
     # Load and export
     print(f"Loading data from: {args.input}")
@@ -145,6 +173,9 @@ def main():
         pack_arrays=args.pack_arrays,
         pack_arrays_min_len=args.pack_arrays_min_len,
         neighbor_stats_permutations=neighbor_perms,
+        neighbor_stats_groupby=neighbor_stats_groupby,
+        marker_genes_groupby=marker_genes_groupby,
+        interaction_markers_groupby=interaction_markers_groupby,
     )
 
     print(f"Done! Open {output_path} in a browser to view.")

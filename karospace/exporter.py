@@ -4796,11 +4796,13 @@ def export_to_html(
     hvg_limit : int
         Max number of highly variable genes to include (default 20)
     marker_genes_groupby : list, optional
-        Obs columns to compute marker genes for (categorical only)
+        Obs columns to compute marker genes for (categorical only). If None/empty,
+        marker genes are not computed.
     marker_genes_top_n : int
         Number of top marker genes to keep per group
     neighbor_stats_groupby : list, optional
-        Obs columns to compute neighbor composition stats for (categorical only)
+        Obs columns to compute neighbor composition stats for (categorical only).
+        If None/empty, neighbor stats are not computed.
     neighbor_stats_permutations : int
         Number of permutations for neighbor enrichment z-scores (0 disables)
     neighbor_stats_seed : int
@@ -4896,7 +4898,7 @@ def export_to_html(
     if neighbor_stats_permutations is None:
         # Auto-tune: permutation z-scores are expensive for very large datasets.
         # Keep the feature (counts + mean degree) always, but skip permutations unless requested.
-        neighbor_stats_permutations = 0 if int(dataset.adata.n_obs) >= 200_000 else 100
+        neighbor_stats_permutations = 0 if int(dataset.adata.n_obs) >= 200_000 else 20
 
     data = dataset.to_json_data(
         color,

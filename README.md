@@ -91,13 +91,14 @@ export_to_html(
     pack_arrays_min_len=1024,
     use_hvgs=True,               # Use adata.var['highly_variable'] when available
     hvg_limit=20,                # Max number of HVGs to include
-    marker_genes_groupby=[       # Compute marker genes for these categorical obs columns
+    marker_genes_groupby=None,   # Marker genes off by default (enable with a categorical column)
+    marker_genes_top_n=30,       # Top N markers per group
+    neighbor_stats_groupby=[         # Compute neighbor composition stats for these categorical obs columns
         "cell_type",
     ],
-    marker_genes_top_n=30,       # Top N markers per group
-    neighbor_stats_permutations=100,  # Permutations for neighbor enrichment z-scores (0 disables)
+    neighbor_stats_permutations=20,   # Permutations for neighbor enrichment z-scores (0 disables)
     neighbor_stats_seed=0,       # Random seed for permutations
-    interaction_markers_groupby=["cell_type"],  # Optional: contact-conditioned DE for interaction browser
+    interaction_markers_groupby=None,           # Interaction markers off by default
     interaction_markers_top_targets=8,          # Targets evaluated per source type
     interaction_markers_top_genes=20,           # Genes shown per source-target interaction
     interaction_markers_min_cells=30,           # Minimum cells in contact+ and contact- groups
@@ -130,6 +131,9 @@ karospace your_data.h5ad -o viewer.html --color leiden --cols 6
 | `--no-pack-arrays` | Disable base64 packing of large per-section arrays | off |
 | `--pack-arrays-min-len` | Only pack arrays when section cell count ≥ this value | `1024` |
 | `--neighbor-permutations` | Permutations for neighbor enrichment z-scores (`auto`, `0`, `100`, …) | `auto` |
+| `--neighbor-stats-groupby` | Comma-separated obs columns to compute neighbor composition stats for (`auto`, empty disables) | `auto` |
+| `--marker-genes-groupby` | Comma-separated obs columns to compute marker genes for (empty disables) | empty |
+| `--interaction-markers-groupby` | Comma-separated obs columns to compute contact-conditioned markers for (empty disables) | empty |
 
 ## Data Requirements
 
@@ -169,8 +173,10 @@ dataset = load_spatial_data(
 ### Optional neighborhood graph
 
 If `adata.obsp` contains a neighbor graph (e.g., `spatial_connectivities`, `connectivities`,
-`neighbors`, or `neighbor_graph`), KaroSpace will expose graph/neighbor-hover controls and
-compute neighbor composition plus optional permutation z-scores for categorical colors.
+`neighbors`, or `neighbor_graph`), KaroSpace will expose graph/neighbor-hover controls.
+Neighbor composition stats are **enabled by default** for the initial color. To customize,
+pass `neighbor_stats_groupby=[...]` to `export_to_html` (or `--neighbor-stats-groupby`
+in the CLI).
 
 To enable contact-conditioned interaction markers in the interaction browser, pass
 `interaction_markers_groupby=[...]` to `export_to_html` (typically the same categorical
