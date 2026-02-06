@@ -28,6 +28,16 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **Adjustable spot size** - Control cell/spot size with slider and +/- steps in grid/UMAP/modal views
 - **Standalone HTML** - Generated files are self-contained with embedded data and JavaScript
 
+## Browser Considerations
+
+KaroSpace is canvas-heavy. Chrome/Chromium browsers are generally fastest; Safari can be noticeably slower on large datasets.
+To mitigate this, the viewer caps canvas device pixel ratio (DPR) in Safari at `1.0` by default, reducing pixel work on Retina displays.
+
+Performance tips for large datasets:
+- Reduce `downsample` to limit cells per section.
+- Lower `min_panel_size` to reduce the number of pixels drawn.
+- Keep the neighbor graph toggle off unless needed.
+
 ## Installation
 
 ### From source

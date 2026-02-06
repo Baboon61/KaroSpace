@@ -1189,6 +1189,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const OUTLINE_BY = {outline_by_json};
     const VIEWER_INFO_HTML = {viewer_info_html_json};
 
+    const USER_AGENT = navigator.userAgent || '';
+    const IS_SAFARI = /Safari/i.test(USER_AGENT) &&
+        !/Chrome|Chromium|Edg|OPR|CriOS|FxiOS|Android/i.test(USER_AGENT);
+    const SAFARI_DPR_CAP = 1.0;
+
+    function getRenderDpr() {{
+        const dpr = getRenderDpr();
+        if (IS_SAFARI) return Math.max(1, Math.min(dpr, SAFARI_DPR_CAP));
+        return dpr;
+    }}
+
     // Outline color overrides (used for course by default)
     const OUTLINE_COLOR_OVERRIDES = {{
         'peak_I': 'rgba(228, 26, 28, 0.5)',
@@ -1358,7 +1369,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         ensureHtml2CanvasLoaded()
             .then(() => html2canvas(document.body, {{
                 backgroundColor: null,
-                scale: window.devicePixelRatio || 1,
+                scale: getRenderDpr(),
                 useCORS: true
             }}))
             .then(canvas => {{
@@ -2123,7 +2134,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const canvas = document.getElementById('umap-canvas');
         const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = getRenderDpr();
         const container = document.getElementById('umap-canvas-container');
         const rect = container.getBoundingClientRect();
         canvas.width = rect.width * dpr;
@@ -2556,7 +2567,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderSection(section, canvas) {{
         ensureSectionXY(section);
         const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = getRenderDpr();
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
@@ -2877,7 +2888,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const canvas = document.getElementById('modal-canvas');
         const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
+        const dpr = getRenderDpr();
         const container = document.getElementById('modal-canvas-container');
         const rect = container.getBoundingClientRect();
         canvas.width = rect.width * dpr;
@@ -3088,7 +3099,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             `;
             const colorbar = document.getElementById(`${{targetId}}-colorbar`);
             const ctx = colorbar.getContext('2d');
-            const dpr = window.devicePixelRatio || 1;
+            const dpr = getRenderDpr();
             colorbar.width = 16 * dpr;
             colorbar.height = 150 * dpr;
             ctx.scale(dpr, dpr);
