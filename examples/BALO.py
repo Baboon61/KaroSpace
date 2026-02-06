@@ -9,7 +9,7 @@ from karospace import load_spatial_data, export_to_html
 
 # Path to your h5ad file
 # Update this path to point to your EAE/MANA data
-H5AD_PATH = '/Users/christoffer/work/karolinska/development/baloMS/data/baloMS_indep_clust_balo_MANA_balo.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
+H5AD_PATH = '/Volumes/processing2/BALO/baloMS-nuclei-clustered-balo.h5ad'#'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
 
 # Load the dataset
 # - groupby: column in adata.obs that identifies each section
@@ -52,7 +52,7 @@ export_to_html(
     additional_colors=[
        'leiden_0.5',
        'leiden_1', 'leiden_1.5', 'leiden_2', 'gmm_mana_10', 'gmm_mana_15',
-       'gmm_mana_20', 'gmm_mana_5', 'gmm_mana_8', 'condition','segmentation_method'
+       'gmm_mana_20', 'gmm_mana_30', 'gmm_mana_5', 'gmm_mana_8', 'condition','segmentation_method'
     ],
 
     # Pre-load specific genes for expression visualization
@@ -92,16 +92,16 @@ export_to_html(
     # Compute marker genes for these categorical color columns
     # (appears in the Color panel under "Marker genes")
     marker_genes_groupby=[
-       'leiden_0.5',
+        'leiden_0.5',
        'leiden_1', 'leiden_1.5', 'leiden_2', 'gmm_mana_10', 'gmm_mana_15',
-       'gmm_mana_20', 'gmm_mana_5', 'gmm_mana_8',
+       'gmm_mana_20', 'gmm_mana_5', 'gmm_mana_8','gmm_mana_30'
     ],
     marker_genes_top_n=50,
     # Force permutation z-scores (auto mode disables permutations for very large datasets).
     neighbor_stats_permutations=25,
     neighbor_stats_seed=42,
     # Contact-conditioned interaction markers (source near target vs source not near target).
-    interaction_markers_groupby=["leiden_0.5"],
+    interaction_markers_groupby=None,
     interaction_markers_top_targets=6,
     interaction_markers_top_genes=15,
     interaction_markers_min_cells=30,

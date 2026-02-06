@@ -115,7 +115,7 @@ export_to_html(
     neighbor_stats_permutations=25,
     neighbor_stats_seed=42,
     # Contact-conditioned interaction markers (source near target vs source not near target).
-    interaction_markers_groupby=["anno_L2"],
+    interaction_markers_groupby=None,
     interaction_markers_top_targets=6,
     interaction_markers_top_genes=15,
     interaction_markers_min_cells=30,

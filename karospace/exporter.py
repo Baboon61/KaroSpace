@@ -1195,7 +1195,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const SAFARI_DPR_CAP = 1.0;
 
     function getRenderDpr() {{
-        const dpr = getRenderDpr();
+        const dpr = window.devicePixelRatio || 1;
         if (IS_SAFARI) return Math.max(1, Math.min(dpr, SAFARI_DPR_CAP));
         return dpr;
     }}
