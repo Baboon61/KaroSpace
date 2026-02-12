@@ -240,6 +240,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 8px;
             align-content: start;
         }}
+        .grid-container.single-section-layout {{
+            grid-template-columns: minmax(320px, min(100%, 900px));
+            justify-content: center;
+        }}
+        .grid-container.single-section-layout .section-panel {{
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+        }}
         .section-panel {{
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -1411,6 +1420,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <button class="graph-toggle" id="modal-blend-toggle" title="Split the view between two selected variables">Split</button>
                         <button class="graph-toggle" id="modal-magic-wand-btn" title="Draw to select cells in this section">Magic Wand</button>
                         <button class="graph-toggle" id="modal-annotate-btn" title="Draw persistent polygon annotations in this section">Annotate</button>
+                        <button class="graph-toggle" id="modal-screenshot-btn" title="Download screenshot of this sample view">Screenshot</button>
                         <button class="graph-toggle" id="modal-clear-selection-btn" title="Clear selected cells">Clear selection</button>
                         <button class="graph-toggle" id="modal-graph-toggle" title="Toggle neighborhood graph" style="display: none;">Graph</button>
                         <button class="graph-toggle" id="modal-neighbor-hover-toggle" title="Toggle neighbor rings on hover" style="display: none;">Neighbors</button>
@@ -1709,6 +1719,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             .catch(() => {{
                 alert('Screenshot failed (offline? blocked CDN?).');
             }});
+    }}
+
+    function sanitizeFilenamePart(value) {{
+        if (!value) return 'section';
+        const s = String(value).trim().replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+        return s || 'section';
+    }}
+
+    function screenshotModalView() {{
+        if (!modalSection) {{
+            alert('Open a section first.');
+            return;
+        }}
+        const canvas = document.getElementById('modal-canvas');
+        if (!canvas) {{
+            alert('Sample canvas not available.');
+            return;
+        }}
+        const sectionName = sanitizeFilenamePart(modalSection.id);
+        const name = `spatial-viewer-${{sectionName}}-${{getScreenshotTimestamp()}}.png`;
+        downloadCanvasImage(canvas, name);
     }}
 
     // Color utilities
@@ -5266,6 +5297,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function initGrid() {{
         const grid = document.getElementById('grid');
         grid.innerHTML = '';
+        grid.classList.toggle('single-section-layout', (DATA.n_sections || 0) === 1);
 
         DATA.sections.forEach(section => {{
             const panel = document.createElement('div');
@@ -5530,6 +5562,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             modalZoom = 1; modalPanX = 0; modalPanY = 0;
             renderModalSection();
         }});
+        document.getElementById('modal-screenshot-btn')?.addEventListener('click', screenshotModalView);
 
         const modalRange = document.getElementById('modal-spot-size');
         if (modalRange) {{
