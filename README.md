@@ -316,6 +316,9 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 ### Deployment
 - **Local use**: Open the generated `.html` in any modern browser (Chrome, Firefox, Safari). No server needed.
 - **Static hosting**: You can host the HTML as a static asset (e.g., GitHub Pages, S3, lab intranet). Since it’s self-contained, there are no runtime dependencies.
+- **GitHub Pages (this repo)**: Use **Source = GitHub Actions** (static HTML artifact deploy). Do **not** use Jekyll/deploy-from-branch mode for this workflow.
+- **BALO deployment workflow**: `.github/workflows/pages-balo.yml` publishes `BALO.html` and creates an `index.html` redirect.
+- **BALO test URL**: `https://christoffermattssonlangseth.github.io/KaroSpace/BALO.html` (available after a successful Pages workflow run).
 - **File size note**: Large datasets create large HTML files. Consider `downsample` and limiting `genes`/`additional_colors` to keep the file manageable.
 
 ### Use
