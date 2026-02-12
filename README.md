@@ -9,7 +9,6 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 ## Live Demo
 
 - **BALO viewer (GitHub Pages)**: [Open hosted demo](https://christoffermattssonlangseth.github.io/KaroSpace/BALO.html)
-- **Workflow run status**: [Deploy BALO Viewer](https://github.com/christoffermattssonlangseth/KaroSpace/actions/workflows/pages-balo.yml)
 
 ## Features
 
