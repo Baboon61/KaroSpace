@@ -8,7 +8,7 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 
 ## Live Demo
 
-- **BALO viewer (GitHub Pages)**: [Open hosted demo](https://christoffermattssonlangseth.github.io/KaroSpace/BALO.html)
+- **Pancreas viewer (GitHub Pages)**: [Open hosted demo](https://christoffermattssonlangseth.github.io/KaroSpace/pancreas.html)
 
 ## Features
 
@@ -289,6 +289,7 @@ export_to_html(
 - **Annotate button** - Draw persistent polygons in the section (multiple polygons supported)
 - **Annotation panel** - Rename polygons, select polygon cells, delete polygons, or clear section/all
 - **Export JSON** - Download all polygon annotations including vertices + mapped cell indices
+- **Screenshot button** - Download a PNG of the current sample (modal) view
 - **Clear selection** - Remove current selected cells
 - **Graph button** - Toggle neighborhood graph overlay (if available)
 - **Neighbors button** - Toggle neighbor rings on hover (if available)
@@ -325,8 +326,8 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 - **Local use**: Open the generated `.html` in any modern browser (Chrome, Firefox, Safari). No server needed.
 - **Static hosting**: You can host the HTML as a static asset (e.g., GitHub Pages, S3, lab intranet). Since it’s self-contained, there are no runtime dependencies.
 - **GitHub Pages (this repo)**: Use **Source = GitHub Actions** (static HTML artifact deploy). Do **not** use Jekyll/deploy-from-branch mode for this workflow.
-- **BALO deployment workflow**: `.github/workflows/pages-balo.yml` publishes `BALO.html` and creates an `index.html` redirect.
-- **BALO test URL**: `https://christoffermattssonlangseth.github.io/KaroSpace/BALO.html` (available after a successful Pages workflow run).
+- **Pancreas deployment workflow**: `.github/workflows/pages-balo.yml` publishes `pancreas.html` and creates an `index.html` redirect.
+- **Pancreas test URL**: `https://christoffermattssonlangseth.github.io/KaroSpace/pancreas.html` (available after a successful Pages workflow run).
 - **File size note**: Large datasets create large HTML files. Consider `downsample` and limiting `genes`/`additional_colors` to keep the file manageable.
 
 ### Use

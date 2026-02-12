@@ -1,4 +1,4 @@
-name: Deploy BALO Viewer
+name: Deploy Pancreas Viewer
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
     branches:
       - main
     paths:
-      - BALO.html
+      - pancreas.html
       - .github/workflows/pages-balo.yml
 
 permissions:
@@ -32,18 +32,18 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p _site
-          cp BALO.html _site/BALO.html
+          cp pancreas.html _site/pancreas.html
           cat > _site/index.html <<'HTML'
           <!doctype html>
           <html lang="en">
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width, initial-scale=1">
-              <title>BALO Viewer</title>
-              <meta http-equiv="refresh" content="0; url=./BALO.html">
+              <title>Pancreas Viewer</title>
+              <meta http-equiv="refresh" content="0; url=./pancreas.html">
             </head>
             <body>
-              <p>Redirecting to <a href="./BALO.html">BALO.html</a>...</p>
+              <p>Redirecting to <a href="./pancreas.html">pancreas.html</a>...</p>
             </body>
           </html>
           HTML
