@@ -11,6 +11,10 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **Multi-section grid view** - Display dozens or hundreds of tissue sections in a responsive grid layout
 - **Interactive zoom and pan** - Click any section to open a detailed view with mouse wheel zoom and drag-to-pan
 - **UMAP view with Magic Wand selection** - Toggle UMAP panel, draw to select cells, highlights sync across views
+- **Modal section Magic Wand** - Draw lasso selections directly inside the zoomed section view
+- **Selection summaries** - Selected-cell totals + per-type counts with expandable category list and scrollable panel
+- **Modal split compare slider** - In zoomed section view, compare variable A vs B with a left/right split
+- **Flexible split inputs** - A/B can be cell type/cluster columns or genes; cell-type sides support one category or `All categories`
 - **Category toggling** - Click legend items to show/hide specific cell types or clusters; hidden cells appear as grey
 - **Linked spotlight mode** - Spotlight a legend category across grid + UMAP for faster visual comparison
 - **Gene expression visualization** - Pre-load genes of interest and switch between them with a viridis colormap
@@ -271,7 +275,11 @@ export_to_html(
 - **Click and drag** - Pan around
 - **Zoom buttons** - +/- zoom controls
 - **Reset button** - Return to default zoom/pan
-- **Split button** - Compare two variables with a left/right slider split (cell type/cluster, gene, or mixed; cell-type sides can target one category or All categories)
+- **Split button** - Open the A/B comparison panel in modal view
+- **A/B variable selectors** - Choose per side: `Cell type` or `Gene`
+- **Cell type mode** - Pick annotation column + either one category or `All categories`
+- **Gene mode** - Pick a pre-loaded gene from the gene list
+- **Split slider** - Controls left/right display share (e.g. 10% = left 10% uses A, right 90% uses B)
 - **Magic Wand** - Draw a lasso directly on the section to select cells of interest
 - **Clear selection** - Remove current selected cells
 - **Graph button** - Toggle neighborhood graph overlay (if available)
@@ -279,6 +287,8 @@ export_to_html(
 - **Hop selector** - Choose which neighbor hop(s) to display (if available)
 - **Size slider** - Adjust spot size for this view
 - **Selection summary** - Shows selected-cell count and per-type counts for the active annotation
+- **Selection summary expand** - Click `+N more categories` to expand; click again to collapse
+- **Selection summary scroll** - Scroll inside the summary panel to inspect long category lists
 - **Hover over cells** - See cell type or expression value
 - **Escape or click outside** - Close modal
 
@@ -293,6 +303,8 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 - **Size slider** - Adjust point size in the UMAP view
 - **Mouse wheel** - Zoom the UMAP view
 - **Selection summary** - Shows selected-cell count and per-type counts synced with the section view
+- **Selection summary expand** - Click `+N more categories` to expand; click again to collapse
+- **Selection summary scroll** - Scroll inside the summary panel to inspect long category lists
 
 ## Implementation, Deployment, and Use
 
@@ -310,7 +322,6 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 - **Sharing**: Send the HTML file directly to collaborators; it will work offline once downloaded.
 - **Viewing**: Just double-click or drag into a browser. All controls work immediately.
 - **Updates**: Re-run `export_to_html` to refresh the file when annotations or metadata change.
-- **Click and drag** (without Magic Wand) - Pan the UMAP view
 
 Selected cells are highlighted with a yellow/gold outline in both UMAP and spatial views.
 
