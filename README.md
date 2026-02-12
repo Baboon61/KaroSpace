@@ -271,10 +271,14 @@ export_to_html(
 - **Click and drag** - Pan around
 - **Zoom buttons** - +/- zoom controls
 - **Reset button** - Return to default zoom/pan
+- **Split button** - Compare two variables with a left/right slider split (cell type/cluster, gene, or mixed; cell-type sides can target one category or All categories)
+- **Magic Wand** - Draw a lasso directly on the section to select cells of interest
+- **Clear selection** - Remove current selected cells
 - **Graph button** - Toggle neighborhood graph overlay (if available)
 - **Neighbors button** - Toggle neighbor rings on hover (if available)
 - **Hop selector** - Choose which neighbor hop(s) to display (if available)
 - **Size slider** - Adjust spot size for this view
+- **Selection summary** - Shows selected-cell count and per-type counts for the active annotation
 - **Hover over cells** - See cell type or expression value
 - **Escape or click outside** - Close modal
 
@@ -288,6 +292,7 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 - **Clear** - Clear the current selection
 - **Size slider** - Adjust point size in the UMAP view
 - **Mouse wheel** - Zoom the UMAP view
+- **Selection summary** - Shows selected-cell count and per-type counts synced with the section view
 
 ## Implementation, Deployment, and Use
 

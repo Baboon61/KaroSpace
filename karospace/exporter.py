@@ -698,6 +698,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             left: 50%;
             transform: translateX(-50%);
             display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
             gap: 6px;
             background: var(--header-bg);
             padding: 6px 10px;
@@ -718,6 +720,140 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .modal-controls button:hover {{ background: var(--hover-bg); }}
         .modal-legend {{ width: 180px; padding: 12px; border-left: 1px solid var(--border-color); overflow-y: auto; transition: border-color 0.3s; }}
         .zoom-info {{ font-size: 10px; color: var(--muted-color); margin-left: 6px; }}
+        .modal-blend-panel {{
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: min(420px, calc(100% - 16px));
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--header-bg) 92%, transparent);
+            backdrop-filter: blur(6px);
+            z-index: 3;
+            display: none;
+            pointer-events: auto;
+        }}
+        .modal-blend-panel.visible {{ display: block; }}
+        .modal-blend-title {{
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--muted-color);
+            margin-bottom: 6px;
+        }}
+        .modal-blend-row {{
+            display: grid;
+            grid-template-columns: 18px 112px 1fr;
+            gap: 6px;
+            align-items: center;
+            margin-bottom: 6px;
+        }}
+        .modal-blend-row:last-child {{ margin-bottom: 0; }}
+        .modal-blend-row select,
+        .modal-blend-row input[type="text"],
+        .modal-blend-row input[type="range"] {{
+            min-width: 0;
+            width: 100%;
+            font-size: 11px;
+        }}
+        .modal-blend-side {{
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-color);
+        }}
+        .modal-blend-fields {{
+            display: flex;
+            gap: 4px;
+            min-width: 0;
+        }}
+        .modal-blend-fields > * {{
+            flex: 1 1 0;
+            min-width: 0;
+        }}
+        .modal-blend-meta {{
+            margin-top: 4px;
+            font-size: 10px;
+            color: var(--muted-color);
+            line-height: 1.35;
+        }}
+        .modal-selection-info {{
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            font-size: 11px;
+            color: var(--muted-color);
+            padding: 4px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
+            backdrop-filter: blur(6px);
+            pointer-events: none;
+            z-index: 2;
+        }}
+        .selection-summary {{
+            position: absolute;
+            left: 8px;
+            max-width: min(360px, calc(100% - 16px));
+            max-height: min(70%, 420px);
+            overflow-y: auto;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
+            backdrop-filter: blur(6px);
+            font-size: 11px;
+            color: var(--text-color);
+            pointer-events: auto;
+            z-index: 2;
+        }}
+        .selection-summary.expanded {{
+            max-height: min(82%, 560px);
+        }}
+        .selection-summary-title {{
+            margin: 2px 0 6px;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--muted-color);
+        }}
+        .selection-summary-row {{
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            line-height: 1.3;
+        }}
+        .selection-summary-row + .selection-summary-row {{ margin-top: 2px; }}
+        .selection-summary-label {{
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 210px;
+        }}
+        .selection-summary-count {{
+            color: var(--muted-color);
+            font-variant-numeric: tabular-nums;
+        }}
+        .selection-summary-meta {{
+            margin-top: 6px;
+            font-size: 10px;
+            color: var(--muted-color);
+            line-height: 1.35;
+        }}
+        .selection-summary-toggle {{
+            margin-top: 6px;
+            padding: 0;
+            border: none;
+            background: none;
+            color: var(--accent-strong);
+            font-size: 10px;
+            text-decoration: underline;
+            cursor: pointer;
+            pointer-events: auto;
+        }}
+        .selection-summary-toggle:hover {{
+            color: var(--accent);
+        }}
 
         .no-results {{
             grid-column: 1 / -1;
@@ -847,6 +983,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-radius: 999px;
             background: color-mix(in srgb, var(--header-bg) 88%, transparent);
             backdrop-filter: blur(6px);
+        }}
+        .umap-selection-summary {{
+            top: 38px;
+        }}
+        .modal-selection-summary {{
+            top: 38px;
         }}
         .umap-toggle, .legend-toggle, .graph-toggle {{
             background: var(--input-bg);
@@ -1092,6 +1234,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <span id="umap-spot-size-label" style="font-size: 11px; min-width: 20px;">2</span>
                     </div>
                     <div class="umap-selection-info" id="umap-selection-info">No cells selected</div>
+                    <div class="selection-summary umap-selection-summary" id="umap-selection-summary">
+                        <div class="selection-summary-meta">Draw a region with Magic Wand to inspect selected cells.</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1112,10 +1257,50 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="modal-body">
                 <div class="modal-canvas-container" id="modal-canvas-container">
                     <canvas class="modal-canvas" id="modal-canvas"></canvas>
+                    <div class="modal-selection-info" id="modal-selection-info">No cells selected</div>
+                    <div class="selection-summary modal-selection-summary" id="modal-selection-summary">
+                        <div class="selection-summary-meta">Draw a region with Magic Wand to inspect selected cells.</div>
+                    </div>
+                    <div class="modal-blend-panel" id="modal-blend-panel">
+                        <div class="modal-blend-title">Variable Slider</div>
+                        <div class="modal-blend-row">
+                            <span class="modal-blend-side">A</span>
+                            <select id="modal-blend-a-kind">
+                                <option value="cell">Cell type</option>
+                                <option value="gene">Gene</option>
+                            </select>
+                            <div class="modal-blend-fields">
+                                <select id="modal-blend-a-color"></select>
+                                <select id="modal-blend-a-category"></select>
+                                <input type="text" id="modal-blend-a-gene" list="gene-list" placeholder="Gene symbol">
+                            </div>
+                        </div>
+                        <div class="modal-blend-row">
+                            <span class="modal-blend-side">B</span>
+                            <select id="modal-blend-b-kind">
+                                <option value="cell">Cell type</option>
+                                <option value="gene">Gene</option>
+                            </select>
+                            <div class="modal-blend-fields">
+                                <select id="modal-blend-b-color"></select>
+                                <select id="modal-blend-b-category"></select>
+                                <input type="text" id="modal-blend-b-gene" list="gene-list" placeholder="Gene symbol">
+                            </div>
+                        </div>
+                        <div class="modal-blend-row">
+                            <span class="modal-blend-side">Split</span>
+                            <span id="modal-blend-mix-label" style="font-size: 10px; color: var(--muted-color);">A left 50% • B right 50%</span>
+                            <input type="range" id="modal-blend-mix" min="0" max="100" step="1" value="50">
+                        </div>
+                        <div class="modal-blend-meta" id="modal-blend-meta"></div>
+                    </div>
                     <div class="modal-controls">
                         <button id="zoom-in">+ Zoom</button>
                         <button id="zoom-out">- Zoom</button>
                         <button id="zoom-reset">Reset</button>
+                        <button class="graph-toggle" id="modal-blend-toggle" title="Split the view between two selected variables">Split</button>
+                        <button class="graph-toggle" id="modal-magic-wand-btn" title="Draw to select cells in this section">Magic Wand</button>
+                        <button class="graph-toggle" id="modal-clear-selection-btn" title="Clear selected cells">Clear selection</button>
                         <button class="graph-toggle" id="modal-graph-toggle" title="Toggle neighborhood graph" style="display: none;">Graph</button>
                         <button class="graph-toggle" id="modal-neighbor-hover-toggle" title="Toggle neighbor rings on hover" style="display: none;">Neighbors</button>
                         <select id="modal-neighbor-hop-select" title="Neighbor hop display" style="display: none; min-width: 90px;">
@@ -1268,8 +1453,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let isDragging = false;
     let dragStartX = 0, dragStartY = 0;
     let lastPanX = 0, lastPanY = 0;
+    let modalPointerMoved = false;
     let modalTypeSelectEnabled = false;
     let modalSelectedCategory = null;
+    let modalMagicWandActive = false;
+    let isDrawingModalLasso = false;
+    let modalLassoPath = [];  // Array of {{x, y}} points in modal canvas space
+    let modalBlendEnabled = false;
+    let modalBlendMix = 0.5;  // Split position from left: 0 = all B, 1 = all A
+    const BLEND_ALL_CATEGORIES = '__ALL__';
+    let modalBlendSpec = {{
+        a: {{ kind: 'cell', color: null, category: null, gene: '' }},
+        b: {{ kind: 'cell', color: null, category: null, gene: '' }},
+    }};
 
     // UMAP state
     let umapVisible = false;
@@ -1292,6 +1488,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let isDrawingLasso = false;
     let lassoPath = [];  // Array of {{x, y}} points
     let selectedCells = new Set();  // Set of "sectionId:cellIdx" strings
+    let selectionSummaryColor = DATA.initial_color;
+    let selectionSummaryExpanded = false;
+    const sectionById = new Map((DATA.sections || []).map(section => [section.id, section]));
 
     // Theme toggle
     function toggleTheme() {{
@@ -1381,7 +1580,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     // Color utilities
-    function magma(t) {{
+    function magmaRgb(t) {{
         const colors = [
             [0.001, 0.000, 0.015], [0.092, 0.047, 0.256], [0.235, 0.073, 0.386],
             [0.388, 0.100, 0.451], [0.531, 0.136, 0.430], [0.651, 0.188, 0.392],
@@ -1394,10 +1593,62 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const r = c1[0] + frac * (c2[0] - c1[0]);
         const g = c1[1] + frac * (c2[1] - c1[1]);
         const b = c1[2] + frac * (c2[2] - c1[2]);
-        return `rgb(${{Math.round(r*255)}}, ${{Math.round(g*255)}}, ${{Math.round(b*255)}})`;
+        return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+    }}
+
+    function magma(t) {{
+        const rgb = magmaRgb(t);
+        return `rgb(${{rgb[0]}}, ${{rgb[1]}}, ${{rgb[2]}})`;
     }}
 
     function getCategoryColor(idx) {{ return PALETTE[idx % PALETTE.length]; }}
+
+    const cssColorRgbCache = new Map();
+    function cssColorToRgb(color) {{
+        if (!color) return [128, 128, 128];
+        if (cssColorRgbCache.has(color)) return cssColorRgbCache.get(color);
+        let rgb = null;
+        const value = String(color).trim();
+        const hex = value.match(/^#([0-9a-fA-F]{{3}}|[0-9a-fA-F]{{6}})$/);
+        if (hex) {{
+            const body = hex[1];
+            if (body.length === 3) {{
+                rgb = [
+                    parseInt(body[0] + body[0], 16),
+                    parseInt(body[1] + body[1], 16),
+                    parseInt(body[2] + body[2], 16),
+                ];
+            }} else {{
+                rgb = [
+                    parseInt(body.slice(0, 2), 16),
+                    parseInt(body.slice(2, 4), 16),
+                    parseInt(body.slice(4, 6), 16),
+                ];
+            }}
+        }} else {{
+            const m = value.match(/^rgb\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/i);
+            if (m) {{
+                rgb = [
+                    Math.max(0, Math.min(255, Math.round(parseFloat(m[1])))),
+                    Math.max(0, Math.min(255, Math.round(parseFloat(m[2])))),
+                    Math.max(0, Math.min(255, Math.round(parseFloat(m[3])))),
+                ];
+            }}
+        }}
+        if (!rgb) rgb = [128, 128, 128];
+        cssColorRgbCache.set(color, rgb);
+        return rgb;
+    }}
+
+    function rgbToCss(rgb) {{
+        if (!Array.isArray(rgb) || rgb.length < 3) return 'rgb(128, 128, 128)';
+        return `rgb(${{rgb[0]}}, ${{rgb[1]}}, ${{rgb[2]}})`;
+    }}
+
+    function clamp01(v) {{
+        if (!Number.isFinite(v)) return 0;
+        return Math.max(0, Math.min(1, v));
+    }}
 
     function formatMetadataLabel(key) {{
         return METADATA_LABELS[key] || key.replace(/_/g, ' ');
@@ -1729,6 +1980,85 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         cols.sort((a, b) => a.localeCompare(b));
         return cols;
+    }}
+
+    function getCategoriesForColorColumn(colorCol) {{
+        const meta = DATA.colors_meta?.[colorCol];
+        if (!meta || meta.is_continuous || !Array.isArray(meta.categories)) return [];
+        return meta.categories;
+    }}
+
+    function getModalBlendVariableLabel(spec) {{
+        if (!spec) return 'Unknown';
+        if (spec.kind === 'gene') return spec.gene ? `Gene: ${{spec.gene}}` : 'Gene';
+        const colLabel = spec.color ? formatMetadataLabel(spec.color) : 'Cell type';
+        if (spec.category === BLEND_ALL_CATEGORIES) return `${{colLabel}}: All`;
+        return spec.category ? `${{colLabel}}: ${{spec.category}}` : colLabel;
+    }}
+
+    function getModalBlendRuntime(section, spec) {{
+        if (!section || !spec) return null;
+        if (spec.kind === 'gene') {{
+            const gene = (spec.gene || '').trim();
+            if (!gene || !DATA.genes_meta?.[gene]) return null;
+            const values = getSectionGeneValues(section, gene);
+            if (!values) return null;
+            const meta = DATA.genes_meta[gene] || {{}};
+            let vmin = Number.isFinite(meta.vmin) ? meta.vmin : 0;
+            let vmax = Number.isFinite(meta.vmax) ? meta.vmax : 1;
+            if (!(vmax > vmin)) {{
+                vmin = 0;
+                vmax = 1;
+            }}
+            return {{ kind: 'gene', values, vmin, vmax }};
+        }}
+
+        const colorCol = spec.color;
+        const categories = getCategoriesForColorColumn(colorCol);
+        if (!colorCol || categories.length === 0) return null;
+        const values = getSectionColorValues(section, colorCol);
+        if (!values) return null;
+        if (spec.category === BLEND_ALL_CATEGORIES) {{
+            return {{
+                kind: 'cell-all',
+                values,
+                paletteRgb: categories.map((_, idx) => cssColorToRgb(getCategoryColor(idx))),
+            }};
+        }}
+        const catIdx = categories.indexOf(spec.category);
+        if (catIdx < 0) return null;
+        return {{
+            kind: 'cell',
+            values,
+            catIdx,
+            activeRgb: cssColorToRgb(getCategoryColor(catIdx)),
+            inactiveRgb: [176, 176, 176],
+        }};
+    }}
+
+    function getModalBlendRuntimes(section) {{
+        if (!modalBlendEnabled || !section) return null;
+        const a = getModalBlendRuntime(section, modalBlendSpec.a);
+        const b = getModalBlendRuntime(section, modalBlendSpec.b);
+        if (!a || !b) return null;
+        return {{ a, b }};
+    }}
+
+    function getModalBlendCellRgb(runtime, idx) {{
+        if (!runtime) return [128, 128, 128];
+        const raw = runtime.values?.[idx];
+        if (runtime.kind === 'cell-all') {{
+            if (!Number.isFinite(raw)) return [160, 160, 160];
+            const catIdx = Math.round(raw);
+            return runtime.paletteRgb?.[catIdx] || [160, 160, 160];
+        }}
+        if (runtime.kind === 'cell') {{
+            if (!Number.isFinite(raw)) return runtime.inactiveRgb;
+            return Math.round(raw) === runtime.catIdx ? runtime.activeRgb : runtime.inactiveRgb;
+        }}
+        if (!Number.isFinite(raw)) return [140, 140, 140];
+        const t = clamp01((raw - runtime.vmin) / (runtime.vmax - runtime.vmin));
+        return magmaRgb(t);
     }}
 
     function updateDotplotAggregateValueOptions() {{
@@ -2128,6 +2458,129 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return inside;
     }}
 
+    function getSelectionSummaryColorColumn() {{
+        const isValidCategorical = (col) => {{
+            if (!col) return false;
+            const meta = DATA.colors_meta?.[col];
+            return !!(meta && !meta.is_continuous && Array.isArray(meta.categories));
+        }};
+
+        if (isValidCategorical(selectionSummaryColor)) return selectionSummaryColor;
+        if (isValidCategorical(currentColor)) return currentColor;
+        if (isValidCategorical(DATA.initial_color)) return DATA.initial_color;
+
+        const fallbackCols = getCategoricalColorColumns();
+        return fallbackCols.length ? fallbackCols[0] : null;
+    }}
+
+    function computeSelectionSummary() {{
+        const summary = {{
+            total: selectedCells.size,
+            sections: [],
+            typeColumn: null,
+            types: [],
+            missingTypeValues: 0,
+        }};
+        if (selectedCells.size === 0) return summary;
+
+        const sectionCounts = new Map();
+        const typeColumn = getSelectionSummaryColorColumn();
+        summary.typeColumn = typeColumn;
+        const typeCounts = new Map();
+        const typeMeta = typeColumn ? DATA.colors_meta?.[typeColumn] : null;
+        const typeCategories = Array.isArray(typeMeta?.categories) ? typeMeta.categories : null;
+
+        selectedCells.forEach((key) => {{
+            const sep = key.lastIndexOf(':');
+            if (sep <= 0) return;
+            const sectionId = key.slice(0, sep);
+            const idx = Number(key.slice(sep + 1));
+            if (!Number.isInteger(idx) || idx < 0) return;
+
+            sectionCounts.set(sectionId, (sectionCounts.get(sectionId) || 0) + 1);
+
+            if (!typeColumn || !typeCategories) return;
+            const section = sectionById.get(sectionId);
+            if (!section) return;
+            const values = getSectionColorValues(section, typeColumn);
+            if (!values || idx >= values.length) {{
+                summary.missingTypeValues += 1;
+                return;
+            }}
+            const raw = values[idx];
+            if (!Number.isFinite(raw)) {{
+                summary.missingTypeValues += 1;
+                return;
+            }}
+            const catIdx = Math.round(raw);
+            const catName = typeCategories[catIdx] ?? 'unknown';
+            typeCounts.set(catName, (typeCounts.get(catName) || 0) + 1);
+        }});
+
+        summary.sections = Array.from(sectionCounts.entries()).sort((a, b) => b[1] - a[1]);
+        summary.types = Array.from(typeCounts.entries()).sort((a, b) => b[1] - a[1]);
+        return summary;
+    }}
+
+    function renderSelectionSummaryHtml(summary) {{
+        if (!summary || summary.total === 0) {{
+            return '<div class="selection-summary-meta">Draw a region with Magic Wand to inspect selected cells.</div>';
+        }}
+
+        const topSections = summary.sections.slice(0, 3).map(([sid, count]) => `${{sid}} (${{count.toLocaleString()}})`);
+        const extraSections = summary.sections.length > 3 ? ` +${{(summary.sections.length - 3).toLocaleString()}} more` : '';
+
+        let html = '';
+        if (topSections.length) {{
+            html += `<div class="selection-summary-meta">Sections: ${{topSections.join(' • ')}}${{extraSections}}</div>`;
+        }}
+
+        if (summary.typeColumn && summary.types.length) {{
+            const visibleLimit = 8;
+            const topTypes = selectionSummaryExpanded ? summary.types : summary.types.slice(0, visibleLimit);
+            html += `<div class="selection-summary-title">Counts by ${{formatMetadataLabel(summary.typeColumn)}}</div>`;
+            topTypes.forEach(([label, count]) => {{
+                html += `<div class="selection-summary-row"><span class="selection-summary-label">${{label}}</span><span class="selection-summary-count">${{count.toLocaleString()}}</span></div>`;
+            }});
+            if (summary.types.length > visibleLimit) {{
+                if (!selectionSummaryExpanded) {{
+                    html += `<button class="selection-summary-toggle" type="button">+${{(summary.types.length - visibleLimit).toLocaleString()}} more categories</button>`;
+                }} else {{
+                    html += '<button class="selection-summary-toggle" type="button">Show fewer categories</button>';
+                }}
+            }}
+            if (summary.missingTypeValues > 0) {{
+                html += `<div class="selection-summary-meta">${{summary.missingTypeValues.toLocaleString()}} cells missing this annotation.</div>`;
+            }}
+        }} else {{
+            html += '<div class="selection-summary-meta">No categorical annotation is available for type counts.</div>';
+        }}
+
+        return html;
+    }}
+
+    function bindSelectionSummaryInteractions(container) {{
+        if (!container) return;
+        if (!container.dataset.scrollBound) {{
+            // Prevent wheel/touch events from bubbling to canvas zoom handlers.
+            container.addEventListener('wheel', (e) => {{
+                e.stopPropagation();
+            }});
+            container.addEventListener('touchmove', (e) => {{
+                e.stopPropagation();
+            }});
+            container.dataset.scrollBound = '1';
+        }}
+        container.querySelectorAll('.selection-summary-toggle').forEach((btn) => {{
+            btn.addEventListener('click', (e) => {{
+                e.preventDefault();
+                e.stopPropagation();
+                selectionSummaryExpanded = !selectionSummaryExpanded;
+                updateSelectionInfo();
+            }});
+        }});
+    }}
+
     // UMAP rendering
     function renderUMAP() {{
         if (!DATA.has_umap || !umapVisible) return;
@@ -2326,25 +2779,92 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
 
+        selectionSummaryExpanded = false;
         updateSelectionInfo();
         renderUMAP();
         renderAllSections();
         if (modalSection) renderModalSection();
     }}
 
+    // Perform lasso selection on the active modal section
+    function performModalLassoSelection() {{
+        if (!modalSection || modalLassoPath.length < 3) return;
+        ensureSectionXY(modalSection);
+
+        const canvas = document.getElementById('modal-canvas');
+        const rect = canvas.getBoundingClientRect();
+        const width = rect.width, height = rect.height;
+
+        const bounds = modalSection.bounds;
+        const dataWidth = bounds.xmax - bounds.xmin;
+        const dataHeight = bounds.ymax - bounds.ymin;
+        const baseScale = Math.min((width - 40) / dataWidth, (height - 40) / dataHeight);
+        const scale = baseScale * modalZoom;
+
+        const centerX = width / 2 + modalPanX;
+        const centerY = height / 2 + modalPanY;
+        const dataCenterX = (bounds.xmin + bounds.xmax) / 2;
+        const dataCenterY = (bounds.ymin + bounds.ymax) / 2;
+
+        const config = getColorConfig();
+        const values = getSectionValues(modalSection);
+        selectedCells.clear();
+
+        for (let i = 0; i < modalSection.x.length; i++) {{
+            const val = values[i];
+            if (val === null || val === undefined) continue;
+
+            if (!config.is_continuous) {{
+                const catIdx = Math.round(val);
+                const catName = config.categories[catIdx];
+                if (hiddenCategories.has(catName)) continue;
+            }}
+
+            const x = centerX + (modalSection.x[i] - dataCenterX) * scale;
+            const y = centerY - (modalSection.y[i] - dataCenterY) * scale;
+            if (pointInPolygon(x, y, modalLassoPath)) {{
+                selectedCells.add(`${{modalSection.id}}:${{i}}`);
+            }}
+        }}
+
+        selectionSummaryExpanded = false;
+        updateSelectionInfo();
+        renderAllSections();
+        if (umapVisible) renderUMAP();
+        if (modalSection) renderModalSection();
+    }}
+
     // Update selection info display
     function updateSelectionInfo() {{
-        const info = document.getElementById('umap-selection-info');
-        if (selectedCells.size === 0) {{
-            info.textContent = 'No cells selected';
-        }} else {{
-            info.textContent = `${{selectedCells.size.toLocaleString()}} cells selected`;
+        const countText = selectedCells.size === 0
+            ? 'No cells selected'
+            : `${{selectedCells.size.toLocaleString()}} cells selected`;
+
+        const umapInfo = document.getElementById('umap-selection-info');
+        if (umapInfo) umapInfo.textContent = countText;
+        const modalInfo = document.getElementById('modal-selection-info');
+        if (modalInfo) modalInfo.textContent = countText;
+
+        const summary = computeSelectionSummary();
+        const summaryHtml = renderSelectionSummaryHtml(summary);
+        const umapSummary = document.getElementById('umap-selection-summary');
+        if (umapSummary) {{
+            umapSummary.classList.toggle('expanded', selectionSummaryExpanded);
+            umapSummary.innerHTML = summaryHtml;
+            bindSelectionSummaryInteractions(umapSummary);
+        }}
+        const modalSummary = document.getElementById('modal-selection-summary');
+        if (modalSummary) {{
+            modalSummary.classList.toggle('expanded', selectionSummaryExpanded);
+            modalSummary.innerHTML = summaryHtml;
+            bindSelectionSummaryInteractions(modalSummary);
         }}
     }}
 
     // Clear selection
     function clearSelection() {{
         selectedCells.clear();
+        selectionSummaryExpanded = false;
         updateSelectionInfo();
         renderUMAP();
         renderAllSections();
@@ -2915,17 +3435,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const config = getColorConfig();
         const values = getSectionValues(modalSection);
+        const blendRuntimes = getModalBlendRuntimes(modalSection);
+        const blendActive = !!blendRuntimes;
         const typeToggleBtn = document.getElementById('modal-type-toggle');
         const typeClearBtn = document.getElementById('modal-type-clear');
-        if (config.is_continuous) {{
+        const typeSelectionDisabled = config.is_continuous || blendActive;
+        if (typeSelectionDisabled) {{
             modalSelectedCategory = null;
             modalTypeSelectEnabled = false;
             typeToggleBtn?.classList.remove('active');
         }} else if (modalSelectedCategory && !config.categories?.includes(modalSelectedCategory)) {{
             modalSelectedCategory = null;
         }}
-        if (typeToggleBtn) typeToggleBtn.disabled = config.is_continuous;
-        if (typeClearBtn) typeClearBtn.disabled = config.is_continuous;
+        if (typeToggleBtn) typeToggleBtn.disabled = typeSelectionDisabled;
+        if (typeClearBtn) typeClearBtn.disabled = typeSelectionDisabled;
 
         const modalEdges = getSectionEdgesPacked(modalSection);
         if (showGraph && modalEdges && modalEdges.length) {{
@@ -2938,8 +3461,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (i < 0 || j < 0 || i >= n || j >= n) return;
                 const valI = values[i];
                 const valJ = values[j];
-                if (valI === null || valI === undefined || valJ === null || valJ === undefined) return;
-                if (!config.is_continuous) {{
+                if (!blendActive && (valI === null || valI === undefined || valJ === null || valJ === undefined)) return;
+                if (!blendActive && !config.is_continuous) {{
                     const catIdxI = Math.round(valI);
                     const catIdxJ = Math.round(valJ);
                     const catNameI = config.categories[catIdxI];
@@ -2971,7 +3494,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         // First pass: draw grey background for hidden categories
-        const hasHidden = hiddenCategories.size > 0 && !config.is_continuous;
+        const hasHidden = !blendActive && hiddenCategories.size > 0 && !config.is_continuous;
         if (hasHidden) {{
             ctx.fillStyle = '#cccccc';
             ctx.globalAlpha = 0.2;
@@ -2996,42 +3519,68 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         // Second pass: draw visible categories on top (with optional selected-category focus)
-        const activeSpotlight = getLinkedSpotlightCategory(config);
-        const focusCategory = activeSpotlight || modalSelectedCategory;
-        const hasTypeFocus = !config.is_continuous && focusCategory;
-        for (let i = 0; i < modalSection.x.length; i++) {{
-            const val = values[i];
-            if (val === null || val === undefined) continue;
+        if (blendActive) {{
+            const splitX = width * modalBlendMix;
+            for (let i = 0; i < modalSection.x.length; i++) {{
+                const x = centerX + (modalSection.x[i] - dataCenterX) * scale;
+                const y = centerY - (modalSection.y[i] - dataCenterY) * scale;
+                if (x < -adjustedSpotSize || x > width + adjustedSpotSize ||
+                    y < -adjustedSpotSize || y > height + adjustedSpotSize) continue;
 
-            let color;
-            let isSelectedCat = false;
-            if (config.is_continuous) {{
-                const t = (val - config.vmin) / (config.vmax - config.vmin);
-                color = magma(Math.max(0, Math.min(1, t)));
-            }} else {{
-                const catIdx = Math.round(val);
-                const catName = config.categories[catIdx];
-                if (hiddenCategories.has(catName)) continue;
-                isSelectedCat = focusCategory && catName === focusCategory;
-                color = getCategoryColor(catIdx);
-            }}
-
-            const x = centerX + (modalSection.x[i] - dataCenterX) * scale;
-            const y = centerY - (modalSection.y[i] - dataCenterY) * scale;
-
-            if (x < -adjustedSpotSize || x > width + adjustedSpotSize ||
-                y < -adjustedSpotSize || y > height + adjustedSpotSize) continue;
-
-            if (hasTypeFocus && !isSelectedCat) {{
-                ctx.fillStyle = '#bbbbbb';
-                ctx.globalAlpha = 0.15;
-            }} else {{
-                ctx.fillStyle = color;
+                const runtime = x <= splitX ? blendRuntimes.a : blendRuntimes.b;
+                ctx.fillStyle = rgbToCss(getModalBlendCellRgb(runtime, i));
                 ctx.globalAlpha = 1;
+                ctx.beginPath();
+                ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
+                ctx.fill();
             }}
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 3]);
             ctx.beginPath();
-            ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
-            ctx.fill();
+            ctx.moveTo(splitX, 0);
+            ctx.lineTo(splitX, height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }} else {{
+            const activeSpotlight = getLinkedSpotlightCategory(config);
+            const focusCategory = activeSpotlight || modalSelectedCategory;
+            const hasTypeFocus = !config.is_continuous && focusCategory;
+            for (let i = 0; i < modalSection.x.length; i++) {{
+                const val = values[i];
+                if (val === null || val === undefined) continue;
+
+                let color;
+                let isSelectedCat = false;
+                if (config.is_continuous) {{
+                    const t = (val - config.vmin) / (config.vmax - config.vmin);
+                    color = magma(Math.max(0, Math.min(1, t)));
+                }} else {{
+                    const catIdx = Math.round(val);
+                    const catName = config.categories[catIdx];
+                    if (hiddenCategories.has(catName)) continue;
+                    isSelectedCat = focusCategory && catName === focusCategory;
+                    color = getCategoryColor(catIdx);
+                }}
+
+                const x = centerX + (modalSection.x[i] - dataCenterX) * scale;
+                const y = centerY - (modalSection.y[i] - dataCenterY) * scale;
+
+                if (x < -adjustedSpotSize || x > width + adjustedSpotSize ||
+                    y < -adjustedSpotSize || y > height + adjustedSpotSize) continue;
+
+                if (hasTypeFocus && !isSelectedCat) {{
+                    ctx.fillStyle = '#bbbbbb';
+                    ctx.globalAlpha = 0.15;
+                }} else {{
+                    ctx.fillStyle = color;
+                    ctx.globalAlpha = 1;
+                }}
+                ctx.beginPath();
+                ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
+                ctx.fill();
+            }}
         }}
         ctx.globalAlpha = 1;
 
@@ -3043,10 +3592,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (!isCellSelected(modalSection.id, i)) continue;
 
                 const val = values[i];
-                if (val === null || val === undefined) continue;
+                if (!blendActive && (val === null || val === undefined)) continue;
 
                 // Skip hidden categories
-                if (!config.is_continuous) {{
+                if (!blendActive && !config.is_continuous) {{
                     const catIdx = Math.round(val);
                     const catName = config.categories[catIdx];
                     if (hiddenCategories.has(catName)) continue;
@@ -3075,6 +3624,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             width,
             height
         }}, adjustedSpotSize);
+
+        if (isDrawingModalLasso && modalLassoPath.length > 1) {{
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath();
+            ctx.moveTo(modalLassoPath[0].x, modalLassoPath[0].y);
+            for (let i = 1; i < modalLassoPath.length; i++) {{
+                ctx.lineTo(modalLassoPath[i].x, modalLassoPath[i].y);
+            }}
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }}
 
         document.getElementById('zoom-info').textContent = `${{Math.round(modalZoom * 100)}}%`;
     }}
@@ -3549,19 +4111,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             item.addEventListener('click', () => {{
                 const col = item.dataset.color;
                 if (!col) return;
-            currentColor = col;
-            currentGene = null;
-            modalSelectedCategory = null;
-            modalTypeSelectEnabled = false;
-            document.getElementById('color-select').value = col;
-            document.getElementById('gene-input').value = '';
-            hiddenCategories.clear();
-            updateExpressionScaleUI();
+                currentColor = col;
+                currentGene = null;
+                modalSelectedCategory = null;
+                modalTypeSelectEnabled = false;
+                document.getElementById('color-select').value = col;
+                document.getElementById('gene-input').value = '';
+                hiddenCategories.clear();
+                if (DATA.colors_meta?.[col] && !DATA.colors_meta[col].is_continuous) {{
+                    selectionSummaryColor = col;
+                }}
+                updateExpressionScaleUI();
                 renderLegend('legend');
                 renderLegend('modal-legend');
                 renderAllSections();
                 if (modalSection) renderModalSection();
                 if (umapVisible) renderUMAP();
+                updateSelectionInfo();
                 renderColorList(document.getElementById('color-search').value);
                 renderColorAggregation();
                 renderCellTypeTrend();
@@ -4215,18 +4781,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalSection = DATA.sections.find(s => s.id === sectionId);
         if (!modalSection) return;
         modalZoom = 1; modalPanX = 0; modalPanY = 0;
+        modalPointerMoved = false;
+        modalMagicWandActive = false;
+        isDrawingModalLasso = false;
+        modalLassoPath = [];
+        document.getElementById('modal-magic-wand-btn')?.classList.remove('active');
 
         document.getElementById('modal-title').textContent = sectionId;
         const metaText = Object.entries(modalSection.metadata || {{}})
             .map(([k, v]) => `${{formatMetadataLabel(k)}}: ${{v}}`).join(' | ');
         document.getElementById('modal-meta').textContent = metaText;
         document.getElementById('modal').classList.add('active');
+        updateSelectionInfo();
         renderLegend('modal-legend');
-        requestAnimationFrame(renderModalSection);
+        requestAnimationFrame(() => {{
+            const canvas = document.getElementById('modal-canvas');
+            if (canvas) canvas.style.cursor = 'grab';
+            renderModalSection();
+        }});
     }}
 
     function closeModal() {{
         document.getElementById('modal').classList.remove('active');
+        modalMagicWandActive = false;
+        isDrawingModalLasso = false;
+        modalLassoPath = [];
+        modalPointerMoved = false;
+        document.getElementById('modal-magic-wand-btn')?.classList.remove('active');
         modalSection = null;
         hideTooltip();
     }}
@@ -4314,12 +4895,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             document.getElementById('gene-input').value = '';
             (DATA.sections || []).forEach(s => {{ if (s && s._colorCache) s._colorCache = {{}}; }});
             hiddenCategories.clear();
+            if (DATA.colors_meta?.[currentColor] && !DATA.colors_meta[currentColor].is_continuous) {{
+                selectionSummaryColor = currentColor;
+            }}
             updateExpressionScaleUI();
             renderLegend('legend');
             renderLegend('modal-legend');
             renderAllSections();
             if (modalSection) renderModalSection();
             if (umapVisible) renderUMAP();
+            updateSelectionInfo();
             refreshInsights();
         }});
 
@@ -4346,6 +4931,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderAllSections();
                 if (modalSection) renderModalSection();
                 if (umapVisible) renderUMAP();
+                updateSelectionInfo();
                 refreshInsights();
             }} else if (!gene) {{
                 currentGene = null;
@@ -4356,6 +4942,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderAllSections();
                 if (modalSection) renderModalSection();
                 if (umapVisible) renderUMAP();
+                updateSelectionInfo();
                 refreshInsights();
             }} else if (gene) {{
                 alert(`Gene "${{gene}}" was not pre-loaded.\\nTo view it, re-export with this gene included in the genes parameter or add it to highly variable genes.`);
@@ -4541,6 +5128,179 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const canvas = document.getElementById('modal-canvas');
         const typeToggleBtn = document.getElementById('modal-type-toggle');
         const typeClearBtn = document.getElementById('modal-type-clear');
+        const modalBlendToggleBtn = document.getElementById('modal-blend-toggle');
+        const modalBlendPanel = document.getElementById('modal-blend-panel');
+        const modalBlendMixRange = document.getElementById('modal-blend-mix');
+        const modalBlendMixLabel = document.getElementById('modal-blend-mix-label');
+        const modalBlendMeta = document.getElementById('modal-blend-meta');
+        const modalBlendControls = {{
+            a: {{
+                kind: document.getElementById('modal-blend-a-kind'),
+                color: document.getElementById('modal-blend-a-color'),
+                category: document.getElementById('modal-blend-a-category'),
+                gene: document.getElementById('modal-blend-a-gene'),
+            }},
+            b: {{
+                kind: document.getElementById('modal-blend-b-kind'),
+                color: document.getElementById('modal-blend-b-color'),
+                category: document.getElementById('modal-blend-b-category'),
+                gene: document.getElementById('modal-blend-b-gene'),
+            }},
+        }};
+        const modalWandBtn = document.getElementById('modal-magic-wand-btn');
+        const modalClearSelectionBtn = document.getElementById('modal-clear-selection-btn');
+
+        function setSelectOptions(selectEl, values, selectedValue) {{
+            if (!selectEl) return;
+            selectEl.innerHTML = '';
+            values.forEach((entry) => {{
+                const value = (entry && typeof entry === 'object') ? entry.value : entry;
+                const label = (entry && typeof entry === 'object') ? (entry.label ?? entry.value) : entry;
+                const opt = document.createElement('option');
+                opt.value = value;
+                opt.textContent = label;
+                selectEl.appendChild(opt);
+            }});
+            if (selectedValue !== undefined && selectedValue !== null) {{
+                selectEl.value = selectedValue;
+            }}
+        }}
+
+        function ensureModalBlendDefaults() {{
+            const catCols = getCategoricalColorColumns();
+            const preferredCol = catCols.includes(currentColor) ? currentColor : (catCols[0] || null);
+            const genes = DATA.available_genes || [];
+            const firstGene = genes.length ? genes[0] : '';
+
+            const normalize = (entry, preferSecondCategory = false) => {{
+                if (!entry.kind) entry.kind = catCols.length ? 'cell' : 'gene';
+                if (entry.kind === 'cell') {{
+                    if (!catCols.length) {{
+                        entry.kind = 'gene';
+                    }} else {{
+                        if (!entry.color || !catCols.includes(entry.color)) entry.color = preferredCol;
+                        const cats = getCategoriesForColorColumn(entry.color);
+                        const hasSelectedCategory = entry.category === BLEND_ALL_CATEGORIES || cats.includes(entry.category);
+                        if (!entry.category || !hasSelectedCategory) {{
+                            if (preferSecondCategory && cats.length > 1) entry.category = cats[1];
+                            else entry.category = BLEND_ALL_CATEGORIES;
+                        }}
+                    }}
+                }}
+                if (entry.kind === 'gene') {{
+                    if (!firstGene) {{
+                        if (catCols.length) entry.kind = 'cell';
+                    }} else if (!entry.gene || !DATA.genes_meta?.[entry.gene]) {{
+                        if (preferSecondCategory && genes.length > 1) entry.gene = genes[1];
+                        else entry.gene = firstGene;
+                    }}
+                }}
+                if (entry.kind === 'cell') {{
+                    const cats = getCategoriesForColorColumn(entry.color);
+                    if (!cats.length && firstGene) {{
+                        entry.kind = 'gene';
+                        entry.gene = firstGene;
+                    }}
+                }}
+            }};
+
+            normalize(modalBlendSpec.a, false);
+            normalize(modalBlendSpec.b, true);
+        }}
+
+        function updateModalBlendLabels() {{
+            if (modalBlendMixLabel) {{
+                const pctA = Math.round(modalBlendMix * 100);
+                const pctB = 100 - pctA;
+                modalBlendMixLabel.textContent = `A left ${{pctA}}% • B right ${{pctB}}%`;
+            }}
+            if (modalBlendMeta) {{
+                modalBlendMeta.textContent = `${{getModalBlendVariableLabel(modalBlendSpec.a)}} \u2194 ${{getModalBlendVariableLabel(modalBlendSpec.b)}}`;
+            }}
+        }}
+
+        function syncModalBlendSide(side) {{
+            const controls = modalBlendControls[side];
+            const spec = modalBlendSpec[side];
+            if (!controls || !spec) return;
+            controls.kind.value = spec.kind;
+            const isCell = spec.kind === 'cell';
+            controls.color.style.display = isCell ? '' : 'none';
+            controls.category.style.display = isCell ? '' : 'none';
+            controls.gene.style.display = isCell ? 'none' : '';
+            if (isCell) {{
+                const cols = getCategoricalColorColumns();
+                setSelectOptions(controls.color, cols, spec.color);
+                const cats = getCategoriesForColorColumn(spec.color);
+                const catOptions = [{{ value: BLEND_ALL_CATEGORIES, label: 'All categories' }}]
+                    .concat(cats.map(cat => ({{ value: cat, label: cat }})));
+                setSelectOptions(controls.category, catOptions, spec.category);
+            }} else {{
+                controls.gene.value = spec.gene || '';
+            }}
+        }}
+
+        function syncModalBlendUI() {{
+            ensureModalBlendDefaults();
+            syncModalBlendSide('a');
+            syncModalBlendSide('b');
+            if (modalBlendPanel) modalBlendPanel.classList.toggle('visible', modalBlendEnabled);
+            if (modalBlendToggleBtn) modalBlendToggleBtn.classList.toggle('active', modalBlendEnabled);
+            if (modalBlendMixRange) modalBlendMixRange.value = String(Math.round(modalBlendMix * 100));
+            updateModalBlendLabels();
+        }}
+
+        function applyModalBlendControlChange() {{
+            syncModalBlendUI();
+            if (modalSection) renderModalSection();
+        }}
+
+        modalBlendToggleBtn?.addEventListener('click', () => {{
+            modalBlendEnabled = !modalBlendEnabled;
+            syncModalBlendUI();
+            if (modalSection) renderModalSection();
+        }});
+        modalBlendMixRange?.addEventListener('input', (e) => {{
+            modalBlendMix = clamp01(parseFloat(e.target.value) / 100);
+            updateModalBlendLabels();
+            if (modalSection) renderModalSection();
+        }});
+        ['a', 'b'].forEach((side) => {{
+            const controls = modalBlendControls[side];
+            if (!controls) return;
+            controls.kind?.addEventListener('change', () => {{
+                modalBlendSpec[side].kind = controls.kind.value === 'gene' ? 'gene' : 'cell';
+                applyModalBlendControlChange();
+            }});
+            controls.color?.addEventListener('change', () => {{
+                modalBlendSpec[side].color = controls.color.value;
+                modalBlendSpec[side].category = BLEND_ALL_CATEGORIES;
+                applyModalBlendControlChange();
+            }});
+            controls.category?.addEventListener('change', () => {{
+                modalBlendSpec[side].category = controls.category.value;
+                applyModalBlendControlChange();
+            }});
+            controls.gene?.addEventListener('change', () => {{
+                const gene = controls.gene.value.trim();
+                if (!gene) {{
+                    modalBlendSpec[side].gene = '';
+                    applyModalBlendControlChange();
+                    return;
+                }}
+                if (!DATA.genes_meta?.[gene]) {{
+                    alert(`Gene "${{gene}}" was not pre-loaded.\\nChoose a listed gene or re-export with this gene included.`);
+                    controls.gene.value = modalBlendSpec[side].gene || '';
+                    return;
+                }}
+                modalBlendSpec[side].gene = gene;
+                applyModalBlendControlChange();
+            }});
+        }});
+        modalBlendPanel?.addEventListener('wheel', (e) => e.stopPropagation());
+        modalBlendPanel?.addEventListener('touchmove', (e) => e.stopPropagation());
+        syncModalBlendUI();
+
         typeToggleBtn.addEventListener('click', () => {{
             const config = getColorConfig();
             if (config.is_continuous) return;
@@ -4552,15 +5312,37 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderAllSections();
             renderModalSection();
         }});
+        modalWandBtn?.addEventListener('click', () => {{
+            modalMagicWandActive = !modalMagicWandActive;
+            modalWandBtn.classList.toggle('active', modalMagicWandActive);
+            if (!modalMagicWandActive) {{
+                isDrawingModalLasso = false;
+                modalLassoPath = [];
+            }}
+            canvas.style.cursor = modalMagicWandActive ? 'crosshair' : 'grab';
+            renderModalSection();
+        }});
+        modalClearSelectionBtn?.addEventListener('click', clearSelection);
         canvas.addEventListener('mousedown', (e) => {{
+            modalPointerMoved = false;
+            hideTooltip();
+            if (modalMagicWandActive) {{
+                if (!modalSection) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                isDrawingModalLasso = true;
+                modalLassoPath = [{{ x, y }}];
+                renderModalSection();
+                return;
+            }}
             isDragging = true;
             dragStartX = e.clientX; dragStartY = e.clientY;
             lastPanX = modalPanX; lastPanY = modalPanY;
             canvas.style.cursor = 'grabbing';
-            hideTooltip();
         }});
         canvas.addEventListener('click', (e) => {{
-            if (!modalSection || isDragging) return;
+            if (!modalSection || isDragging || isDrawingModalLasso || modalPointerMoved || modalMagicWandActive) return;
             const config = getColorConfig();
             if (config.is_continuous || !modalTypeSelectEnabled) return;
 
@@ -4599,20 +5381,40 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
         document.addEventListener('mousemove', (e) => {{
+            if (isDrawingModalLasso) {{
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const last = modalLassoPath[modalLassoPath.length - 1];
+                if (!last || Math.abs(x - last.x) + Math.abs(y - last.y) >= 1) {{
+                    modalLassoPath.push({{ x, y }});
+                    modalPointerMoved = true;
+                    renderModalSection();
+                }}
+                return;
+            }}
             if (!isDragging) return;
             modalPanX = lastPanX + (e.clientX - dragStartX);
             modalPanY = lastPanY + (e.clientY - dragStartY);
+            modalPointerMoved = true;
             renderModalSection();
         }});
         document.addEventListener('mouseup', () => {{
-            isDragging = false;
-            canvas.style.cursor = 'grab';
+            if (isDrawingModalLasso) {{
+                isDrawingModalLasso = false;
+                performModalLassoSelection();
+                modalLassoPath = [];
+            }}
+            if (isDragging) {{
+                isDragging = false;
+            }}
+            canvas.style.cursor = modalMagicWandActive ? 'crosshair' : 'grab';
         }});
-        canvas.style.cursor = 'grab';
+        canvas.style.cursor = modalMagicWandActive ? 'crosshair' : 'grab';
 
         // Tooltip on hover in modal
         canvas.addEventListener('mousemove', (e) => {{
-            if (isDragging || !modalSection) return;
+            if (isDragging || isDrawingModalLasso || modalMagicWandActive || !modalSection) return;
 
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
@@ -4710,6 +5512,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         initModal();
         initUMAP();
         renderLegend('legend');
+        updateSelectionInfo();
         // Hide loader immediately; render incrementally afterwards.
         hideLoader();
         requestAnimationFrame(renderAllSections);
