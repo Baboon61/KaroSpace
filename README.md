@@ -12,30 +12,18 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 
 ## Features
 
-- **Multi-section grid view** - Display dozens or hundreds of tissue sections in a responsive grid layout
-- **Interactive zoom and pan** - Click any section to open a detailed view with mouse wheel zoom and drag-to-pan
-- **UMAP view with Magic Wand selection** - Toggle UMAP panel, draw to select cells, highlights sync across views
-- **Modal section Magic Wand** - Draw lasso selections directly inside the zoomed section view
-- **Selection summaries** - Selected-cell totals + per-type counts with expandable category list and scrollable panel
-- **Polygon annotation export** - Draw multiple persistent polygons per section and export as JSON for downstream `adata` integration
-- **Modal split compare slider** - In zoomed section view, compare variable A vs B with a left/right split
-- **Flexible split inputs** - A/B can be cell type/cluster columns or genes; cell-type sides support one category or `All categories`
-- **Category toggling** - Click legend items to show/hide specific cell types or clusters; hidden cells appear as grey
-- **Linked spotlight mode** - Spotlight a legend category across grid + UMAP for faster visual comparison
-- **Gene expression visualization** - Pre-load genes of interest and switch between them with a viridis colormap
-- **Multiple color columns** - Switch between different annotation columns (e.g., cell types, clusters, conditions)
-- **Insights panel** - Search color columns, view categorical stats, and marker genes by color
-- **Neighbor stats + enrichment** - Neighbor composition and permutation z-scores for categorical cell types
-- **Cell-cell interaction browser** - Pick a source cell type to rank neighboring targets with enrichment, type markers, and contact-conditioned markers
-- **Metadata filtering** - Filter sections by metadata like experimental condition, timepoint, or region
-- **Cell tooltips** - Hover over cells to see their type or expression value
-- **Course-based borders** - Section panels are outlined with colors indicating their experimental course/condition
-- **Neighborhood graph overlay** - Toggle adjacency edges when a neighbor graph is present in `adata.obsp`
-- **Neighbor rings on hover** - Highlight 1–3 hop neighbors around a hovered cell (when neighbors are available)
-- **Screenshot export** - Download a full-page image of the current view
-- **Dark/light mode** - Toggle between themes with preference saved to browser localStorage
-- **Adjustable spot size** - Control cell/spot size with slider and +/- steps in grid/UMAP/modal views
-- **Standalone HTML** - Generated files are self-contained with embedded data and JavaScript
+- **Grid + modal exploration** - Browse many sections in a responsive grid, then zoom/pan any section in detail
+- **Linked UMAP + section selection** - Magic Wand lasso works in UMAP and modal view with synced highlights
+- **Selection summaries** - Selected-cell totals and per-type counts with expandable, scrollable lists
+- **Polygon annotation workflow** - Draw multiple persistent polygons, manage labels, and export JSON for downstream `adata` integration
+- **Split compare slider** - Compare A/B variables in modal view (`Cell type` or `Gene`, including `All categories`)
+- **Legend controls + spotlight** - Toggle/hide categories and spotlight one class across grid and UMAP
+- **Flexible coloring** - Switch between multiple annotation columns and pre-loaded genes
+- **Insights panel** - Categorical stats, neighbor composition/enrichment, marker genes, and interaction markers
+- **Metadata-aware browsing** - Filter by metadata and optionally outline sections by `course` (or another column)
+- **Optional neighbor graph tools** - Graph overlay + hover rings (1–3 hops) when `adata.obsp` graph exists
+- **Quality-of-life controls** - Tooltips, screenshots, theme toggle, and adjustable spot size
+- **Standalone export** - One self-contained HTML file, no backend required
 
 ## Browser Considerations
 
@@ -205,36 +193,9 @@ Interaction markers are defined per source-target pair as:
 - **contact+**: source cells with at least `interaction_markers_min_neighbors` neighbors of the target type
 - **contact-**: source cells of the same source type with zero neighbors of that target type
 
-## Example
+## Examples
 
-See [example.py](example.py) for a complete working example.
-
-```python
-from karospace import load_spatial_data, export_to_html
-
-dataset = load_spatial_data(
-    "your_data.h5ad",
-    groupby="sample_id",
-)
-
-print(f"Loaded {dataset.n_sections} sections with {dataset.n_cells:,} cells")
-
-export_to_html(
-    dataset,
-    output_path="viewer.html",
-    color="anno_L2",
-    title="KaroSpace",
-    min_panel_size=120,          # Min panel width (responsive autoscaling)
-    spot_size=1.5,
-    downsample=30000,
-    additional_colors=['anno_L3', 'anno_L2', 'anno_L1', 'leiden'],
-    genes=["Cd4", "Cd8a", "Gfap", "Mbp"],
-    use_hvgs=False,
-    hvg_limit=20,
-    marker_genes_groupby=["anno_L2"],
-    marker_genes_top_n=30,
-)
-```
+See the scripts in [`examples/`](examples/) for complete dataset-specific exports.
 
 ## Viewer Controls
 
@@ -244,14 +205,11 @@ export_to_html(
 - **Gene input** - Type a gene name to view expression (must be pre-loaded)
 - **Size slider** - Adjust spot size (drag or +/- buttons)
 - **Filter chips** - Click to filter sections by metadata
-- **Legend items** - Click to toggle categories on/off
-- **Spotlight button (legend)** - Enable linked spotlight; hover/click legend categories to dim others across grid + UMAP
+- **Legend items + Spotlight** - Toggle categories and optionally spotlight one across grid + UMAP
 - **Legend button** - Show/hide the legend panel
 - **Insights button** - Toggle the insights panel (colors + stats + marker genes)
-- **Insights usage** - Use “Stats” to aggregate categorical colors by metadata, “Neighbors” for neighbor composition + z-scores + interaction browser (Contact markers + Type markers), and “Marker genes” for top markers
-- **Graph button** - Toggle neighborhood graph overlay (if available)
-- **Neighbors button** - Toggle neighbor rings on hover (if available)
-- **Hop selector** - Choose which neighbor hop(s) to display (if available)
+- **Insights tabs** - `Stats`, `Neighbors`, and `Marker genes`
+- **Graph / Neighbors / Hop selector** - Available when a neighbor graph exists
 - **Screenshot button** - Download a snapshot of the current view
 - **Theme button** - Toggle dark/light mode
 - **Footer badge** - “KaroSpace” label with a GitHub link
@@ -262,23 +220,16 @@ export_to_html(
 - **Zoom buttons** - +/- zoom controls
 - **Reset button** - Return to default zoom/pan
 - **Split button** - Open the A/B comparison panel in modal view
-- **A/B variable selectors** - Choose per side: `Cell type` or `Gene`
-- **Cell type mode** - Pick annotation column + either one category or `All categories`
-- **Gene mode** - Pick a pre-loaded gene from the gene list
+- **A/B variable selectors** - Choose per side: `Cell type` (single category or `All categories`) or `Gene`
 - **Split slider** - Controls left/right display share (e.g. 10% = left 10% uses A, right 90% uses B)
-- **Magic Wand** - Draw a lasso directly on the section to select cells of interest
-- **Annotate button** - Draw persistent polygons in the section (multiple polygons supported)
-- **Annotation panel** - Rename polygons, select polygon cells, delete polygons, or clear section/all
+- **Magic Wand** - Draw lasso selection directly on the section
+- **Annotate + Annotation panel** - Draw persistent polygons, rename/select/delete, clear section/all
 - **Export JSON** - Download all polygon annotations including vertices + mapped cell indices
 - **Screenshot button** - Download a PNG of the current sample (modal) view
 - **Clear selection** - Remove current selected cells
-- **Graph button** - Toggle neighborhood graph overlay (if available)
-- **Neighbors button** - Toggle neighbor rings on hover (if available)
-- **Hop selector** - Choose which neighbor hop(s) to display (if available)
+- **Graph / Neighbors / Hop selector** - Available when a neighbor graph exists
 - **Size slider** - Adjust spot size for this view
-- **Selection summary** - Shows selected-cell count and per-type counts for the active annotation
-- **Selection summary expand** - Click `+N more categories` to expand; click again to collapse
-- **Selection summary scroll** - Scroll inside the summary panel to inspect long category lists
+- **Selection summary** - Selected-cell count + per-type counts; expandable and scrollable
 - **Hover over cells** - See cell type or expression value
 - **Escape or click outside** - Close modal
 
@@ -292,29 +243,19 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 - **Clear** - Clear the current selection
 - **Size slider** - Adjust point size in the UMAP view
 - **Mouse wheel** - Zoom the UMAP view
-- **Selection summary** - Shows selected-cell count and per-type counts synced with the section view
-- **Selection summary expand** - Click `+N more categories` to expand; click again to collapse
-- **Selection summary scroll** - Scroll inside the summary panel to inspect long category lists
+- **Selection summary** - Same synced summary behavior as modal view (count + expandable/scrollable category list)
 
-## Implementation, Deployment, and Use
+## Deployment and Sharing
 
-### Implementation
-- **Single-file HTML**: `export_to_html` writes one standalone HTML file that embeds all data (JSON) and viewer logic (CSS/JS) directly in the document.
-- **No backend required**: All interactions (filtering, coloring, legends, zoom/pan) run entirely in the browser.
-- **Data pipeline**: `load_spatial_data` reads `.h5ad`, builds section metadata, and serializes coordinates, colors, and optional gene vectors into JSON.
-
-### Deployment
+- **Single-file HTML**: `export_to_html` writes one standalone HTML file with embedded data + viewer logic
 - **Local use**: Open the generated `.html` in any modern browser (Chrome, Firefox, Safari). No server needed.
 - **Static hosting**: You can host the HTML as a static asset (e.g., GitHub Pages, S3, lab intranet). Since it’s self-contained, there are no runtime dependencies.
 - **GitHub Pages (this repo)**: Use **Source = GitHub Actions** (static HTML artifact deploy). Do **not** use Jekyll/deploy-from-branch mode for this workflow.
 - **Pancreas deployment workflow**: `.github/workflows/pages-balo.yml` publishes `pancreas.html` and creates an `index.html` redirect.
 - **Pancreas test URL**: `https://christoffermattssonlangseth.github.io/KaroSpace/pancreas.html` (available after a successful Pages workflow run).
-- **File size note**: Large datasets create large HTML files. Consider `downsample` and limiting `genes`/`additional_colors` to keep the file manageable.
-
-### Use
 - **Sharing**: Send the HTML file directly to collaborators; it will work offline once downloaded.
-- **Viewing**: Just double-click or drag into a browser. All controls work immediately.
 - **Updates**: Re-run `export_to_html` to refresh the file when annotations or metadata change.
+- **File size note**: Large datasets create large HTML files. Consider `downsample` and limiting `genes`/`additional_colors`.
 
 Selected cells are highlighted with a yellow/gold outline in both UMAP and spatial views.
 
