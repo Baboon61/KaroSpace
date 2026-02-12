@@ -3901,7 +3901,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (showGraph && modalEdges && modalEdges.length) {{
             const graphColor = getGraphColor();
             ctx.strokeStyle = graphColor;
-            ctx.lineWidth = Math.max(0.3, modalSpotSize * 0.12);
+            ctx.lineWidth = Math.max(0.3, Math.min(2.2, modalSpotSize * modalZoom * 0.12));
             ctx.beginPath();
             const n = modalSection.x.length;
             const drawEdge = (i, j) => {{
