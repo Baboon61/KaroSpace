@@ -44,6 +44,8 @@ data/
 # Output
 output/
 *.html
+# Keep unpublished local exports out of git
+BALO.html
 
 # OS
 .DS_Store
