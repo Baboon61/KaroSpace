@@ -836,6 +836,8 @@ class SpatialDataset:
                 "y": None,
                 "xb64": None,
                 "yb64": None,
+                "obs_idx": None,
+                "obs_idxb64": None,
                 "colors": section_colors,
                 "colors_b64": section_colors_b64,
                 "genes": section_genes_dense,
@@ -864,12 +866,14 @@ class SpatialDataset:
             if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
                 section_entry["xb64"] = _b64(section_coords[:, 0].astype("<f4", copy=False))
                 section_entry["yb64"] = _b64(section_coords[:, 1].astype("<f4", copy=False))
+                section_entry["obs_idxb64"] = _b64(np.asarray(idx, dtype="<u4"))
                 if section_umap is not None:
                     section_entry["umap_xb64"] = _b64(section_umap[:, 0].astype("<f4", copy=False))
                     section_entry["umap_yb64"] = _b64(section_umap[:, 1].astype("<f4", copy=False))
             else:
                 section_entry["x"] = section_coords[:, 0].tolist()
                 section_entry["y"] = section_coords[:, 1].tolist()
+                section_entry["obs_idx"] = np.asarray(idx, dtype=int).tolist()
                 if section_umap is not None:
                     section_entry["umap_x"] = section_umap[:, 0].tolist()
                     section_entry["umap_y"] = section_umap[:, 1].tolist()
@@ -915,6 +919,7 @@ class SpatialDataset:
 
         return {
             "initial_color": color,
+            "groupby": self.groupby,
             "colors_meta": colors_meta,
             "genes_meta": genes_meta,
             "gene_encodings": gene_encodings,

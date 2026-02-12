@@ -7,6 +7,7 @@ data stored in h5ad format, designed for large datasets with multiple sections.
 
 from .data_loader import load_spatial_data, SpatialDataset
 from .exporter import export_to_html
+from .annotations import integrate_polygon_annotations
 
 __version__ = "0.1.0"
-__all__ = ["load_spatial_data", "SpatialDataset", "export_to_html"]
+__all__ = ["load_spatial_data", "SpatialDataset", "export_to_html", "integrate_polygon_annotations"]

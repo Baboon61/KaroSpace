@@ -17,6 +17,7 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **UMAP view with Magic Wand selection** - Toggle UMAP panel, draw to select cells, highlights sync across views
 - **Modal section Magic Wand** - Draw lasso selections directly inside the zoomed section view
 - **Selection summaries** - Selected-cell totals + per-type counts with expandable category list and scrollable panel
+- **Polygon annotation export** - Draw multiple persistent polygons per section and export as JSON for downstream `adata` integration
 - **Modal split compare slider** - In zoomed section view, compare variable A vs B with a left/right split
 - **Flexible split inputs** - A/B can be cell type/cluster columns or genes; cell-type sides support one category or `All categories`
 - **Category toggling** - Click legend items to show/hide specific cell types or clusters; hidden cells appear as grey
@@ -285,6 +286,9 @@ export_to_html(
 - **Gene mode** - Pick a pre-loaded gene from the gene list
 - **Split slider** - Controls left/right display share (e.g. 10% = left 10% uses A, right 90% uses B)
 - **Magic Wand** - Draw a lasso directly on the section to select cells of interest
+- **Annotate button** - Draw persistent polygons in the section (multiple polygons supported)
+- **Annotation panel** - Rename polygons, select polygon cells, delete polygons, or clear section/all
+- **Export JSON** - Download all polygon annotations including vertices + mapped cell indices
 - **Clear selection** - Remove current selected cells
 - **Graph button** - Toggle neighborhood graph overlay (if available)
 - **Neighbors button** - Toggle neighbor rings on hover (if available)
@@ -331,6 +335,26 @@ If your h5ad file contains UMAP coordinates (`adata.obsm['X_umap']`), a UMAP tog
 - **Updates**: Re-run `export_to_html` to refresh the file when annotations or metadata change.
 
 Selected cells are highlighted with a yellow/gold outline in both UMAP and spatial views.
+
+### Integrate Polygon Annotations Back Into AnnData
+
+Polygon exports use global cell indices when available, so you can map annotations directly back to the original `adata`.
+
+```python
+import scanpy as sc
+from karospace import integrate_polygon_annotations
+
+adata = sc.read_h5ad("your_data.h5ad")
+integrate_polygon_annotations(
+    adata,
+    "karospace-annotations-2026-02-12T12-00-00-000Z.json",
+    label_key="lesion_labels",           # per-cell joined labels
+    count_key="lesion_label_count",      # number of polygons covering each cell
+    uns_key="lesion_polygons",           # full polygon metadata
+)
+
+adata.write_h5ad("your_data_with_polygons.h5ad")
+```
 
 ## Performance Tips
 

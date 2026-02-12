@@ -854,6 +854,105 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .selection-summary-toggle:hover {{
             color: var(--accent);
         }}
+        .modal-annotation-panel {{
+            position: absolute;
+            right: 8px;
+            bottom: 82px;
+            width: min(360px, calc(100% - 16px));
+            max-height: min(56%, 380px);
+            overflow-y: auto;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
+            backdrop-filter: blur(6px);
+            z-index: 2;
+            pointer-events: auto;
+        }}
+        .modal-annotation-title {{
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            color: var(--muted-color);
+            margin: 0 0 6px;
+        }}
+        .modal-annotation-actions {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-bottom: 6px;
+        }}
+        .modal-annotation-actions button {{
+            padding: 4px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 11px;
+            transition: background 0.3s, border-color 0.3s, color 0.3s;
+        }}
+        .modal-annotation-actions button:hover {{ background: var(--hover-bg); }}
+        .modal-annotation-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }}
+        .modal-annotation-empty {{
+            font-size: 10px;
+            color: var(--muted-color);
+            line-height: 1.35;
+        }}
+        .modal-annotation-row {{
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 6px;
+            background: color-mix(in srgb, var(--panel-bg) 85%, transparent);
+        }}
+        .modal-annotation-row-main {{
+            display: grid;
+            grid-template-columns: 12px 1fr auto;
+            gap: 6px;
+            align-items: center;
+        }}
+        .modal-annotation-color {{
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 255, 255, 0.65);
+        }}
+        .modal-annotation-label {{
+            min-width: 0;
+            width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 11px;
+            padding: 3px 6px;
+        }}
+        .modal-annotation-count {{
+            font-size: 10px;
+            color: var(--muted-color);
+            white-space: nowrap;
+        }}
+        .modal-annotation-row-actions {{
+            margin-top: 6px;
+            display: flex;
+            gap: 6px;
+        }}
+        .modal-annotation-row-actions button {{
+            flex: 1;
+            padding: 4px 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 10px;
+            cursor: pointer;
+            transition: background 0.3s, border-color 0.3s, color 0.3s;
+        }}
+        .modal-annotation-row-actions button:hover {{ background: var(--hover-bg); }}
 
         .no-results {{
             grid-column: 1 / -1;
@@ -1294,12 +1393,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                         <div class="modal-blend-meta" id="modal-blend-meta"></div>
                     </div>
+                    <div class="modal-annotation-panel" id="modal-annotation-panel">
+                        <div class="modal-annotation-title">Polygon Annotations</div>
+                        <div class="modal-annotation-actions">
+                            <button id="modal-annotations-export" type="button" title="Export all polygon annotations as JSON">Export JSON</button>
+                            <button id="modal-annotations-clear-section" type="button" title="Delete annotations in this section">Clear section</button>
+                            <button id="modal-annotations-clear-all" type="button" title="Delete all annotations">Clear all</button>
+                        </div>
+                        <div class="modal-annotation-list" id="modal-annotation-list">
+                            <div class="modal-annotation-empty">Enable Annotate and draw a region to create polygon annotations.</div>
+                        </div>
+                    </div>
                     <div class="modal-controls">
                         <button id="zoom-in">+ Zoom</button>
                         <button id="zoom-out">- Zoom</button>
                         <button id="zoom-reset">Reset</button>
                         <button class="graph-toggle" id="modal-blend-toggle" title="Split the view between two selected variables">Split</button>
                         <button class="graph-toggle" id="modal-magic-wand-btn" title="Draw to select cells in this section">Magic Wand</button>
+                        <button class="graph-toggle" id="modal-annotate-btn" title="Draw persistent polygon annotations in this section">Annotate</button>
                         <button class="graph-toggle" id="modal-clear-selection-btn" title="Clear selected cells">Clear selection</button>
                         <button class="graph-toggle" id="modal-graph-toggle" title="Toggle neighborhood graph" style="display: none;">Graph</button>
                         <button class="graph-toggle" id="modal-neighbor-hover-toggle" title="Toggle neighbor rings on hover" style="display: none;">Neighbors</button>
@@ -1459,6 +1570,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let modalMagicWandActive = false;
     let isDrawingModalLasso = false;
     let modalLassoPath = [];  // Array of {{x, y}} points in modal canvas space
+    let modalAnnotationModeActive = false;
+    let isDrawingModalAnnotation = false;
+    let modalAnnotationPath = [];  // Array of {{x, y}} points in modal canvas space
+    let modalAnnotations = [];
+    let modalNextAnnotationId = 1;
     let modalBlendEnabled = false;
     let modalBlendMix = 0.5;  // Split position from left: 0 = all B, 1 = all A
     const BLEND_ALL_CATEGORIES = '__ALL__';
@@ -1466,6 +1582,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         a: {{ kind: 'cell', color: null, category: null, gene: '' }},
         b: {{ kind: 'cell', color: null, category: null, gene: '' }},
     }};
+    const MODAL_ANNOTATION_COLORS = [
+        '#ff7f50', '#2a9d8f', '#ffd166', '#ef476f', '#06d6a0',
+        '#118ab2', '#f4a261', '#4cc9f0', '#e63946', '#43aa8b'
+    ];
 
     // UMAP state
     let umapVisible = false;
@@ -1543,6 +1663,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         document.body.appendChild(link);
         link.click();
         link.remove();
+    }}
+
+    function downloadJsonFile(data, filename) {{
+        const blob = new Blob([JSON.stringify(data, null, 2)], {{ type: 'application/json' }});
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
     }}
 
     function replaceCanvasesWithImages(root) {{
@@ -1860,6 +1992,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             section.umap_y = base64ToFloat32Array(section.umap_yb64);
             delete section.umap_yb64;
         }}
+        return true;
+    }}
+
+    function ensureSectionObsIndices(section) {{
+        if (!section) return false;
+        if ((section.obs_idx === null || section.obs_idx === undefined) && typeof section.obs_idxb64 === 'string') {{
+            section.obs_idx = base64ToUint32Array(section.obs_idxb64);
+            delete section.obs_idxb64;
+        }}
+        if (section.obs_idx === null || section.obs_idx === undefined) section.obs_idx = [];
         return true;
     }}
 
@@ -2786,6 +2928,240 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (modalSection) renderModalSection();
     }}
 
+    function escapeHtml(text) {{
+        return String(text ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }}
+
+    function getModalViewTransform(rect) {{
+        if (!modalSection || !rect) return null;
+        const bounds = modalSection.bounds;
+        const dataWidth = bounds.xmax - bounds.xmin;
+        const dataHeight = bounds.ymax - bounds.ymin;
+        const baseScale = Math.min((rect.width - 40) / dataWidth, (rect.height - 40) / dataHeight);
+        const scale = baseScale * modalZoom;
+        return {{
+            width: rect.width,
+            height: rect.height,
+            scale,
+            centerX: rect.width / 2 + modalPanX,
+            centerY: rect.height / 2 + modalPanY,
+            dataCenterX: (bounds.xmin + bounds.xmax) / 2,
+            dataCenterY: (bounds.ymin + bounds.ymax) / 2,
+        }};
+    }}
+
+    function screenPointToModalData(x, y, transform) {{
+        return {{
+            x: transform.dataCenterX + (x - transform.centerX) / transform.scale,
+            y: transform.dataCenterY - (y - transform.centerY) / transform.scale,
+        }};
+    }}
+
+    function modalDataPointToScreen(x, y, transform) {{
+        return {{
+            x: transform.centerX + (x - transform.dataCenterX) * transform.scale,
+            y: transform.centerY - (y - transform.dataCenterY) * transform.scale,
+        }};
+    }}
+
+    function getAnnotationColorById(id) {{
+        const index = Math.max(0, (Number(id) || 1) - 1);
+        return MODAL_ANNOTATION_COLORS[index % MODAL_ANNOTATION_COLORS.length];
+    }}
+
+    function getSectionAnnotations(sectionId) {{
+        return modalAnnotations.filter(annotation => annotation.sectionId === sectionId);
+    }}
+
+    function getModalAnnotationById(annotationId) {{
+        const target = Number(annotationId);
+        if (!Number.isFinite(target)) return null;
+        return modalAnnotations.find(annotation => annotation.id === target) || null;
+    }}
+
+    function computeCellsInsideDataPolygon(section, polygonData) {{
+        ensureSectionXY(section);
+        ensureSectionObsIndices(section);
+
+        const localIndices = [];
+        const globalIndices = [];
+        for (let i = 0; i < section.x.length; i++) {{
+            const x = section.x[i];
+            const y = section.y[i];
+            if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+            if (pointInPolygon(x, y, polygonData)) {{
+                localIndices.push(i);
+                const rawGlobal = section.obs_idx?.[i];
+                if (Number.isFinite(rawGlobal)) {{
+                    globalIndices.push(Number(rawGlobal));
+                }}
+            }}
+        }}
+        return {{ localIndices, globalIndices }};
+    }}
+
+    function createModalAnnotationFromPath() {{
+        if (!modalSection || modalAnnotationPath.length < 3) return false;
+        const canvas = document.getElementById('modal-canvas');
+        if (!canvas) return false;
+        const rect = canvas.getBoundingClientRect();
+        const transform = getModalViewTransform(rect);
+        if (!transform) return false;
+
+        const polygonData = modalAnnotationPath.map((point) => screenPointToModalData(point.x, point.y, transform));
+        const cells = computeCellsInsideDataPolygon(modalSection, polygonData);
+        const annotationId = modalNextAnnotationId++;
+        const annotation = {{
+            id: annotationId,
+            sectionId: modalSection.id,
+            label: `Annotation ${{annotationId}}`,
+            color: getAnnotationColorById(annotationId),
+            createdAt: new Date().toISOString(),
+            vertices: polygonData,
+            localCellIndices: cells.localIndices,
+            globalCellIndices: cells.globalIndices,
+        }};
+        modalAnnotations.push(annotation);
+        renderModalAnnotationPanel();
+        return true;
+    }}
+
+    function removeModalAnnotation(annotationId) {{
+        const target = Number(annotationId);
+        if (!Number.isFinite(target)) return;
+        modalAnnotations = modalAnnotations.filter(annotation => annotation.id !== target);
+        renderModalAnnotationPanel();
+        if (modalSection) renderModalSection();
+    }}
+
+    function clearModalAnnotationsForSection(sectionId) {{
+        modalAnnotations = modalAnnotations.filter(annotation => annotation.sectionId !== sectionId);
+        renderModalAnnotationPanel();
+        if (modalSection) renderModalSection();
+    }}
+
+    function clearAllModalAnnotations() {{
+        modalAnnotations = [];
+        renderModalAnnotationPanel();
+        if (modalSection) renderModalSection();
+    }}
+
+    function selectCellsFromAnnotation(annotationId) {{
+        const annotation = getModalAnnotationById(annotationId);
+        if (!annotation) return;
+        selectedCells.clear();
+        (annotation.localCellIndices || []).forEach((cellIdx) => {{
+            if (Number.isInteger(cellIdx) && cellIdx >= 0) {{
+                selectedCells.add(`${{annotation.sectionId}}:${{cellIdx}}`);
+            }}
+        }});
+        selectionSummaryExpanded = false;
+        updateSelectionInfo();
+        renderAllSections();
+        if (umapVisible) renderUMAP();
+        if (modalSection) renderModalSection();
+    }}
+
+    function buildModalAnnotationExport() {{
+        const polygons = modalAnnotations.map((annotation) => {{
+            const vertices = (annotation.vertices || []).map((point) => {{
+                const x = Number(point.x);
+                const y = Number(point.y);
+                return {{
+                    x: Number.isFinite(x) ? Number(x.toFixed(6)) : null,
+                    y: Number.isFinite(y) ? Number(y.toFixed(6)) : null,
+                }};
+            }});
+            return {{
+                id: annotation.id,
+                label: annotation.label || `Annotation ${{annotation.id}}`,
+                color: annotation.color || getAnnotationColorById(annotation.id),
+                created_at: annotation.createdAt || null,
+                section_id: annotation.sectionId,
+                n_vertices: vertices.length,
+                vertices,
+                n_cells: (annotation.localCellIndices || []).length,
+                cell_local_indices: (annotation.localCellIndices || []).slice(),
+                cell_global_indices: (annotation.globalCellIndices || []).slice(),
+            }};
+        }});
+        return {{
+            format: 'karospace-polygon-annotations-v1',
+            created_at: new Date().toISOString(),
+            groupby: DATA.groupby || null,
+            n_polygons: polygons.length,
+            polygons,
+        }};
+    }}
+
+    function exportModalAnnotations() {{
+        if (!modalAnnotations.length) {{
+            alert('No polygon annotations to export yet.');
+            return;
+        }}
+        const payload = buildModalAnnotationExport();
+        downloadJsonFile(payload, `karospace-annotations-${{getScreenshotTimestamp()}}.json`);
+    }}
+
+    function renderModalAnnotationPanel() {{
+        const listEl = document.getElementById('modal-annotation-list');
+        if (!listEl) return;
+        if (!modalSection) {{
+            listEl.innerHTML = '<div class="modal-annotation-empty">Open a section to annotate.</div>';
+            return;
+        }}
+
+        const sectionAnnotations = getSectionAnnotations(modalSection.id);
+        if (!sectionAnnotations.length) {{
+            listEl.innerHTML = '<div class="modal-annotation-empty">Enable Annotate and draw a region to create polygon annotations.</div>';
+            return;
+        }}
+
+        listEl.innerHTML = sectionAnnotations.map((annotation) => {{
+            const count = Number(annotation.localCellIndices?.length || 0).toLocaleString();
+            const label = escapeHtml(annotation.label || `Annotation ${{annotation.id}}`);
+            return `
+                <div class="modal-annotation-row" data-annotation-id="${{annotation.id}}">
+                    <div class="modal-annotation-row-main">
+                        <span class="modal-annotation-color" style="background: ${{annotation.color || getAnnotationColorById(annotation.id)}}"></span>
+                        <input class="modal-annotation-label" type="text" value="${{label}}" data-annotation-label="${{annotation.id}}">
+                        <span class="modal-annotation-count">${{count}} cells</span>
+                    </div>
+                    <div class="modal-annotation-row-actions">
+                        <button type="button" data-annotation-select="${{annotation.id}}">Select cells</button>
+                        <button type="button" data-annotation-delete="${{annotation.id}}">Delete</button>
+                    </div>
+                </div>
+            `;
+        }}).join('');
+
+        listEl.querySelectorAll('[data-annotation-label]').forEach((input) => {{
+            input.addEventListener('change', () => {{
+                const annotation = getModalAnnotationById(input.dataset.annotationLabel);
+                if (!annotation) return;
+                const nextLabel = String(input.value || '').trim();
+                annotation.label = nextLabel || `Annotation ${{annotation.id}}`;
+                renderModalAnnotationPanel();
+                if (modalSection) renderModalSection();
+            }});
+        }});
+        listEl.querySelectorAll('[data-annotation-select]').forEach((btn) => {{
+            btn.addEventListener('click', () => {{
+                selectCellsFromAnnotation(btn.dataset.annotationSelect);
+            }});
+        }});
+        listEl.querySelectorAll('[data-annotation-delete]').forEach((btn) => {{
+            btn.addEventListener('click', () => {{
+                removeModalAnnotation(btn.dataset.annotationDelete);
+            }});
+        }});
+    }}
+
     // Perform lasso selection on the active modal section
     function performModalLassoSelection() {{
         if (!modalSection || modalLassoPath.length < 3) return;
@@ -3401,6 +3777,49 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
+    function drawModalAnnotations(ctx, transform) {{
+        if (!modalSection) return;
+        const sectionAnnotations = getSectionAnnotations(modalSection.id);
+        if (!sectionAnnotations.length) return;
+
+        sectionAnnotations.forEach((annotation) => {{
+            const vertices = annotation.vertices || [];
+            if (vertices.length < 2) return;
+            ctx.save();
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = annotation.color || getAnnotationColorById(annotation.id);
+            ctx.fillStyle = annotation.color || getAnnotationColorById(annotation.id);
+            ctx.globalAlpha = 0.18;
+            const first = modalDataPointToScreen(vertices[0].x, vertices[0].y, transform);
+            ctx.beginPath();
+            ctx.moveTo(first.x, first.y);
+            for (let i = 1; i < vertices.length; i++) {{
+                const point = modalDataPointToScreen(vertices[i].x, vertices[i].y, transform);
+                ctx.lineTo(point.x, point.y);
+            }}
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 0.95;
+            ctx.stroke();
+
+            let cx = 0;
+            let cy = 0;
+            for (let i = 0; i < vertices.length; i++) {{
+                const point = modalDataPointToScreen(vertices[i].x, vertices[i].y, transform);
+                cx += point.x;
+                cy += point.y;
+            }}
+            cx /= vertices.length;
+            cy /= vertices.length;
+            const count = Number(annotation.localCellIndices?.length || 0).toLocaleString();
+            ctx.fillStyle = annotation.color || getAnnotationColorById(annotation.id);
+            ctx.globalAlpha = 1;
+            ctx.font = '11px sans-serif';
+            ctx.fillText(`${{annotation.label || `Annotation ${{annotation.id}}`}} (${{count}})`, cx + 6, cy - 6);
+            ctx.restore();
+        }});
+    }}
+
     // Modal rendering
     function renderModalSection() {{
         if (!modalSection) return;
@@ -3439,7 +3858,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const blendActive = !!blendRuntimes;
         const typeToggleBtn = document.getElementById('modal-type-toggle');
         const typeClearBtn = document.getElementById('modal-type-clear');
-        const typeSelectionDisabled = config.is_continuous || blendActive;
+        const typeSelectionDisabled = config.is_continuous || blendActive || modalAnnotationModeActive;
         if (typeSelectionDisabled) {{
             modalSelectedCategory = null;
             modalTypeSelectEnabled = false;
@@ -3625,6 +4044,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             height
         }}, adjustedSpotSize);
 
+        drawModalAnnotations(ctx, {{
+            scale,
+            centerX,
+            centerY,
+            dataCenterX,
+            dataCenterY,
+        }});
+
         if (isDrawingModalLasso && modalLassoPath.length > 1) {{
             ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
             ctx.lineWidth = 2;
@@ -3633,6 +4060,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ctx.moveTo(modalLassoPath[0].x, modalLassoPath[0].y);
             for (let i = 1; i < modalLassoPath.length; i++) {{
                 ctx.lineTo(modalLassoPath[i].x, modalLassoPath[i].y);
+            }}
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }}
+
+        if (isDrawingModalAnnotation && modalAnnotationPath.length > 1) {{
+            ctx.strokeStyle = 'rgba(255, 127, 80, 0.95)';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([4, 3]);
+            ctx.beginPath();
+            ctx.moveTo(modalAnnotationPath[0].x, modalAnnotationPath[0].y);
+            for (let i = 1; i < modalAnnotationPath.length; i++) {{
+                ctx.lineTo(modalAnnotationPath[i].x, modalAnnotationPath[i].y);
             }}
             ctx.stroke();
             ctx.setLineDash([]);
@@ -4786,6 +5226,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         isDrawingModalLasso = false;
         modalLassoPath = [];
         document.getElementById('modal-magic-wand-btn')?.classList.remove('active');
+        modalAnnotationModeActive = false;
+        isDrawingModalAnnotation = false;
+        modalAnnotationPath = [];
+        document.getElementById('modal-annotate-btn')?.classList.remove('active');
 
         document.getElementById('modal-title').textContent = sectionId;
         const metaText = Object.entries(modalSection.metadata || {{}})
@@ -4797,6 +5241,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         requestAnimationFrame(() => {{
             const canvas = document.getElementById('modal-canvas');
             if (canvas) canvas.style.cursor = 'grab';
+            renderModalAnnotationPanel();
             renderModalSection();
         }});
     }}
@@ -4806,9 +5251,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalMagicWandActive = false;
         isDrawingModalLasso = false;
         modalLassoPath = [];
+        modalAnnotationModeActive = false;
+        isDrawingModalAnnotation = false;
+        modalAnnotationPath = [];
         modalPointerMoved = false;
         document.getElementById('modal-magic-wand-btn')?.classList.remove('active');
+        document.getElementById('modal-annotate-btn')?.classList.remove('active');
         modalSection = null;
+        renderModalAnnotationPanel();
         hideTooltip();
     }}
 
@@ -5148,7 +5598,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }},
         }};
         const modalWandBtn = document.getElementById('modal-magic-wand-btn');
+        const modalAnnotateBtn = document.getElementById('modal-annotate-btn');
         const modalClearSelectionBtn = document.getElementById('modal-clear-selection-btn');
+        const modalAnnotationPanel = document.getElementById('modal-annotation-panel');
+        const modalAnnotationExportBtn = document.getElementById('modal-annotations-export');
+        const modalAnnotationClearSectionBtn = document.getElementById('modal-annotations-clear-section');
+        const modalAnnotationClearAllBtn = document.getElementById('modal-annotations-clear-all');
+
+        function updateModalCanvasCursor() {{
+            if (!canvas) return;
+            if (isDragging) {{
+                canvas.style.cursor = 'grabbing';
+            }} else if (modalMagicWandActive || modalAnnotationModeActive) {{
+                canvas.style.cursor = 'crosshair';
+            }} else {{
+                canvas.style.cursor = 'grab';
+            }}
+        }}
 
         function setSelectOptions(selectEl, values, selectedValue) {{
             if (!selectEl) return;
@@ -5299,7 +5765,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         modalBlendPanel?.addEventListener('wheel', (e) => e.stopPropagation());
         modalBlendPanel?.addEventListener('touchmove', (e) => e.stopPropagation());
+        modalAnnotationPanel?.addEventListener('wheel', (e) => e.stopPropagation());
+        modalAnnotationPanel?.addEventListener('touchmove', (e) => e.stopPropagation());
         syncModalBlendUI();
+        renderModalAnnotationPanel();
+
+        modalAnnotationExportBtn?.addEventListener('click', () => {{
+            exportModalAnnotations();
+        }});
+        modalAnnotationClearSectionBtn?.addEventListener('click', () => {{
+            if (!modalSection) return;
+            clearModalAnnotationsForSection(modalSection.id);
+        }});
+        modalAnnotationClearAllBtn?.addEventListener('click', () => {{
+            clearAllModalAnnotations();
+        }});
 
         typeToggleBtn.addEventListener('click', () => {{
             const config = getColorConfig();
@@ -5315,17 +5795,48 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalWandBtn?.addEventListener('click', () => {{
             modalMagicWandActive = !modalMagicWandActive;
             modalWandBtn.classList.toggle('active', modalMagicWandActive);
+            if (modalMagicWandActive) {{
+                modalAnnotationModeActive = false;
+                isDrawingModalAnnotation = false;
+                modalAnnotationPath = [];
+                modalAnnotateBtn?.classList.remove('active');
+            }}
             if (!modalMagicWandActive) {{
                 isDrawingModalLasso = false;
                 modalLassoPath = [];
             }}
-            canvas.style.cursor = modalMagicWandActive ? 'crosshair' : 'grab';
+            updateModalCanvasCursor();
+            renderModalSection();
+        }});
+        modalAnnotateBtn?.addEventListener('click', () => {{
+            modalAnnotationModeActive = !modalAnnotationModeActive;
+            modalAnnotateBtn.classList.toggle('active', modalAnnotationModeActive);
+            if (modalAnnotationModeActive) {{
+                modalMagicWandActive = false;
+                isDrawingModalLasso = false;
+                modalLassoPath = [];
+                modalWandBtn?.classList.remove('active');
+            }} else {{
+                isDrawingModalAnnotation = false;
+                modalAnnotationPath = [];
+            }}
+            updateModalCanvasCursor();
             renderModalSection();
         }});
         modalClearSelectionBtn?.addEventListener('click', clearSelection);
         canvas.addEventListener('mousedown', (e) => {{
             modalPointerMoved = false;
             hideTooltip();
+            if (modalAnnotationModeActive) {{
+                if (!modalSection) return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                isDrawingModalAnnotation = true;
+                modalAnnotationPath = [{{ x, y }}];
+                renderModalSection();
+                return;
+            }}
             if (modalMagicWandActive) {{
                 if (!modalSection) return;
                 const rect = canvas.getBoundingClientRect();
@@ -5339,10 +5850,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             isDragging = true;
             dragStartX = e.clientX; dragStartY = e.clientY;
             lastPanX = modalPanX; lastPanY = modalPanY;
-            canvas.style.cursor = 'grabbing';
+            updateModalCanvasCursor();
         }});
         canvas.addEventListener('click', (e) => {{
-            if (!modalSection || isDragging || isDrawingModalLasso || modalPointerMoved || modalMagicWandActive) return;
+            if (!modalSection || isDragging || isDrawingModalLasso || isDrawingModalAnnotation || modalPointerMoved || modalMagicWandActive || modalAnnotationModeActive) return;
             const config = getColorConfig();
             if (config.is_continuous || !modalTypeSelectEnabled) return;
 
@@ -5381,6 +5892,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
         document.addEventListener('mousemove', (e) => {{
+            if (isDrawingModalAnnotation) {{
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                const last = modalAnnotationPath[modalAnnotationPath.length - 1];
+                if (!last || Math.abs(x - last.x) + Math.abs(y - last.y) >= 1) {{
+                    modalAnnotationPath.push({{ x, y }});
+                    modalPointerMoved = true;
+                    renderModalSection();
+                }}
+                return;
+            }}
             if (isDrawingModalLasso) {{
                 const rect = canvas.getBoundingClientRect();
                 const x = e.clientX - rect.left;
@@ -5400,6 +5923,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderModalSection();
         }});
         document.addEventListener('mouseup', () => {{
+            if (isDrawingModalAnnotation) {{
+                isDrawingModalAnnotation = false;
+                createModalAnnotationFromPath();
+                modalAnnotationPath = [];
+            }}
             if (isDrawingModalLasso) {{
                 isDrawingModalLasso = false;
                 performModalLassoSelection();
@@ -5408,13 +5936,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (isDragging) {{
                 isDragging = false;
             }}
-            canvas.style.cursor = modalMagicWandActive ? 'crosshair' : 'grab';
+            updateModalCanvasCursor();
         }});
-        canvas.style.cursor = modalMagicWandActive ? 'crosshair' : 'grab';
+        updateModalCanvasCursor();
 
         // Tooltip on hover in modal
         canvas.addEventListener('mousemove', (e) => {{
-            if (isDragging || isDrawingModalLasso || modalMagicWandActive || !modalSection) return;
+            if (isDragging || isDrawingModalLasso || isDrawingModalAnnotation || modalMagicWandActive || modalAnnotationModeActive || !modalSection) return;
 
             const rect = canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
