@@ -3543,16 +3543,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     const edge = edges[e];
                     const i = edge[0];
                     const j = edge[1];
-                    const valI = values[i];
-                    const valJ = values[j];
-                    if (valI === null || valI === undefined || valJ === null || valJ === undefined) continue;
-                    if (!config.is_continuous) {{
-                        const catIdxI = Math.round(valI);
-                        const catIdxJ = Math.round(valJ);
-                        const catNameI = config.categories[catIdxI];
-                        const catNameJ = config.categories[catIdxJ];
-                        if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) continue;
-                    }}
+                    if (i >= section.x.length || j >= section.x.length) continue;
                     const x1 = offsetX + (section.x[i] - bounds.xmin) * scale;
                     const y1 = height - (offsetY + (section.y[i] - bounds.ymin) * scale);
                     const x2 = offsetX + (section.x[j] - bounds.xmin) * scale;
@@ -3565,16 +3556,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     const i = edges[e];
                     const j = edges[e + 1];
                     if (i >= section.x.length || j >= section.x.length) continue;
-                    const valI = values[i];
-                    const valJ = values[j];
-                    if (valI === null || valI === undefined || valJ === null || valJ === undefined) continue;
-                    if (!config.is_continuous) {{
-                        const catIdxI = Math.round(valI);
-                        const catIdxJ = Math.round(valJ);
-                        const catNameI = config.categories[catIdxI];
-                        const catNameJ = config.categories[catIdxJ];
-                        if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) continue;
-                    }}
                     const x1 = offsetX + (section.x[i] - bounds.xmin) * scale;
                     const y1 = height - (offsetY + (section.y[i] - bounds.ymin) * scale);
                     const x2 = offsetX + (section.x[j] - bounds.xmin) * scale;
@@ -3925,16 +3906,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const n = modalSection.x.length;
             const drawEdge = (i, j) => {{
                 if (i < 0 || j < 0 || i >= n || j >= n) return;
-                const valI = values[i];
-                const valJ = values[j];
-                if (!blendActive && (valI === null || valI === undefined || valJ === null || valJ === undefined)) return;
-                if (!blendActive && !config.is_continuous) {{
-                    const catIdxI = Math.round(valI);
-                    const catIdxJ = Math.round(valJ);
-                    const catNameI = config.categories[catIdxI];
-                    const catNameJ = config.categories[catIdxJ];
-                    if (hiddenCategories.has(catNameI) || hiddenCategories.has(catNameJ)) return;
-                }}
                 const x1 = centerX + (modalSection.x[i] - dataCenterX) * scale;
                 const y1 = centerY - (modalSection.y[i] - dataCenterY) * scale;
                 const x2 = centerX + (modalSection.x[j] - dataCenterX) * scale;
