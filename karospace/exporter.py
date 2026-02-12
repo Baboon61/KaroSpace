@@ -878,12 +878,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             z-index: 2;
             pointer-events: auto;
         }}
+        .modal-annotation-panel.dragging {{
+            user-select: none;
+        }}
         .modal-annotation-title {{
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
             color: var(--muted-color);
             margin: 0 0 6px;
+            cursor: grab;
+            user-select: none;
+            touch-action: none;
+        }}
+        .modal-annotation-panel.dragging .modal-annotation-title {{
+            cursor: grabbing;
         }}
         .modal-annotation-actions {{
             display: flex;
@@ -1587,6 +1596,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let modalNextAnnotationId = 1;
     let modalBlendEnabled = false;
     let modalBlendMix = 0.5;  // Split position from left: 0 = all B, 1 = all A
+    let modalAnnotationPanelCustomPosition = null;
+    let isDraggingModalAnnotationPanel = false;
+    let modalAnnotationPanelDragOffsetX = 0;
+    let modalAnnotationPanelDragOffsetY = 0;
     const BLEND_ALL_CATEGORIES = '__ALL__';
     let modalBlendSpec = {{
         a: {{ kind: 'cell', color: null, category: null, gene: '' }},
@@ -3144,12 +3157,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!listEl) return;
         if (!modalSection) {{
             listEl.innerHTML = '<div class="modal-annotation-empty">Open a section to annotate.</div>';
+            layoutModalAnnotationPanel();
             return;
         }}
 
         const sectionAnnotations = getSectionAnnotations(modalSection.id);
         if (!sectionAnnotations.length) {{
             listEl.innerHTML = '<div class="modal-annotation-empty">Enable Annotate and draw a region to create polygon annotations.</div>';
+            layoutModalAnnotationPanel();
             return;
         }}
 
@@ -3191,6 +3206,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 removeModalAnnotation(btn.dataset.annotationDelete);
             }});
         }});
+        layoutModalAnnotationPanel();
     }}
 
     // Perform lasso selection on the active modal section
@@ -3904,7 +3920,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (showGraph && modalEdges && modalEdges.length) {{
             const graphColor = getGraphColor();
             ctx.strokeStyle = graphColor;
-            ctx.lineWidth = Math.max(0.3, modalSpotSize * modalZoom * 0.12);
+            ctx.lineWidth = Math.max(0.3, modalSpotSize * 0.12);
             ctx.beginPath();
             const n = modalSection.x.length;
             const drawEdge = (i, j) => {{
@@ -3923,10 +3939,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const y1 = centerY - (modalSection.y[i] - dataCenterY) * scale;
                 const x2 = centerX + (modalSection.x[j] - dataCenterX) * scale;
                 const y2 = centerY - (modalSection.y[j] - dataCenterY) * scale;
-                if (x1 < -adjustedSpotSize || x1 > width + adjustedSpotSize ||
-                    y1 < -adjustedSpotSize || y1 > height + adjustedSpotSize) return;
-                if (x2 < -adjustedSpotSize || x2 > width + adjustedSpotSize ||
-                    y2 < -adjustedSpotSize || y2 > height + adjustedSpotSize) return;
+                const minX = Math.min(x1, x2);
+                const maxX = Math.max(x1, x2);
+                const minY = Math.min(y1, y2);
+                const maxY = Math.max(y1, y2);
+                if (maxX < -adjustedSpotSize || minX > width + adjustedSpotSize ||
+                    maxY < -adjustedSpotSize || minY > height + adjustedSpotSize) return;
                 ctx.moveTo(x1, y1);
                 ctx.lineTo(x2, y2);
             }};
@@ -5272,6 +5290,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         requestAnimationFrame(() => {{
             const canvas = document.getElementById('modal-canvas');
             if (canvas) canvas.style.cursor = 'grab';
+            layoutModalAnnotationPanel();
             renderModalAnnotationPanel();
             renderModalSection();
         }});
@@ -5291,6 +5310,129 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalSection = null;
         renderModalAnnotationPanel();
         hideTooltip();
+    }}
+
+    function getModalAnnotationPanelBounds() {{
+        const container = document.getElementById('modal-canvas-container');
+        const panel = document.getElementById('modal-annotation-panel');
+        if (!container || !panel) return null;
+        const containerRect = container.getBoundingClientRect();
+        if (containerRect.width <= 0 || containerRect.height <= 0) return null;
+
+        const margin = 8;
+        const controls = container.querySelector('.modal-controls');
+        let controlsTop = containerRect.height - margin;
+        if (controls) {{
+            const controlsRect = controls.getBoundingClientRect();
+            controlsTop = Math.max(
+                margin,
+                Math.min(controlsTop, controlsRect.top - containerRect.top - margin)
+            );
+        }}
+
+        const panelWidth = panel.offsetWidth || Math.min(360, Math.max(120, containerRect.width - margin * 2));
+        const panelHeight = panel.offsetHeight || 200;
+        const maxHeight = Math.max(120, controlsTop - margin);
+
+        const minX = margin;
+        const maxX = Math.max(minX, containerRect.width - panelWidth - margin);
+        const minY = margin;
+        const maxY = Math.max(minY, controlsTop - panelHeight - margin);
+
+        return {{ minX, maxX, minY, maxY, maxHeight }};
+    }}
+
+    function clampModalAnnotationPanelPosition(x, y) {{
+        const bounds = getModalAnnotationPanelBounds();
+        if (!bounds) return {{ x, y }};
+        return {{
+            x: Math.min(bounds.maxX, Math.max(bounds.minX, x)),
+            y: Math.min(bounds.maxY, Math.max(bounds.minY, y)),
+        }};
+    }}
+
+    function applyModalAnnotationPanelPosition(position) {{
+        const panel = document.getElementById('modal-annotation-panel');
+        if (!panel) return;
+        if (!position) {{
+            panel.style.left = '';
+            panel.style.top = '';
+            panel.style.right = '8px';
+            panel.style.bottom = '82px';
+            return;
+        }}
+        panel.style.left = `${{position.x}}px`;
+        panel.style.top = `${{position.y}}px`;
+        panel.style.right = 'auto';
+        panel.style.bottom = 'auto';
+    }}
+
+    function layoutModalAnnotationPanel(forceReset = false) {{
+        const panel = document.getElementById('modal-annotation-panel');
+        if (!panel) return;
+        if (forceReset) modalAnnotationPanelCustomPosition = null;
+
+        const initialBounds = getModalAnnotationPanelBounds();
+        if (!initialBounds) return;
+        panel.style.maxHeight = `${{Math.floor(initialBounds.maxHeight)}}px`;
+
+        const bounds = getModalAnnotationPanelBounds();
+        if (!bounds) return;
+
+        if (modalAnnotationPanelCustomPosition) {{
+            modalAnnotationPanelCustomPosition = clampModalAnnotationPanelPosition(
+                modalAnnotationPanelCustomPosition.x,
+                modalAnnotationPanelCustomPosition.y
+            );
+            applyModalAnnotationPanelPosition(modalAnnotationPanelCustomPosition);
+            return;
+        }}
+
+        applyModalAnnotationPanelPosition({{ x: bounds.maxX, y: bounds.maxY }});
+    }}
+
+    function initModalAnnotationPanelDragging() {{
+        const panel = document.getElementById('modal-annotation-panel');
+        const handle = panel?.querySelector('.modal-annotation-title');
+        const container = document.getElementById('modal-canvas-container');
+        if (!panel || !handle || !container) return;
+
+        const stopDragging = () => {{
+            if (!isDraggingModalAnnotationPanel) return;
+            isDraggingModalAnnotationPanel = false;
+            panel.classList.remove('dragging');
+        }};
+
+        handle.addEventListener('mousedown', (e) => {{
+            if (e.button !== 0) return;
+            const containerRect = container.getBoundingClientRect();
+            const panelRect = panel.getBoundingClientRect();
+            const next = clampModalAnnotationPanelPosition(
+                panelRect.left - containerRect.left,
+                panelRect.top - containerRect.top
+            );
+            modalAnnotationPanelCustomPosition = next;
+            applyModalAnnotationPanelPosition(next);
+            modalAnnotationPanelDragOffsetX = e.clientX - panelRect.left;
+            modalAnnotationPanelDragOffsetY = e.clientY - panelRect.top;
+            isDraggingModalAnnotationPanel = true;
+            panel.classList.add('dragging');
+            e.preventDefault();
+        }});
+
+        document.addEventListener('mousemove', (e) => {{
+            if (!isDraggingModalAnnotationPanel) return;
+            const containerRect = container.getBoundingClientRect();
+            const next = clampModalAnnotationPanelPosition(
+                e.clientX - containerRect.left - modalAnnotationPanelDragOffsetX,
+                e.clientY - containerRect.top - modalAnnotationPanelDragOffsetY
+            );
+            modalAnnotationPanelCustomPosition = next;
+            applyModalAnnotationPanelPosition(next);
+        }});
+
+        document.addEventListener('mouseup', stopDragging);
+        window.addEventListener('blur', stopDragging);
     }}
 
     // Grid
@@ -5637,6 +5779,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const modalAnnotationExportBtn = document.getElementById('modal-annotations-export');
         const modalAnnotationClearSectionBtn = document.getElementById('modal-annotations-clear-section');
         const modalAnnotationClearAllBtn = document.getElementById('modal-annotations-clear-all');
+        initModalAnnotationPanelDragging();
 
         function updateModalCanvasCursor() {{
             if (!canvas) return;
@@ -5802,6 +5945,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalAnnotationPanel?.addEventListener('touchmove', (e) => e.stopPropagation());
         syncModalBlendUI();
         renderModalAnnotationPanel();
+        layoutModalAnnotationPanel();
 
         modalAnnotationExportBtn?.addEventListener('click', () => {{
             exportModalAnnotations();
@@ -6061,6 +6205,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (modalSection) renderModalSection();
             }});
         }}
+
+        layoutModalAnnotationPanel();
     }}
 
     // Initialize (don't wait for external resources)
@@ -6081,7 +6227,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     window.addEventListener('resize', () => {{
         if (DATA.has_umap) applyUMAPPanelState();
         renderAllSections();
-        if (modalSection) renderModalSection();
+        if (modalSection) {{
+            layoutModalAnnotationPanel();
+            renderModalSection();
+        }}
         if (umapVisible) renderUMAP();
     }});
     </script>
