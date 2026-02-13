@@ -44,7 +44,7 @@ export_to_html(
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size=1.5,  # smaller spots for dense data
-    downsample=100000,  # limit cells per section to keep file manageable
+    downsample=1000000,  # limit cells per section to keep file manageable
     theme="light",  # or "dark"
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
