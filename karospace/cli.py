@@ -43,9 +43,9 @@ def main():
     )
     parser.add_argument(
         "--spot-size",
-        type=float,
-        default=2.0,
-        help="Default spot size (default: 2.0)"
+        type=str,
+        default="auto",
+        help="Default spot size. Use a positive number or 'auto' (default: auto)."
     )
     parser.add_argument(
         "--downsample",
@@ -140,6 +140,20 @@ def main():
         except ValueError:
             print("Error: --neighbor-permutations must be an integer or 'auto'", file=sys.stderr)
             sys.exit(2)
+
+    spot_token = str(args.spot_size).strip()
+    if spot_token.lower() in {"auto", "adaptive", "density"}:
+        spot_size_value = "auto"
+    else:
+        try:
+            spot_size_value = float(spot_token)
+        except ValueError:
+            print("Error: --spot-size must be a positive number or 'auto'", file=sys.stderr)
+            sys.exit(2)
+        if spot_size_value <= 0:
+            print("Error: --spot-size must be a positive number or 'auto'", file=sys.stderr)
+            sys.exit(2)
+
     def _parse_csv(value: str):
         cleaned = [v.strip() for v in str(value).split(",") if v.strip()]
         return cleaned or None
@@ -165,7 +179,7 @@ def main():
         color=args.color,
         title=args.title,
         min_panel_size=args.min_panel_size,
-        spot_size=args.spot_size,
+        spot_size=spot_size_value,
         downsample=args.downsample,
         theme=args.theme,
         gene_encoding=args.gene_encoding,

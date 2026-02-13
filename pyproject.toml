@@ -41,6 +41,8 @@ dev = [
 
 [project.scripts]
 karospace = "karospace.cli:main"
+karospacebuilder = "karospace.gui:main"
+karospace-gui = "karospace.gui:main"
 
 [tool.setuptools.packages.find]
 include = ["karospace*"]

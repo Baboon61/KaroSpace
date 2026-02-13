@@ -1,5 +1,7 @@
 <p align="center">
   <img src="assets/logo.png" alt="KaroSpace Logo" width="800">
+  <br>
+  <img src="assets/logo_KSB.png" alt="KaroSpaceBuilder Logo" width="520">
 </p>
 
 **KaroSpace** is an interactive HTML viewer for exploring spatial transcriptomics data. It generates standalone HTML files from h5ad files that can be shared and viewed in any web browser without requiring a server or Python installation.
@@ -79,7 +81,7 @@ export_to_html(
     color="cell_type",           # Initial color column
     title="KaroSpace",
     min_panel_size=150,          # Min panel width (responsive autoscaling)
-    spot_size=2.0,               # Cell/spot size
+    spot_size="auto",            # Adaptive by section density (or set a fixed number)
     downsample=30000,            # Max cells per section (for large datasets)
     theme="light",               # "light" or "dark"
     additional_colors=[          # Extra columns for color dropdown
@@ -115,10 +117,59 @@ export_to_html(
 )
 ```
 
+### Desktop GUI (KaroSpaceBuilder)
+
+```bash
+karospacebuilder
+```
+
+Compatibility launcher (same GUI):
+
+```bash
+karospace-gui
+```
+
+#### Quick Start (GUI)
+
+1. Launch `karospacebuilder`
+2. Pick a preset (`Default`, `Pancreas`, or `Lightweight`)
+3. In `Basic`, choose input `.h5ad` and click `Inspect`
+4. In `Colors & Genes`, build `additional_colors` and `genes` using searchable `+ Add` / `Remove` editors
+5. Open `Advanced` only if needed (collapsed by default), then export
+
+#### Tabs
+
+- `Basic`: input/output paths, grouping/color setup, metadata loading options
+- `Colors & Genes`: searchable list builders for color columns and hand-picked genes
+- `Advanced`: expandable panel for encoding, neighbor stats, marker genes, interaction markers
+- `Help`: in-app field guide with expected input formats and examples
+
+#### Searchable List Builders
+
+- `additional_colors`: search `adata.obs` columns, add/remove entries interactively
+- `genes`: search `adata.var_names`, add/remove hand-picked genes interactively
+- Advanced groupby lists:
+  - `neighbor_stats_groupby`
+  - `marker_genes_groupby`
+  - `interaction_markers_groupby`
+
+These choices are populated after `Inspect` reads the `.h5ad` object.
+
+#### Presets
+
+- `Default`: balanced settings and starter examples
+- `Pancreas`: prefilled to mirror `examples/pancreas.py`-style workflow
+- `Lightweight`: smaller/faster export defaults for quick iteration
+
+The GUI also includes:
+- Built-in field validation and error dialogs
+- Scrollable layout for smaller windows
+- Export log panel with progress and failures
+
 ### Command Line
 
 ```bash
-karospace your_data.h5ad -o viewer.html --color leiden --cols 6
+karospace your_data.h5ad -o viewer.html --color leiden
 ```
 
 #### CLI Options
@@ -129,7 +180,7 @@ karospace your_data.h5ad -o viewer.html --color leiden --cols 6
 | `-c, --color` | Initial color column | `leiden` |
 | `-g, --groupby` | Column to group sections by | `sample_id` |
 | `--min-panel-size` | Minimum panel width in pixels (responsive autoscaling) | `150` |
-| `--spot-size` | Cell/spot size | `2.0` |
+| `--spot-size` | Cell/spot size (`auto` or positive number) | `auto` |
 | `--downsample` | Max cells per section | None |
 | `--theme` | Color theme (`light` or `dark`) | `light` |
 | `--title` | Page title | `KaroSpace` |

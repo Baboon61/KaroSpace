@@ -8,7 +8,8 @@ for interactive visualization of spatial transcriptomics data.
 import base64
 import json
 from pathlib import Path
-from typing import Optional, List, Union
+from typing import Optional, List, Tuple, Union
+import numpy as np
 
 from .data_loader import SpatialDataset
 
@@ -20,6 +21,76 @@ def _load_logo_base64() -> Optional[str]:
         with open(logo_path, "rb") as f:
             return base64.b64encode(f.read()).decode("utf-8")
     return None
+
+
+def _estimate_auto_spot_size(dataset: SpatialDataset, min_panel_size: int) -> float:
+    """Estimate a reasonable default spot radius from section density."""
+    panel_px = max(48.0, float(min_panel_size) - 16.0)  # Account for canvas padding.
+    spacing_px_samples: List[float] = []
+
+    for section in dataset.sections:
+        coords = np.asarray(section.coordinates)
+        if coords.ndim != 2 or coords.shape[0] < 2 or coords.shape[1] < 2:
+            continue
+
+        x = coords[:, 0]
+        y = coords[:, 1]
+        valid = np.isfinite(x) & np.isfinite(y)
+        n = int(valid.sum())
+        if n < 2:
+            continue
+
+        x = x[valid]
+        y = y[valid]
+        dx = float(np.max(x) - np.min(x))
+        dy = float(np.max(y) - np.min(y))
+        extent = max(dx, dy, 1e-12)
+
+        # Use observed bbox area, but guard against near-line geometries.
+        area = max(dx * dy, extent * extent * 0.05, 1e-12)
+        spacing_data = float(np.sqrt(area / n))
+        spacing_px = spacing_data * (panel_px / extent)
+        if np.isfinite(spacing_px) and spacing_px > 0:
+            spacing_px_samples.append(spacing_px)
+
+    if not spacing_px_samples:
+        return 2.0
+
+    # Target a radius that keeps neighboring cells separable without looking sparse.
+    est = 0.38 * float(np.median(spacing_px_samples))
+    return float(np.clip(est, 0.35, 4.0))
+
+
+def _resolve_spot_size(
+    dataset: SpatialDataset,
+    spot_size: Union[float, str, None],
+    min_panel_size: int,
+) -> Tuple[float, bool]:
+    """
+    Resolve spot size input to a numeric value.
+
+    Returns
+    -------
+    Tuple[float, bool]
+        (resolved_size, used_auto_mode)
+    """
+    if spot_size is None:
+        return _estimate_auto_spot_size(dataset, min_panel_size), True
+
+    if isinstance(spot_size, str):
+        token = spot_size.strip().lower()
+        if token in {"auto", "adaptive", "density"}:
+            return _estimate_auto_spot_size(dataset, min_panel_size), True
+        try:
+            value = float(token)
+        except ValueError as exc:
+            raise ValueError("spot_size must be a positive number or 'auto'.") from exc
+    else:
+        value = float(spot_size)
+
+    if not np.isfinite(value) or value <= 0:
+        raise ValueError("spot_size must be a positive finite number or 'auto'.")
+    return float(value), False
 
 
 # Default color palettes
@@ -221,6 +292,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .filter-chip:hover {{ background: var(--hover-bg); }}
         .filter-chip.active {{ background: var(--accent-strong); color: white; border-color: var(--accent-strong); }}
         .filter-chip.inactive {{ opacity: 0.4; }}
+        .filter-reset-btn {{
+            padding: 2px 8px;
+            font-size: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            transition: background 0.15s, opacity 0.15s;
+        }}
+        .filter-reset-btn:hover {{ background: var(--hover-bg); }}
+        .filter-reset-btn:disabled {{
+            opacity: 0.45;
+            cursor: default;
+        }}
 
         .main-container {{ display: flex; flex: 1; min-height: 0; }}
         .content-column {{
@@ -229,16 +315,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: flex;
             flex-direction: column;
             position: relative;
+            --umap-reserve-left: 0px;
+            --umap-reserve-right: 0px;
         }}
         .grid-container {{
             flex: 1;
             min-height: 0;
-            padding: 8px;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            padding-left: calc(8px + var(--umap-reserve-left));
+            padding-right: calc(8px + var(--umap-reserve-right));
             overflow: auto;
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(clamp({min_panel_size}px, 18vw, {max_panel_size}px), 1fr));
             gap: 8px;
             align-content: start;
+            transition: padding 0.2s ease;
         }}
         .grid-container.single-section-layout {{
             grid-template-columns: minmax(320px, min(100%, 900px));
@@ -642,6 +734,99 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .legend-item.selected .legend-color {{
             border-color: var(--accent-strong);
         }}
+        .split-legend-list {{
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }}
+        .split-legend-item {{
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            padding: 7px 8px;
+            background: color-mix(in srgb, var(--input-bg) 88%, transparent);
+        }}
+        .split-legend-row {{
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }}
+        .split-legend-side {{
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            border-radius: 999px;
+            padding: 1px 6px;
+            border: 1px solid transparent;
+        }}
+        .split-legend-side-a {{
+            color: #1d4ed8;
+            background: color-mix(in srgb, #1d4ed8 12%, transparent);
+            border-color: color-mix(in srgb, #1d4ed8 28%, transparent);
+        }}
+        .split-legend-side-b {{
+            color: #be185d;
+            background: color-mix(in srgb, #be185d 12%, transparent);
+            border-color: color-mix(in srgb, #be185d 28%, transparent);
+        }}
+        .split-legend-label {{
+            font-size: 11px;
+            color: var(--text-color);
+            line-height: 1.35;
+            word-break: break-word;
+        }}
+        .split-legend-key {{
+            margin-top: 6px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            color: var(--muted-color);
+            min-height: 12px;
+        }}
+        .split-legend-swatch {{
+            display: inline-block;
+            flex-shrink: 0;
+            border: 1px solid color-mix(in srgb, var(--border-color) 75%, transparent);
+            background: #9ca3af;
+        }}
+        .split-legend-swatch-dot {{
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+        }}
+        .split-legend-swatch-bar {{
+            width: 40px;
+            height: 10px;
+            border-radius: 999px;
+        }}
+        .split-legend-categories {{
+            margin-top: 6px;
+            padding-top: 6px;
+            border-top: 1px dashed color-mix(in srgb, var(--border-color) 72%, transparent);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            max-height: 190px;
+            overflow-y: auto;
+        }}
+        .split-legend-cat {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 10px;
+            min-width: 0;
+        }}
+        .split-legend-cat-label {{
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            color: var(--text-color);
+        }}
         .colorbar {{ width: 16px; height: 150px; margin: 8px auto; border-radius: 2px; }}
         .colorbar-labels {{
             display: flex;
@@ -727,7 +912,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.3s, border-color 0.3s, color 0.3s;
         }}
         .modal-controls button:hover {{ background: var(--hover-bg); }}
-        .modal-legend {{ width: 180px; padding: 12px; border-left: 1px solid var(--border-color); overflow-y: auto; transition: border-color 0.3s; }}
+        .modal-legend {{
+            width: 180px;
+            padding: 12px;
+            border-left: 1px solid var(--border-color);
+            overflow-y: auto;
+            transition: border-color 0.3s, width 0.2s ease;
+        }}
+        .modal-legend.split-expanded {{ width: 280px; }}
         .zoom-info {{ font-size: 10px; color: var(--muted-color); margin-left: 6px; }}
         .modal-blend-panel {{
             position: absolute;
@@ -779,6 +971,31 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .modal-blend-fields > * {{
             flex: 1 1 0;
             min-width: 0;
+        }}
+        .modal-blend-scale-row {{
+            margin-top: -2px;
+        }}
+        .modal-blend-scale-label {{
+            font-size: 10px;
+            color: var(--muted-color);
+        }}
+        .modal-blend-scale-controls {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 0;
+        }}
+        .modal-blend-scale-controls input[type="number"] {{
+            width: 64px;
+            min-width: 0;
+            padding: 4px 6px;
+            font-size: 10px;
+        }}
+        .modal-blend-scale-controls .legend-btn {{
+            flex: 0 0 auto;
+            font-size: 10px;
+            padding: 3px 6px;
+            min-width: 84px;
         }}
         .modal-blend-meta {{
             margin-top: 4px;
@@ -1006,6 +1223,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .cell-tooltip-label {{ font-weight: 500; }}
         .cell-tooltip-value {{ color: var(--muted-color); margin-left: 4px; }}
+        .help-tooltip {{
+            position: fixed;
+            left: 0;
+            top: 0;
+            max-width: 280px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: color-mix(in srgb, var(--header-bg) 92%, transparent);
+            color: var(--text-color);
+            font-size: 11px;
+            line-height: 1.35;
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.2);
+            pointer-events: none;
+            z-index: 2100;
+            opacity: 0;
+            transform: translateY(2px);
+            transition: opacity 0.12s ease, transform 0.12s ease, background 0.3s, border-color 0.3s, color 0.3s;
+        }}
+        .help-tooltip.visible {{
+            opacity: 1;
+            transform: translateY(0);
+        }}
+        :root.dark button {{
+            color: #ffffff;
+        }}
 
         /* UMAP panel styles */
         .umap-panel {{
@@ -1259,7 +1502,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <div class="header">
         <div class="header-title">
             <h1>{title}</h1>
-            <button class="info-trigger" id="info-trigger" type="button" title="Viewer info">Info</button>
+            <button class="info-trigger" id="info-trigger" type="button" title="Viewer info" data-help="Open viewer notes with dataset context, control tips, and usage guidance.">Info</button>
             <div class="info-popover" id="info-popover" aria-hidden="true">
                 <div class="info-content">{viewer_info_html}</div>
             </div>
@@ -1288,35 +1531,35 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <label>Size:</label>
                 <div class="size-control">
                     <button class="size-step" id="spot-size-dec" type="button">−</button>
-                    <input type="range" id="spot-size" min="0.1" max="8" step="0.1" value="{spot_size}" style="width:80px">
+                    <input type="range" id="spot-size" min="0.01" max="8" step="0.01" value="{spot_size}" style="width:80px">
                     <button class="size-step" id="spot-size-inc" type="button">+</button>
                 </div>
             </div>
-            <button class="umap-toggle" id="umap-toggle" title="Toggle UMAP view" style="display: none;">
+            <button class="umap-toggle" id="umap-toggle" title="Toggle UMAP view" data-help="Show or hide the UMAP panel for a global embedding view with shared selection tools." style="display: none;">
                 UMAP
             </button>
-            <button class="legend-toggle active" id="legend-toggle" title="Toggle legend panel">
+            <button class="legend-toggle active" id="legend-toggle" title="Toggle legend panel" data-help="Show or hide the legend panel with color keys, category toggles, and spotlight controls.">
                 Legend
             </button>
-            <button class="color-toggle" id="color-toggle" title="Toggle color explorer">
+            <button class="color-toggle" id="color-toggle" title="Toggle color explorer" data-help="Insights opens analysis tools for the current view: summary stats, neighbor patterns, and gene panels (dotplot and markers).">
                 Insights
             </button>
-            <button class="graph-toggle" id="graph-toggle" title="Toggle neighborhood graph" style="display: none;">
+            <button class="graph-toggle" id="graph-toggle" title="Toggle neighborhood graph" data-help="Overlay neighborhood graph edges to visualize local connectivity between cells." style="display: none;">
                 Graph
             </button>
-            <button class="graph-toggle" id="neighbor-hover-toggle" title="Toggle neighbor rings on hover" style="display: none;">
+            <button class="graph-toggle" id="neighbor-hover-toggle" title="Toggle neighbor rings on hover" data-help="When enabled, hovering a cell highlights its neighbors in concentric hop rings." style="display: none;">
                 Neighbors
             </button>
-            <select id="neighbor-hop-select" title="Neighbor hop display" style="display: none; min-width: 90px;">
+            <select id="neighbor-hop-select" title="Neighbor hop display" data-help="Choose how many neighbor hops are highlighted when hover-neighbor mode is enabled." style="display: none; min-width: 90px;">
                 <option value="1">1-hop</option>
                 <option value="2">2-hop</option>
                 <option value="3">3-hop</option>
                 <option value="all" selected>All hops</option>
             </select>
-            <button class="export-btn" id="screenshot-btn" title="Download screenshot">
+            <button class="export-btn" id="screenshot-btn" title="Download screenshot" data-help="Download a PNG screenshot of the current main viewer layout.">
                 Screenshot
             </button>
-            <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light mode">
+            <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light mode" data-help="Switch between light and dark themes.">
                 <span id="theme-icon">{theme_icon}</span>
             </button>
         </div>
@@ -1345,7 +1588,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <span style="margin-left: 6px; font-size: 11px; color: var(--muted-color);">Size:</span>
                         <div class="size-control">
                             <button class="size-step" id="umap-spot-size-dec" type="button">−</button>
-                            <input type="range" id="umap-spot-size" min="0.1" max="6" step="0.1" value="2" style="width: 60px;">
+                            <input type="range" id="umap-spot-size" min="0.01" max="6" step="0.01" value="2" style="width: 60px;">
                             <button class="size-step" id="umap-spot-size-inc" type="button">+</button>
                         </div>
                         <span id="umap-spot-size-label" style="font-size: 11px; min-width: 20px;">2</span>
@@ -1392,6 +1635,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 <input type="text" id="modal-blend-a-gene" list="gene-list" placeholder="Gene symbol">
                             </div>
                         </div>
+                        <div class="modal-blend-row modal-blend-scale-row" id="modal-blend-a-scale-row" style="display: none;">
+                            <span></span>
+                            <span class="modal-blend-scale-label">Scale</span>
+                            <div class="modal-blend-scale-controls">
+                                <input type="number" id="modal-blend-a-vmin" step="0.001" placeholder="min">
+                                <span class="scale-sep">to</span>
+                                <input type="number" id="modal-blend-a-vmax" step="0.001" placeholder="max">
+                                <button class="legend-btn" id="modal-blend-a-auto" type="button">Auto (1-99%)</button>
+                            </div>
+                        </div>
                         <div class="modal-blend-row">
                             <span class="modal-blend-side">B</span>
                             <select id="modal-blend-b-kind">
@@ -1402,6 +1655,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 <select id="modal-blend-b-color"></select>
                                 <select id="modal-blend-b-category"></select>
                                 <input type="text" id="modal-blend-b-gene" list="gene-list" placeholder="Gene symbol">
+                            </div>
+                        </div>
+                        <div class="modal-blend-row modal-blend-scale-row" id="modal-blend-b-scale-row" style="display: none;">
+                            <span></span>
+                            <span class="modal-blend-scale-label">Scale</span>
+                            <div class="modal-blend-scale-controls">
+                                <input type="number" id="modal-blend-b-vmin" step="0.001" placeholder="min">
+                                <span class="scale-sep">to</span>
+                                <input type="number" id="modal-blend-b-vmax" step="0.001" placeholder="max">
+                                <button class="legend-btn" id="modal-blend-b-auto" type="button">Auto (1-99%)</button>
                             </div>
                         </div>
                         <div class="modal-blend-row">
@@ -1444,7 +1707,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <span style="margin-left: 10px; font-size: 11px; color: {muted_color};">Size:</span>
                         <div class="size-control">
                             <button class="size-step" id="modal-spot-size-dec" type="button">−</button>
-                            <input type="range" id="modal-spot-size" min="0.1" max="12" step="0.1" value="{spot_size}" style="width: 80px;">
+                            <input type="range" id="modal-spot-size" min="0.01" max="12" step="0.01" value="{spot_size}" style="width: 80px;">
                             <button class="size-step" id="modal-spot-size-inc" type="button">+</button>
                         </div>
                         <span id="modal-spot-size-label" style="font-size: 11px; min-width: 24px;">{spot_size}</span>
@@ -1456,6 +1719,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     </div>
 
     <div class="cell-tooltip" id="cell-tooltip"></div>
+    <div class="help-tooltip" id="help-tooltip" aria-hidden="true"></div>
 
     <script>
     (function() {{
@@ -1621,6 +1885,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const UMAP_PANEL_SIZE_STEP = 24;
     const UMAP_PANEL_MIN_SIZE = 220;
     const UMAP_PANEL_MAX_SIZE = 560;
+    const UMAP_GRID_RESERVE_MARGIN = 16;
     const UMAP_PANEL_STORAGE_KEY = 'spatial-viewer-umap-panel';
     let isUmapDragging = false;
     let umapDragStartX = 0, umapDragStartY = 0;
@@ -1830,19 +2095,46 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return METADATA_LABELS[key] || key.replace(/_/g, ' ');
     }}
 
+    function formatScaleNumber(value) {{
+        if (!Number.isFinite(value)) return 'n/a';
+        const abs = Math.abs(value);
+        if (abs >= 1000 || (abs > 0 && abs < 0.001)) return value.toExponential(2);
+        return value.toFixed(3);
+    }}
+
+    function getGeneScaleRange(gene) {{
+        const base = DATA.genes_meta?.[gene] || {{}};
+        const autoScale = geneScaleAuto[gene];
+        const overrideScale = geneScaleOverrides[gene];
+        let vmin = Number.isFinite(overrideScale?.vmin) ? overrideScale.vmin
+            : (Number.isFinite(autoScale?.vmin) ? autoScale.vmin : base.vmin);
+        let vmax = Number.isFinite(overrideScale?.vmax) ? overrideScale.vmax
+            : (Number.isFinite(autoScale?.vmax) ? autoScale.vmax : base.vmax);
+        if (!Number.isFinite(vmin)) vmin = 0;
+        if (!Number.isFinite(vmax)) vmax = 1;
+        if (!(vmax > vmin)) {{
+            if (vmax === vmin) {{
+                vmin -= 1e-6;
+                vmax += 1e-6;
+            }} else {{
+                const lo = Math.min(vmin, vmax);
+                const hi = Math.max(vmin, vmax);
+                vmin = lo;
+                vmax = hi;
+            }}
+        }}
+        return {{ vmin, vmax }};
+    }}
+
     // Get current color config
     function getColorConfig() {{
         if (currentGene && DATA.genes_meta[currentGene]) {{
-            const autoScale = geneScaleAuto[currentGene];
-            const overrideScale = geneScaleOverrides[currentGene];
-            const base = DATA.genes_meta[currentGene];
-            const vmin = overrideScale?.vmin ?? autoScale?.vmin ?? base.vmin;
-            const vmax = overrideScale?.vmax ?? autoScale?.vmax ?? base.vmax;
+            const scale = getGeneScaleRange(currentGene);
             return {{
                 is_continuous: true,
                 categories: null,
-                vmin,
-                vmax
+                vmin: scale.vmin,
+                vmax: scale.vmax
             }};
         }}
         return DATA.colors_meta[currentColor] || {{ is_continuous: false, categories: [], vmin: 0, vmax: 1 }};
@@ -1881,6 +2173,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function rerenderForSpotlightChange() {{
+        renderAllSections();
+        if (modalSection) renderModalSection();
+        if (umapVisible) renderUMAP();
+    }}
+
+    function rerenderForExpressionScaleChange() {{
+        updateExpressionScaleUI();
+        renderLegend('legend');
+        renderLegend('modal-legend');
         renderAllSections();
         if (modalSection) renderModalSection();
         if (umapVisible) renderUMAP();
@@ -2182,6 +2483,62 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return spec.category ? `${{colLabel}}: ${{spec.category}}` : colLabel;
     }}
 
+    function getModalSplitLegendEntry(side) {{
+        const spec = modalBlendSpec?.[side];
+        if (!spec) return null;
+        const sideLabel = side === 'a' ? 'A (left)' : 'B (right)';
+        if (spec.kind === 'gene') {{
+            const geneLabel = spec.gene ? `Gene: ${{spec.gene}}` : 'Gene';
+            const scale = getGeneScaleRange(spec.gene);
+            return {{
+                side,
+                sideLabel,
+                label: geneLabel,
+                detail: `Expression (${{formatScaleNumber(scale.vmin)}} to ${{formatScaleNumber(scale.vmax)}})`,
+                swatchClass: 'split-legend-swatch-bar',
+                swatchBackground: `linear-gradient(90deg, ${{magma(0)}}, ${{magma(0.5)}}, ${{magma(1)}})`,
+                categories: null,
+            }};
+        }}
+
+        const colorCol = spec.color;
+        const categories = getCategoriesForColorColumn(colorCol);
+        const colLabel = colorCol ? formatMetadataLabel(colorCol) : 'Cell type';
+        const categoryEntries = categories.map((cat, idx) => ({{
+            label: cat,
+            color: getCategoryColor(idx),
+        }}));
+        if (spec.category && spec.category !== BLEND_ALL_CATEGORIES) {{
+            const catIdx = categories.indexOf(spec.category);
+            if (catIdx >= 0) {{
+                return {{
+                    side,
+                    sideLabel,
+                    label: `${{colLabel}}: ${{spec.category}}`,
+                    detail: 'Selected category',
+                    swatchClass: 'split-legend-swatch-dot',
+                    swatchBackground: getCategoryColor(catIdx),
+                    categories: [categoryEntries[catIdx]],
+                }};
+            }}
+        }}
+
+        const gradientStops = categories
+            .slice(0, 5)
+            .map((_, idx) => getCategoryColor(idx));
+        return {{
+            side,
+            sideLabel,
+            label: `${{colLabel}}: All`,
+            detail: categories.length ? `${{categories.length}} categories` : 'All categories',
+            swatchClass: 'split-legend-swatch-bar',
+            swatchBackground: gradientStops.length > 1
+                ? `linear-gradient(90deg, ${{gradientStops.join(', ')}})`
+                : (gradientStops[0] || '#9ca3af'),
+            categories: categoryEntries,
+        }};
+    }}
+
     function getModalBlendRuntime(section, spec) {{
         if (!section || !spec) return null;
         if (spec.kind === 'gene') {{
@@ -2189,14 +2546,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!gene || !DATA.genes_meta?.[gene]) return null;
             const values = getSectionGeneValues(section, gene);
             if (!values) return null;
-            const meta = DATA.genes_meta[gene] || {{}};
-            let vmin = Number.isFinite(meta.vmin) ? meta.vmin : 0;
-            let vmax = Number.isFinite(meta.vmax) ? meta.vmax : 1;
-            if (!(vmax > vmin)) {{
-                vmin = 0;
-                vmax = 1;
-            }}
-            return {{ kind: 'gene', values, vmin, vmax }};
+            const scale = getGeneScaleRange(gene);
+            return {{ kind: 'gene', values, vmin: scale.vmin, vmax: scale.vmax }};
         }}
 
         const colorCol = spec.color;
@@ -2799,7 +3150,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const dataCenterY = (bounds.ymin + bounds.ymax) / 2;
 
         const config = getColorConfig();
-        const adjustedSpotSize = Math.max(1, umapSpotSize * umapZoom * 0.5);
+        const adjustedSpotSize = Math.max(0.25, umapSpotSize * umapZoom * 0.5);
         const activeSpotlight = getLinkedSpotlightCategory(config);
         const hasSpotlight = !!activeSpotlight;
 
@@ -3309,6 +3660,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return 'TR';
     }}
 
+    function updateUMAPGridReserve() {{
+        const contentColumn = document.getElementById('content-column');
+        if (!contentColumn) return;
+        let reserveLeft = 0;
+        let reserveRight = 0;
+        if (umapVisible) {{
+            const reserve = Math.max(0, Math.round(umapPanelSize) + UMAP_GRID_RESERVE_MARGIN);
+            if (umapPanelDock.endsWith('left')) reserveLeft = reserve;
+            else reserveRight = reserve;
+        }}
+        contentColumn.style.setProperty('--umap-reserve-left', `${{reserveLeft}}px`);
+        contentColumn.style.setProperty('--umap-reserve-right', `${{reserveRight}}px`);
+    }}
+
     function loadUMAPPanelState() {{
         try {{
             const saved = localStorage.getItem(UMAP_PANEL_STORAGE_KEY);
@@ -3341,6 +3706,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         panel.classList.remove('dock-top-right', 'dock-top-left', 'dock-bottom-right', 'dock-bottom-left');
         panel.classList.add(`dock-${{umapPanelDock}}`);
         panel.style.width = `${{umapPanelSize}}px`;
+        updateUMAPGridReserve();
         const dockBtn = document.getElementById('umap-dock-btn');
         if (dockBtn) dockBtn.textContent = getUMAPDockLabel(umapPanelDock);
         saveUMAPPanelState();
@@ -3359,6 +3725,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const btn = document.getElementById('umap-toggle');
         panel.classList.toggle('visible', umapVisible);
         btn.classList.toggle('active', umapVisible);
+        updateUMAPGridReserve();
         // Re-render after layout change to fix grid sizing
         requestAnimationFrame(() => {{
             renderAllSections();
@@ -3407,7 +3774,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         // UMAP spot size slider
         document.getElementById('umap-spot-size').addEventListener('input', (e) => {{
             umapSpotSize = parseFloat(e.target.value);
-            document.getElementById('umap-spot-size-label').textContent = umapSpotSize;
+            document.getElementById('umap-spot-size-label').textContent = umapSpotSize.toFixed(2);
             renderUMAP();
         }});
 
@@ -3743,11 +4110,84 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         tooltip.classList.remove('visible');
     }}
 
-    function findNearestCell(section, mouseX, mouseY, canvasRect, transform) {{
+    function initHelpTooltips() {{
+        const helpTooltip = document.getElementById('help-tooltip');
+        if (!helpTooltip) return;
+        let activeTarget = null;
+
+        const positionHelpTooltip = (target) => {{
+            if (!target) return;
+            helpTooltip.style.left = '-9999px';
+            helpTooltip.style.top = '-9999px';
+            const tipRect = helpTooltip.getBoundingClientRect();
+            const rect = target.getBoundingClientRect();
+            let left = rect.left + (rect.width - tipRect.width) / 2;
+            left = Math.max(8, Math.min(window.innerWidth - tipRect.width - 8, left));
+            let top = rect.bottom + 8;
+            if (top + tipRect.height > window.innerHeight - 8) {{
+                top = rect.top - tipRect.height - 8;
+            }}
+            top = Math.max(8, top);
+            helpTooltip.style.left = `${{left}}px`;
+            helpTooltip.style.top = `${{top}}px`;
+        }};
+
+        const hideHelpTooltip = () => {{
+            helpTooltip.classList.remove('visible');
+            helpTooltip.setAttribute('aria-hidden', 'true');
+            activeTarget = null;
+        }};
+
+        const showHelpTooltip = (target) => {{
+            const text = (target?.dataset?.help || '').trim();
+            if (!text) {{
+                hideHelpTooltip();
+                return;
+            }}
+            activeTarget = target;
+            helpTooltip.textContent = text;
+            helpTooltip.classList.add('visible');
+            helpTooltip.setAttribute('aria-hidden', 'false');
+            positionHelpTooltip(target);
+        }};
+
+        document.querySelectorAll('[data-help]').forEach((el) => {{
+            if (el.hasAttribute('title')) {{
+                el.setAttribute('data-native-title', el.getAttribute('title') || '');
+                el.removeAttribute('title');
+            }}
+            el.addEventListener('mouseenter', () => showHelpTooltip(el));
+            el.addEventListener('mouseleave', () => hideHelpTooltip());
+            el.addEventListener('focus', () => showHelpTooltip(el));
+            el.addEventListener('blur', () => hideHelpTooltip());
+        }});
+
+        document.addEventListener('pointerdown', (event) => {{
+            const target = event.target;
+            if (target && target.closest && target.closest('[data-help]')) return;
+            hideHelpTooltip();
+        }});
+        window.addEventListener('scroll', () => {{
+            if (!activeTarget || !helpTooltip.classList.contains('visible')) return;
+            if (!document.body.contains(activeTarget)) {{
+                hideHelpTooltip();
+                return;
+            }}
+            positionHelpTooltip(activeTarget);
+        }}, true);
+        window.addEventListener('resize', () => {{
+            if (!activeTarget || !helpTooltip.classList.contains('visible')) return;
+            positionHelpTooltip(activeTarget);
+        }});
+    }}
+
+    function findNearestCell(section, mouseX, mouseY, canvasRect, transform, options = {{}}) {{
         ensureSectionXY(section);
         // transform: {{ scale, offsetX, offsetY, centerX, centerY, dataCenterX, dataCenterY, isModal }}
         const config = getColorConfig();
         const values = getSectionValues(section);
+        const ignoreMissing = !!options.ignoreMissing;
+        const ignoreHidden = !!options.ignoreHidden;
         const searchRadius = transform.isModal ? modalSpotSize * modalZoom * 2 : spotSize * 3;
 
         let nearestIdx = -1;
@@ -3755,10 +4195,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         for (let i = 0; i < section.x.length; i++) {{
             const val = values[i];
-            if (val === null || val === undefined) continue;
+            if (!ignoreMissing && (val === null || val === undefined)) continue;
 
             // Skip hidden categories
-            if (!config.is_continuous) {{
+            if (!ignoreHidden && !config.is_continuous && Number.isFinite(val)) {{
                 const catIdx = Math.round(val);
                 const catName = config.categories[catIdx];
                 if (hiddenCategories.has(catName)) continue;
@@ -3803,6 +4243,45 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
                     <span class="cell-tooltip-label">${{catName}}</span>`;
         }}
+    }}
+
+    function getModalSplitTooltipContent(section, cellIdx, transform) {{
+        const blendRuntimes = getModalBlendRuntimes(section);
+        if (!blendRuntimes) return null;
+
+        const cellX = transform.centerX + (section.x[cellIdx] - transform.dataCenterX) * transform.scale;
+        const splitX = transform.width * modalBlendMix;
+        const side = cellX <= splitX ? 'a' : 'b';
+        const sideLabel = side === 'a' ? 'A (left)' : 'B (right)';
+        const spec = modalBlendSpec[side];
+        const runtime = blendRuntimes[side];
+        if (!runtime || !spec) return null;
+
+        const raw = runtime.values?.[cellIdx];
+        const color = rgbToCss(getModalBlendCellRgb(runtime, cellIdx));
+        const baseLabel = `${{sideLabel}} • ${{getModalBlendVariableLabel(spec)}}`;
+
+        if (runtime.kind === 'gene') {{
+            const valueText = Number.isFinite(raw) ? raw.toFixed(3) : 'n/a';
+            return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
+                    <span class="cell-tooltip-label">${{baseLabel}}:</span>
+                    <span class="cell-tooltip-value">${{valueText}}</span>`;
+        }}
+
+        const categories = getCategoriesForColorColumn(spec.color);
+        const catIdx = Number.isFinite(raw) ? Math.round(raw) : -1;
+        const catName = (catIdx >= 0 && catIdx < categories.length) ? categories[catIdx] : 'unknown';
+        if (runtime.kind === 'cell-all') {{
+            return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
+                    <span class="cell-tooltip-label">${{baseLabel}}:</span>
+                    <span class="cell-tooltip-value">${{catName}}</span>`;
+        }}
+
+        const isMatch = Number.isFinite(raw) && Math.round(raw) === runtime.catIdx;
+        const valueText = Number.isFinite(raw) ? `${{catName}} (${{isMatch ? 'match' : 'other'}})` : 'n/a';
+        return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
+                <span class="cell-tooltip-label">${{baseLabel}}:</span>
+                <span class="cell-tooltip-value">${{valueText}}</span>`;
     }}
 
     function drawModalAnnotations(ctx, transform) {{
@@ -3878,7 +4357,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const centerY = height / 2 + modalPanY;
         const dataCenterX = (bounds.xmin + bounds.xmax) / 2;
         const dataCenterY = (bounds.ymin + bounds.ymax) / 2;
-        const adjustedSpotSize = Math.max(1, modalSpotSize * modalZoom * 0.8);
+        const adjustedSpotSize = Math.max(0.25, modalSpotSize * modalZoom * 0.8);
 
         const config = getColorConfig();
         const values = getSectionValues(modalSection);
@@ -4104,8 +4583,49 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     // Legend
     function renderLegend(targetId = 'legend') {{
         const legend = document.getElementById(targetId);
+        if (!legend) return;
         const config = getColorConfig();
         const colorLabel = currentGene || currentColor;
+        const splitLegendActive = targetId === 'modal-legend' && !!getModalBlendRuntimes(modalSection);
+        if (targetId === 'modal-legend') {{
+            legend.classList.toggle('split-expanded', splitLegendActive);
+        }}
+
+        if (splitLegendActive) {{
+            const splitEntries = ['a', 'b']
+                .map(side => getModalSplitLegendEntry(side))
+                .filter(Boolean);
+            let html = `
+                <div class="legend-title">Split legend</div>
+                <div class="split-legend-list">
+            `;
+            splitEntries.forEach((entry) => {{
+                const categoriesHtml = Array.isArray(entry.categories) && entry.categories.length
+                    ? `<div class="split-legend-categories">${{entry.categories.map((cat) => `
+                        <div class="split-legend-cat">
+                            <span class="split-legend-swatch split-legend-swatch-dot" style="background: ${{cat.color}};"></span>
+                            <span class="split-legend-cat-label">${{cat.label}}</span>
+                        </div>
+                    `).join('')}}</div>`
+                    : '';
+                html += `
+                    <div class="split-legend-item">
+                        <div class="split-legend-row">
+                            <span class="split-legend-side split-legend-side-${{entry.side}}">${{entry.sideLabel}}</span>
+                            <div class="split-legend-label">${{entry.label}}</div>
+                        </div>
+                        <div class="split-legend-key">
+                            <span class="split-legend-swatch ${{entry.swatchClass}}" style="background: ${{entry.swatchBackground}};"></span>
+                            <span>${{entry.detail}}</span>
+                        </div>
+                        ${{categoriesHtml}}
+                    </div>
+                `;
+            }});
+            html += '</div>';
+            legend.innerHTML = html;
+            return;
+        }}
 
         if (config.is_continuous) {{
             legend.innerHTML = `
@@ -4524,12 +5044,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     adjMax = tmp;
                 }}
                 geneScaleOverrides[currentGene] = {{ vmin: adjMin, vmax: adjMax }};
-                updateExpressionScaleUI();
-                renderLegend('legend');
-                renderLegend('modal-legend');
-                renderAllSections();
-                if (modalSection) renderModalSection();
-                if (umapVisible) renderUMAP();
+                rerenderForExpressionScaleChange();
             }};
             exprVmin.addEventListener('change', applyExpressionScale);
             exprVmax.addEventListener('change', applyExpressionScale);
@@ -4541,12 +5056,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (autoScale) {{
                     geneScaleAuto[currentGene] = autoScale;
                     delete geneScaleOverrides[currentGene];
-                    updateExpressionScaleUI();
-                    renderLegend('legend');
-                    renderLegend('modal-legend');
-                    renderAllSections();
-                    if (modalSection) renderModalSection();
-                    if (umapVisible) renderUMAP();
+                    rerenderForExpressionScaleChange();
                 }}
             }});
         }}
@@ -5208,7 +5718,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>`;
         }}
 
+        html += `<div class="filter-group">
+            <button class="filter-reset-btn" id="filter-reset-btn" type="button" title="Clear all active metadata filters" data-help="Clear all metadata-based sample filters and show every section again.">Reset filters</button>
+        </div>`;
+
         filterBar.innerHTML = html;
+
+        const updateFilterResetState = () => {{
+            const btn = document.getElementById('filter-reset-btn');
+            if (!btn) return;
+            const hasActive = Object.values(activeFilters).some(set => set && set.size > 0);
+            btn.disabled = !hasActive;
+        }};
+
+        const resetAllFilters = () => {{
+            Object.values(activeFilters).forEach(set => {{
+                if (set && typeof set.clear === 'function') set.clear();
+            }});
+            filterBar.querySelectorAll('.filter-chip').forEach(chip => {{
+                chip.classList.remove('active');
+                chip.classList.remove('inactive');
+            }});
+            updateFilterResetState();
+            renderAllSections();
+        }};
+
+        document.getElementById('filter-reset-btn')?.addEventListener('click', resetAllFilters);
 
         filterBar.querySelectorAll('.filter-chip').forEach(chip => {{
             chip.addEventListener('click', () => {{
@@ -5231,9 +5766,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     c.classList.toggle('inactive', anyActive && !c.classList.contains('active'));
                 }});
 
+                updateFilterResetState();
                 renderAllSections();
             }});
         }});
+        updateFilterResetState();
     }}
 
     // Modal
@@ -5559,7 +6096,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (umapRange) {{
             umapRange.addEventListener('input', (e) => {{
                 umapSpotSize = parseFloat(e.target.value);
-                document.getElementById('umap-spot-size-label').textContent = umapSpotSize.toFixed(1);
+                document.getElementById('umap-spot-size-label').textContent = umapSpotSize.toFixed(2);
                 if (umapVisible) renderUMAP();
             }});
         }}
@@ -5735,12 +6272,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 color: document.getElementById('modal-blend-a-color'),
                 category: document.getElementById('modal-blend-a-category'),
                 gene: document.getElementById('modal-blend-a-gene'),
+                scaleRow: document.getElementById('modal-blend-a-scale-row'),
+                scaleMin: document.getElementById('modal-blend-a-vmin'),
+                scaleMax: document.getElementById('modal-blend-a-vmax'),
+                scaleAuto: document.getElementById('modal-blend-a-auto'),
             }},
             b: {{
                 kind: document.getElementById('modal-blend-b-kind'),
                 color: document.getElementById('modal-blend-b-color'),
                 category: document.getElementById('modal-blend-b-category'),
                 gene: document.getElementById('modal-blend-b-gene'),
+                scaleRow: document.getElementById('modal-blend-b-scale-row'),
+                scaleMin: document.getElementById('modal-blend-b-vmin'),
+                scaleMax: document.getElementById('modal-blend-b-vmax'),
+                scaleAuto: document.getElementById('modal-blend-b-auto'),
             }},
         }};
         const modalWandBtn = document.getElementById('modal-magic-wand-btn');
@@ -5841,6 +6386,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             controls.color.style.display = isCell ? '' : 'none';
             controls.category.style.display = isCell ? '' : 'none';
             controls.gene.style.display = isCell ? 'none' : '';
+            if (controls.scaleRow) controls.scaleRow.style.display = isCell ? 'none' : '';
             if (isCell) {{
                 const cols = getCategoricalColorColumns();
                 setSelectOptions(controls.color, cols, spec.color);
@@ -5850,6 +6396,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 setSelectOptions(controls.category, catOptions, spec.category);
             }} else {{
                 controls.gene.value = spec.gene || '';
+                const gene = (spec.gene || '').trim();
+                const hasGene = !!(gene && DATA.genes_meta?.[gene]);
+                if (hasGene) ensureGeneAutoScale(gene);
+                const scale = hasGene ? getGeneScaleRange(gene) : null;
+                if (controls.scaleMin) {{
+                    controls.scaleMin.value = scale ? scale.vmin.toFixed(3) : '';
+                    controls.scaleMin.disabled = !hasGene;
+                }}
+                if (controls.scaleMax) {{
+                    controls.scaleMax.value = scale ? scale.vmax.toFixed(3) : '';
+                    controls.scaleMax.disabled = !hasGene;
+                }}
+                if (controls.scaleAuto) controls.scaleAuto.disabled = !hasGene;
             }}
         }}
 
@@ -5865,12 +6424,47 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         function applyModalBlendControlChange() {{
             syncModalBlendUI();
+            renderLegend('modal-legend');
             if (modalSection) renderModalSection();
+        }}
+
+        function applyModalBlendGeneScale(side, useAuto = false) {{
+            const controls = modalBlendControls[side];
+            const spec = modalBlendSpec[side];
+            if (!controls || !spec || spec.kind !== 'gene') return;
+            const gene = (spec.gene || '').trim();
+            if (!gene || !DATA.genes_meta?.[gene]) return;
+
+            if (useAuto) {{
+                const autoScale = computeGenePercentiles(gene);
+                if (!autoScale) return;
+                geneScaleAuto[gene] = autoScale;
+                delete geneScaleOverrides[gene];
+            }} else {{
+                const vmin = parseFloat(controls.scaleMin?.value);
+                const vmax = parseFloat(controls.scaleMax?.value);
+                if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return;
+                let adjMin = vmin;
+                let adjMax = vmax;
+                if (adjMin === adjMax) {{
+                    adjMin -= 1e-6;
+                    adjMax += 1e-6;
+                }} else if (adjMin > adjMax) {{
+                    const tmp = adjMin;
+                    adjMin = adjMax;
+                    adjMax = tmp;
+                }}
+                geneScaleOverrides[gene] = {{ vmin: adjMin, vmax: adjMax }};
+            }}
+
+            syncModalBlendUI();
+            rerenderForExpressionScaleChange();
         }}
 
         modalBlendToggleBtn?.addEventListener('click', () => {{
             modalBlendEnabled = !modalBlendEnabled;
             syncModalBlendUI();
+            renderLegend('modal-legend');
             if (modalSection) renderModalSection();
         }});
         modalBlendMixRange?.addEventListener('input', (e) => {{
@@ -5907,8 +6501,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     return;
                 }}
                 modalBlendSpec[side].gene = gene;
+                ensureGeneAutoScale(gene);
                 applyModalBlendControlChange();
             }});
+            controls.scaleMin?.addEventListener('change', () => applyModalBlendGeneScale(side));
+            controls.scaleMax?.addEventListener('change', () => applyModalBlendGeneScale(side));
+            controls.scaleAuto?.addEventListener('click', () => applyModalBlendGeneScale(side, true));
         }});
         modalBlendPanel?.addEventListener('wheel', (e) => e.stopPropagation());
         modalBlendPanel?.addEventListener('touchmove', (e) => e.stopPropagation());
@@ -6023,6 +6621,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 centerY,
                 dataCenterX,
                 dataCenterY,
+                width: rect.width,
                 isModal: true
             }};
 
@@ -6113,12 +6712,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 centerY,
                 dataCenterX,
                 dataCenterY,
+                width: rect.width,
                 isModal: true
             }};
 
-            const cellIdx = findNearestCell(modalSection, mouseX, mouseY, rect, transform);
+            const blendActive = !!getModalBlendRuntimes(modalSection);
+            const cellIdx = findNearestCell(
+                modalSection,
+                mouseX,
+                mouseY,
+                rect,
+                transform,
+                blendActive ? {{ ignoreMissing: true, ignoreHidden: true }} : {{}}
+            );
             if (cellIdx >= 0) {{
-                const content = getCellTooltipContent(modalSection, cellIdx);
+                const content = blendActive
+                    ? (getModalSplitTooltipContent(modalSection, cellIdx, transform) || getCellTooltipContent(modalSection, cellIdx))
+                    : getCellTooltipContent(modalSection, cellIdx);
                 showTooltip(e.clientX, e.clientY, content);
                 const changed = updateHoverNeighbors(modalSection, cellIdx);
                 if (changed) renderModalSection();
@@ -6189,6 +6799,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         initFilters();
         initModal();
         initUMAP();
+        initHelpTooltips();
         renderLegend('legend');
         updateSelectionInfo();
         // Hide loader immediately; render incrementally afterwards.
@@ -6217,7 +6828,7 @@ def export_to_html(
     color: str = "leiden",
     title: str = "Spatial Viewer",
     min_panel_size: int = 150,
-    spot_size: float = 2,
+    spot_size: Union[float, str, None] = "auto",
     downsample: Optional[int] = None,
     theme: str = "light",
     vmin: Optional[float] = None,
@@ -6261,8 +6872,9 @@ def export_to_html(
     min_panel_size : int
         Minimum width of each section panel in pixels (default 150).
         The grid auto-adjusts columns based on screen width.
-    spot_size : float
-        Default spot size
+    spot_size : float | str | None
+        Default spot size. Use a positive number for a fixed value, or
+        "auto"/"adaptive"/"density" (or None) to estimate from cell density.
     downsample : int, optional
         Downsample cells per section (for large datasets)
     theme : str
@@ -6420,6 +7032,12 @@ def export_to_html(
         interaction_markers_layer=interaction_markers_layer,
     )
 
+    resolved_spot_size, used_auto_spot_size = _resolve_spot_size(
+        dataset=dataset,
+        spot_size=spot_size,
+        min_panel_size=min_panel_size,
+    )
+
     # Theme settings
     theme_icon = "☀️" if theme == "dark" else "🌙"
     initial_theme = theme
@@ -6451,7 +7069,7 @@ def export_to_html(
         title=title,
         min_panel_size=min_panel_size,
         max_panel_size=max_panel_size,
-        spot_size=spot_size,
+        spot_size=resolved_spot_size,
         data_json=data_json_safe,
         palette_json=json.dumps(DEFAULT_CATEGORICAL_PALETTE),
         metadata_labels_json=json.dumps(metadata_labels),
@@ -6473,6 +7091,10 @@ def export_to_html(
     print(f"Exported HTML viewer to: {output_path}")
     print(f"  - {data['n_sections']} sections")
     print(f"  - {data['total_cells']:,} cells")
+    if used_auto_spot_size:
+        print(f"  - spot size auto-resolved to {resolved_spot_size:.2f}")
+    else:
+        print(f"  - spot size {resolved_spot_size:.2f}")
     print(f"  - {len(data['available_colors'])} color options")
     if genes:
         print(f"  - {len(data['genes_meta'])} genes loaded")

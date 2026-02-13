@@ -43,7 +43,7 @@ export_to_html(
     color="cytetype_annotation_leiden_4",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
-    spot_size=1.5,  # smaller spots for dense data
+    spot_size="auto",  # adaptive default based on section density
     downsample=100000,  # limit cells per section to keep file manageable
     theme="light",  # or "dark"
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
