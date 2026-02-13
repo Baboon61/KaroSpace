@@ -85,7 +85,7 @@ export_to_html(
        #"Vtn"
     ],
     use_hvgs=USE_HVGS,
-    hvg_limit=200,
+    hvg_limit=100,
 
     # Compute marker genes for these categorical color columns
     # (appears in the Color panel under "Marker genes")
