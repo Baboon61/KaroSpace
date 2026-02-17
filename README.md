@@ -12,6 +12,8 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 
 ## Features
 
+For a full feature inventory, see [FEATURES_SUMMARY.md](FEATURES_SUMMARY.md).
+
 - **Grid + modal exploration** - Browse many sections in a responsive grid, then zoom/pan any section in detail
 - **Linked UMAP + section selection** - Magic Wand lasso works in UMAP and modal view with synced highlights
 - **Selection summaries** - Selected-cell totals and per-type counts with expandable, scrollable lists
