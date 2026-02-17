@@ -56,6 +56,98 @@ pip install -e .
 
 ## Quick Start
 
+### Desktop GUI (KaroSpaceBuilder)
+
+#### Generate HTML via the KaroSpaceBuilder repository (straightforward setup)
+
+If you prefer a guided GUI workflow, use the dedicated
+[`KaroSpaceBuilder`](https://github.com/christoffermattssonlangseth/KaroSpaceBuilder)
+repository:
+
+Prebuilt executables are available from
+[`KaroSpaceBuilder` Releases](https://github.com/christoffermattssonlangseth/KaroSpaceBuilder/releases):
+- Apple Silicon: `KaroSpaceBuilder-macos-arm64.zip`
+- Windows: `KaroSpaceBuilder-windows.zip`
+- Linux: `KaroSpaceBuilder-linux.zip`
+
+If you want the no-code path, download the correct zip for your machine from the
+Releases page, unzip it, and run the app.
+
+```bash
+git clone https://github.com/christoffermattssonlangseth/KaroSpaceBuilder
+cd KaroSpaceBuilder
+python -m pip install "git+https://github.com/christoffermattssonlangseth/KaroSpace.git"
+python -m pip install -e .
+KaroSpaceBuilder
+```
+
+If you are developing both repos locally, install KaroSpace from source instead:
+
+```bash
+python -m pip install -e /path/to/spatial-viewer
+```
+
+In the app:
+1. Set input `.h5ad` and output directory
+2. Click `Inspect H5AD`
+3. Choose groupby/color settings (or a preset)
+4. Click `Export`
+
+Output is written to:
+
+```text
+<output_dir>/index.html
+```
+
+If KaroSpaceBuilder is already installed in your current environment, launch directly with:
+
+```bash
+karospacebuilder
+```
+
+Compatibility launcher (same GUI):
+
+```bash
+karospace-gui
+```
+
+#### Quick Start (GUI)
+
+1. Launch `karospacebuilder`
+2. Pick a preset (`Default`, `Pancreas`, or `Lightweight`)
+3. In `Basic`, choose input `.h5ad` and click `Inspect`
+4. In `Colors & Genes`, build `additional_colors` and `genes` using searchable `+ Add` / `Remove` editors
+5. Open `Advanced` only if needed (collapsed by default), then export
+
+#### Tabs
+
+- `Basic`: input/output paths, grouping/color setup, metadata loading options
+- `Colors & Genes`: searchable list builders for color columns and hand-picked genes
+- `Advanced`: expandable panel for encoding, neighbor stats, marker genes, interaction markers
+- `Help`: in-app field guide with expected input formats and examples
+
+#### Searchable List Builders
+
+- `additional_colors`: search `adata.obs` columns, add/remove entries interactively
+- `genes`: search `adata.var_names`, add/remove hand-picked genes interactively
+- Advanced groupby lists:
+  - `neighbor_stats_groupby`
+  - `marker_genes_groupby`
+  - `interaction_markers_groupby`
+
+These choices are populated after `Inspect` reads the `.h5ad` object.
+
+#### Presets
+
+- `Default`: balanced settings and starter examples
+- `Pancreas`: prefilled to mirror `examples/pancreas.py`-style workflow
+- `Lightweight`: smaller/faster export defaults for quick iteration
+
+The GUI also includes:
+- Built-in field validation and error dialogs
+- Scrollable layout for smaller windows
+- Export log panel with progress and failures
+
 ### Python API
 
 ```python
@@ -114,55 +206,6 @@ export_to_html(
     interaction_markers_layer="normalized",     # Layer used for DE (falls back to adata.X if missing)
 )
 ```
-
-### Desktop GUI (KaroSpaceBuilder)
-
-```bash
-karospacebuilder
-```
-
-Compatibility launcher (same GUI):
-
-```bash
-karospace-gui
-```
-
-#### Quick Start (GUI)
-
-1. Launch `karospacebuilder`
-2. Pick a preset (`Default`, `Pancreas`, or `Lightweight`)
-3. In `Basic`, choose input `.h5ad` and click `Inspect`
-4. In `Colors & Genes`, build `additional_colors` and `genes` using searchable `+ Add` / `Remove` editors
-5. Open `Advanced` only if needed (collapsed by default), then export
-
-#### Tabs
-
-- `Basic`: input/output paths, grouping/color setup, metadata loading options
-- `Colors & Genes`: searchable list builders for color columns and hand-picked genes
-- `Advanced`: expandable panel for encoding, neighbor stats, marker genes, interaction markers
-- `Help`: in-app field guide with expected input formats and examples
-
-#### Searchable List Builders
-
-- `additional_colors`: search `adata.obs` columns, add/remove entries interactively
-- `genes`: search `adata.var_names`, add/remove hand-picked genes interactively
-- Advanced groupby lists:
-  - `neighbor_stats_groupby`
-  - `marker_genes_groupby`
-  - `interaction_markers_groupby`
-
-These choices are populated after `Inspect` reads the `.h5ad` object.
-
-#### Presets
-
-- `Default`: balanced settings and starter examples
-- `Pancreas`: prefilled to mirror `examples/pancreas.py`-style workflow
-- `Lightweight`: smaller/faster export defaults for quick iteration
-
-The GUI also includes:
-- Built-in field validation and error dialogs
-- Scrollable layout for smaller windows
-- Export log panel with progress and failures
 
 ### Command Line
 

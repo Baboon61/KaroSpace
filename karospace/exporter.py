@@ -341,6 +341,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             max-width: 900px;
             margin: 0 auto;
         }}
+        .grid-container.single-visible-filter-layout {{
+            grid-template-columns: minmax(320px, min(50vw, 900px));
+            justify-content: center;
+        }}
+        .grid-container.single-visible-filter-layout .section-panel {{
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+        }}
         .section-panel {{
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -1002,6 +1011,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 10px;
             color: var(--muted-color);
             line-height: 1.35;
+            white-space: pre-line;
+            max-height: 180px;
+            overflow: auto;
+        }}
+        .modal-blend-marker-header {{
+            margin-top: 4px;
+            font-weight: 600;
+            color: var(--text-color);
+        }}
+        .modal-blend-marker-row {{
+            margin-top: 2px;
+        }}
+        .modal-blend-marker-name {{
+            color: var(--text-color);
+            font-weight: 600;
         }}
         .modal-selection-info {{
             position: absolute;
@@ -1531,7 +1555,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <label>Size:</label>
                 <div class="size-control">
                     <button class="size-step" id="spot-size-dec" type="button">−</button>
-                    <input type="range" id="spot-size" min="0.01" max="8" step="0.01" value="{spot_size}" style="width:80px">
+                    <input type="range" id="spot-size" min="0.01" max="5" step="0.01" value="{spot_size}" style="width:80px">
                     <button class="size-step" id="spot-size-inc" type="button">+</button>
                 </div>
             </div>
@@ -1707,7 +1731,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <span style="margin-left: 10px; font-size: 11px; color: {muted_color};">Size:</span>
                         <div class="size-control">
                             <button class="size-step" id="modal-spot-size-dec" type="button">−</button>
-                            <input type="range" id="modal-spot-size" min="0.01" max="12" step="0.01" value="{spot_size}" style="width: 80px;">
+                            <input type="range" id="modal-spot-size" min="0.01" max="5" step="0.01" value="{spot_size}" style="width: 80px;">
                             <button class="size-step" id="modal-spot-size-inc" type="button">+</button>
                         </div>
                         <span id="modal-spot-size-label" style="font-size: 11px; min-width: 24px;">{spot_size}</span>
@@ -1723,13 +1747,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     <script>
     (function() {{
+        const LOADING_WARNING_ID = 'karospace-loading-warning';
+        const LOADING_WARNING_AUTO_DISMISS_MS = 12000;
+        let loadingWarningTimer = null;
+
         function hide() {{
             const loader = document.getElementById('loading-overlay');
             if (loader) loader.style.display = 'none';
         }}
-        function showError(msg) {{
+
+        function removeLoadingWarning() {{
+            if (loadingWarningTimer) {{
+                clearTimeout(loadingWarningTimer);
+                loadingWarningTimer = null;
+            }}
+            const warning = document.getElementById(LOADING_WARNING_ID);
+            if (warning) warning.remove();
+        }}
+
+        function showError(msg, id = null) {{
             hide();
+            if (id) {{
+                const existing = document.getElementById(id);
+                if (existing) existing.remove();
+            }}
             const el = document.createElement('div');
+            if (id) el.id = id;
             el.style.position = 'fixed';
             el.style.left = '16px';
             el.style.right = '16px';
@@ -1744,6 +1787,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             el.textContent = msg;
             document.body.appendChild(el);
         }}
+        function showLoadingWarning(msg) {{
+            showError(msg, LOADING_WARNING_ID);
+            loadingWarningTimer = setTimeout(removeLoadingWarning, LOADING_WARNING_AUTO_DISMISS_MS);
+        }}
+        window.__karospaceRemoveLoadingWarning = removeLoadingWarning;
+        window.__karospaceShowStartupError = showError;
         window.addEventListener('error', (e) => {{
             showError(`KaroSpace failed to start: ${{e.message || 'Unknown error'}} (open DevTools console).`);
         }});
@@ -1754,7 +1803,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         setTimeout(() => {{
             const loader = document.getElementById('loading-overlay');
             if (loader && loader.style.display !== 'none') {{
-                showError('Still loading… If this persists, open DevTools console for errors.');
+                showLoadingWarning('Still loading… If this persists, open DevTools console for errors.');
+            }} else {{
+                removeLoadingWarning();
             }}
         }}, 4000);
     }})();
@@ -2458,6 +2509,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
         return genes;
+    }}
+
+    function autocompleteDotplotGeneToken(inputEl) {{
+        if (!inputEl) return false;
+        const value = inputEl.value || '';
+        const cursor = Number.isFinite(inputEl.selectionStart) ? inputEl.selectionStart : value.length;
+        const left = value.slice(0, cursor);
+        const right = value.slice(cursor);
+        const tokenMatch = left.match(/^(.*?)([^,\s]*)$/);
+        if (!tokenMatch) return false;
+        const prefix = tokenMatch[1] || '';
+        const token = tokenMatch[2] || '';
+        if (!token) return false;
+
+        const lower = token.toLowerCase();
+        const match = (DATA.available_genes || []).find(g => g.toLowerCase().startsWith(lower));
+        if (!match || match === token) return false;
+
+        inputEl.value = `${{prefix}}${{match}}${{right}}`;
+        const nextCursor = (prefix + match).length;
+        inputEl.setSelectionRange(nextCursor, nextCursor);
+        return true;
     }}
 
     function getCategoricalColorColumns() {{
@@ -3872,6 +3945,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function hideLoader() {{
         const loader = document.getElementById('loading-overlay');
         if (loader) loader.style.display = 'none';
+        if (typeof window.__karospaceRemoveLoadingWarning === 'function') {{
+            window.__karospaceRemoveLoadingWarning();
+        }}
     }}
 
     function renderSection(section, canvas) {{
@@ -4057,6 +4133,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const colorLabel = currentGene || currentColor;
         document.getElementById('stats-text').textContent =
             `${{visibleCount}}/${{DATA.n_sections}} sections | ${{totalCells.toLocaleString()}} cells | ${{colorLabel}}`;
+
+        // When filters collapse to a single visible sample, avoid full-width stretching.
+        if (grid) {{
+            const useSingleVisibleFilterLayout = visibleCount === 1 && (DATA.n_sections || 0) > 1;
+            grid.classList.toggle('single-visible-filter-layout', useSingleVisibleFilterLayout);
+        }}
 
         // Show no results message
         let noResults = document.querySelector('.no-results');
@@ -4844,8 +4926,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             </div>
                             <div>
                                 <label>Genes (comma-separated)</label>
-                                <input class="color-search" id="dotplot-genes" type="text" placeholder="e.g. Cd4, Cd8a, Gfap">
-                                <div class="scale-hint">Dot size = % expressing; dot color = mean expression.</div>
+                                <input class="color-search" id="dotplot-genes" type="text" placeholder="e.g. Cd4, Cd8a, Gfap" list="gene-list">
+                                <div class="scale-hint">Dot size = % expressing; dot color = mean expression. Press Tab to autocomplete the current gene token.</div>
                             </div>
                             <div style="display: flex; gap: 6px; justify-content: flex-end;">
                                 <button class="legend-btn" id="dotplot-use-hvgs" type="button">Use HVGs</button>
@@ -5012,6 +5094,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         updateDotplotAggregateValueOptions();
         dotplotAggValue?.addEventListener('change', () => renderDotplot());
         dotplotRun?.addEventListener('click', () => renderDotplot());
+        dotplotGenes?.addEventListener('keydown', (e) => {{
+            if (e.key !== 'Tab') return;
+            if (e.altKey || e.ctrlKey || e.metaKey) return;
+            if (autocompleteDotplotGeneToken(dotplotGenes)) e.preventDefault();
+        }});
         dotplotGenes?.addEventListener('change', () => renderDotplot());
         dotplotUseHvgs?.addEventListener('click', () => {{
             const hvgs = (DATA.available_genes || []).slice(0, 8);
@@ -6083,6 +6170,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const spotRange = document.getElementById('spot-size');
         if (spotRange) {{
+            const min = parseFloat(spotRange.min || '0');
+            const max = parseFloat(spotRange.max || '100');
+            spotSize = Math.min(max, Math.max(min, spotSize));
+            spotRange.value = String(spotSize);
             spotRange.addEventListener('input', (e) => {{
                 spotSize = parseFloat(e.target.value);
                 renderAllSections();
@@ -6216,6 +6307,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const modalRange = document.getElementById('modal-spot-size');
         if (modalRange) {{
+            const min = parseFloat(modalRange.min || '0');
+            const max = parseFloat(modalRange.max || '100');
+            modalSpotSize = Math.min(max, Math.max(min, modalSpotSize));
+            modalRange.value = String(modalSpotSize);
+            document.getElementById('modal-spot-size-label').textContent = modalSpotSize;
             modalRange.addEventListener('input', (e) => {{
                 modalSpotSize = parseFloat(e.target.value);
                 document.getElementById('modal-spot-size-label').textContent = modalSpotSize;
@@ -6366,6 +6462,55 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             normalize(modalBlendSpec.b, true);
         }}
 
+        function getMarkerGenesForColorCategory(colorCol, category) {{
+            if (!colorCol || category === null || category === undefined || category === BLEND_ALL_CATEGORIES) return [];
+            const byColor = (DATA.marker_genes || {})[colorCol];
+            if (!byColor || typeof byColor !== 'object') return [];
+            if (Array.isArray(byColor[category])) return byColor[category];
+            const catKey = String(category);
+            if (Array.isArray(byColor[catKey])) return byColor[catKey];
+            const matchedKey = Object.keys(byColor).find(k => String(k).toLowerCase() === catKey.toLowerCase());
+            if (matchedKey && Array.isArray(byColor[matchedKey])) return byColor[matchedKey];
+            return [];
+        }}
+
+        function getModalBlendMarkerHtml(side) {{
+            const spec = modalBlendSpec?.[side];
+            if (!spec || spec.kind !== 'cell') return '';
+            const sideLabel = side === 'a' ? 'A' : 'B';
+            const colorLabel = spec.color ? formatMetadataLabel(spec.color) : 'Cell type';
+            const byColor = (DATA.marker_genes || {})[spec.color];
+            if (!byColor || typeof byColor !== 'object') {{
+                return `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}}): unavailable`)}}</div>`;
+            }}
+            const category = spec.category;
+            if (category && category !== BLEND_ALL_CATEGORIES) {{
+                const genes = getMarkerGenesForColorCategory(spec.color, category);
+                if (!genes.length) {{
+                    return `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}} · ${{category}}): unavailable`)}}</div>`;
+                }}
+                return [
+                    `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}} · ${{category}})`)}}</div>`,
+                    `<div class="modal-blend-marker-row">${{escapeHtml(genes.join(' '))}}</div>`,
+                ].join('');
+            }}
+
+            const categories = getCategoriesForColorColumn(spec.color);
+            const categoryOrder = categories.length ? categories : Object.keys(byColor);
+            const rows = categoryOrder.map(cat => {{
+                const genes = getMarkerGenesForColorCategory(spec.color, cat);
+                if (!genes.length) return '';
+                return `<div class="modal-blend-marker-row"><span class="modal-blend-marker-name">${{escapeHtml(String(cat))}}</span>: ${{escapeHtml(genes.join(' '))}}</div>`;
+            }}).filter(Boolean);
+            if (!rows.length) {{
+                return `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}}): unavailable`)}}</div>`;
+            }}
+            return [
+                `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}} · all categories)`)}}</div>`,
+                ...rows,
+            ].join('');
+        }}
+
         function updateModalBlendLabels() {{
             if (modalBlendMixLabel) {{
                 const pctA = Math.round(modalBlendMix * 100);
@@ -6373,7 +6518,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 modalBlendMixLabel.textContent = `A left ${{pctA}}% • B right ${{pctB}}%`;
             }}
             if (modalBlendMeta) {{
-                modalBlendMeta.textContent = `${{getModalBlendVariableLabel(modalBlendSpec.a)}} \u2194 ${{getModalBlendVariableLabel(modalBlendSpec.b)}}`;
+                const summary = `${{getModalBlendVariableLabel(modalBlendSpec.a)}} \u2194 ${{getModalBlendVariableLabel(modalBlendSpec.b)}}`;
+                const aMarkers = getModalBlendMarkerHtml('a');
+                const bMarkers = getModalBlendMarkerHtml('b');
+                const markerBlocks = [aMarkers, bMarkers].filter(Boolean);
+                modalBlendMeta.innerHTML = [
+                    `<div>${{escapeHtml(summary)}}</div>`,
+                    ...markerBlocks,
+                ].join('');
             }}
         }}
 
@@ -6792,19 +6944,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     // Initialize (don't wait for external resources)
     document.addEventListener('DOMContentLoaded', () => {{
-        hydratePackedSections();
-        initTheme();
-        initGrid();
-        initControls();
-        initFilters();
-        initModal();
-        initUMAP();
-        initHelpTooltips();
-        renderLegend('legend');
-        updateSelectionInfo();
-        // Hide loader immediately; render incrementally afterwards.
-        hideLoader();
-        requestAnimationFrame(renderAllSections);
+        let initSucceeded = false;
+        try {{
+            hydratePackedSections();
+            initTheme();
+            initGrid();
+            initControls();
+            initFilters();
+            initModal();
+            initUMAP();
+            initHelpTooltips();
+            renderLegend('legend');
+            updateSelectionInfo();
+            initSucceeded = true;
+        }} catch (e) {{
+            console.error('KaroSpace initialization failed', e);
+            if (typeof window.__karospaceShowStartupError === 'function') {{
+                window.__karospaceShowStartupError(`KaroSpace failed to initialize: ${{e.message || 'Unknown error'}} (open DevTools console).`);
+            }}
+        }} finally {{
+            // Always clear loader/warning, even if an init step throws.
+            hideLoader();
+        }}
+        if (initSucceeded) requestAnimationFrame(renderAllSections);
     }});
     window.addEventListener('resize', () => {{
         if (DATA.has_umap) applyUMAPPanelState();
