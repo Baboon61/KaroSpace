@@ -6464,7 +6464,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         function getMarkerGenesForColorCategory(colorCol, category) {{
             if (!colorCol || category === null || category === undefined || category === BLEND_ALL_CATEGORIES) return [];
-            const byColor = (DATA.marker_genes || {})[colorCol];
+            const byColor = (DATA.marker_genes || {{}})[colorCol];
             if (!byColor || typeof byColor !== 'object') return [];
             if (Array.isArray(byColor[category])) return byColor[category];
             const catKey = String(category);
@@ -6479,18 +6479,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!spec || spec.kind !== 'cell') return '';
             const sideLabel = side === 'a' ? 'A' : 'B';
             const colorLabel = spec.color ? formatMetadataLabel(spec.color) : 'Cell type';
-            const byColor = (DATA.marker_genes || {})[spec.color];
+            const byColor = (DATA.marker_genes || {{}})[spec.color];
             if (!byColor || typeof byColor !== 'object') {{
-                return `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}}): unavailable`)}}</div>`;
+                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}}): unavailable`)}}</div>`;
             }}
             const category = spec.category;
             if (category && category !== BLEND_ALL_CATEGORIES) {{
                 const genes = getMarkerGenesForColorCategory(spec.color, category);
                 if (!genes.length) {{
-                    return `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}} · ${{category}}): unavailable`)}}</div>`;
+                    return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}} · ${{category}}): unavailable`)}}</div>`;
                 }}
                 return [
-                    `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}} · ${{category}})`)}}</div>`,
+                    `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}} · ${{category}})`)}}</div>`,
                     `<div class="modal-blend-marker-row">${{escapeHtml(genes.join(' '))}}</div>`,
                 ].join('');
             }}
@@ -6503,10 +6503,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 return `<div class="modal-blend-marker-row"><span class="modal-blend-marker-name">${{escapeHtml(String(cat))}}</span>: ${{escapeHtml(genes.join(' '))}}</div>`;
             }}).filter(Boolean);
             if (!rows.length) {{
-                return `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}}): unavailable`)}}</div>`;
+                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}}): unavailable`)}}</div>`;
             }}
             return [
-                `<div class="modal-blend-marker-header">${{escapeHtml(`${sideLabel} markers (${{colorLabel}} · all categories)`)}}</div>`,
+                `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}} · all categories)`)}}</div>`,
                 ...rows,
             ].join('');
         }}
