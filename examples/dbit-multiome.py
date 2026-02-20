@@ -9,7 +9,7 @@ from karospace import load_spatial_data, export_to_html
 
 # Path to your h5ad file
 # Update this path to point to your EAE/MANA data
-H5AD_PATH =  '/Volumes/processing2/KaroSpaceDataWrangle/dbit-data/DBiT_Di/karospace_panels/DBiT_all_samples_RNA200_plus_ATAC200_karospace.h5ad'
+H5AD_PATH = '/Volumes/processing2/KaroSpaceDataWrangle/dbit-data/DBiT_Di/karospace_panels/DBiT_all_samples_RNA200_plus_ATAC200_karospace.h5ad'
 #'/Volumes/processing2/RRmap/data/EAE_proseg_clustered_louvain_leiden_all_sections_annotated_rotated_scVI_mana_embedding_clustered.h5ad'
 
 # Load the dataset
@@ -20,9 +20,7 @@ dataset = load_spatial_data(
     groupby="sample_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
     metadata_columns=['condition'],
-    metadata_value_order={
-        
-    },
+    metadata_value_order={'condition':['LPC5','LPC10', 'LPC21']},
     # metadata_max_columns=4,  # optional: limit number of metadata columns used
 )
 
@@ -50,7 +48,8 @@ export_to_html(
 
     # Include additional color options for the dropdown
     additional_colors=[
-       
+               'clusters',  'CellCharter_15', 'CellCharter_20', 'CellCharter_5', 'CellCharter_7'
+
     ],
 
     # Pre-load specific genes for expression visualization
@@ -90,7 +89,7 @@ export_to_html(
     # Compute marker genes for these categorical color columns
     # (appears in the Color panel under "Marker genes")
     marker_genes_groupby=[
-        'clusters'
+        'clusters',  'CellCharter_15', 'CellCharter_20', 'CellCharter_5', 'CellCharter_7'
     ],
     marker_genes_top_n=50,
     # Force permutation z-scores (auto mode disables permutations for very large datasets).
