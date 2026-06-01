@@ -1449,6 +1449,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .legend-list {{
             flex: 1 1 auto;
             min-height: 0;
+            max-height: calc(100vh - 140px);
             overflow-y: auto;
             overflow-x: hidden;
             margin: 0 -12px -12px;
@@ -5064,6 +5065,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let modalGeneDensityCache = null;
     let modalSubview = null;
     let sectionImageStates = {{}};
+    // H&E alignment restored from a session before the image finished loading;
+    // applied in the image onload handler once the state object exists.
+    let pendingHeAlignment = null;
     let modalCellOpacity = 1.0;
     let heAlignModeActive = false;
     let heIsDragging = false;
@@ -5153,6 +5157,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 visible: true,
                 flipH: false,
             }};
+            // Re-apply any alignment that was loaded from a session before the
+            // image was ready.
+            if (pendingHeAlignment && pendingHeAlignment[section.id]) {{
+                applyHeAlignmentToState(sectionImageStates[section.id], pendingHeAlignment[section.id]);
+            }}
             renderAllSections();
         }};
         img.src = section.he_image;
@@ -6004,6 +6013,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return Math.max(1, parseInt(el?.value || '2', 10));
     }}
 
+    // Re-render just one section's grid panel (cheap) so H&E tweaks made in the
+    // modal stay consistent with the overview grid and its screenshot.
+    function rerenderSectionPanel(sectionId) {{
+        const section = sectionById.get(sectionId);
+        if (!section) return;
+        document.querySelectorAll('.section-panel').forEach((panel) => {{
+            if ((panel.dataset.sectionId || '') !== sectionId) return;
+            const canvas = panel.querySelector('canvas');
+            if (canvas) renderSection(section, canvas);
+        }});
+    }}
+
     function screenshotFullPage() {{
         const multiplier = getScreenshotResolution();
         const name = `spatial-viewer-${{getScreenshotTimestamp()}}${{multiplier > 1 ? `-${{multiplier}}x` : ''}}.png`;
@@ -6070,6 +6091,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
 
+        // Overlay the active color legend in the top-right corner
+        drawScreenshotLegend(cctx, totalW, totalH, multiplier);
+
         // Restore normal rendering
         screenshotDprOverride = null;
         panels.forEach(panel => {{
@@ -6101,16 +6125,124 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const multiplier = getScreenshotResolution();
         const sectionName = sanitizeFilenamePart(modalSection.id);
         const name = `spatial-viewer-${{sectionName}}-${{getScreenshotTimestamp()}}${{multiplier > 1 ? `-${{multiplier}}x` : ''}}.png`;
-        if (multiplier > 1) {{
-            // Temporarily override DPR for high-res render
-            screenshotDprOverride = getRenderDpr() * multiplier;
-            renderModalSectionExact();
-            downloadCanvasImage(canvas, name);
-            screenshotDprOverride = null;
-            renderModalSectionExact();
-        }} else {{
-            downloadCanvasImage(canvas, name);
+        // Always render through the DPR-override path (even at 1x) so the
+        // transparent-background toggle is honored for the panel view too.
+        const baseDpr = window.devicePixelRatio || 1;
+        screenshotDprOverride = baseDpr * multiplier;
+        renderModalSectionExact();
+        // Overlay the active color legend in the top-right corner.
+        const mctx = canvas.getContext('2d');
+        drawScreenshotLegend(mctx, canvas.width / screenshotDprOverride, canvas.height / screenshotDprOverride, 1);
+        downloadCanvasImage(canvas, name);
+        screenshotDprOverride = null;
+        renderModalSectionExact();
+    }}
+
+    function roundRectPath(ctx, x, y, w, h, r) {{
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.arcTo(x + w, y, x + w, y + h, r);
+        ctx.arcTo(x + w, y + h, x, y + h, r);
+        ctx.arcTo(x, y + h, x, y, r);
+        ctx.arcTo(x, y, x + w, y, r);
+        ctx.closePath();
+    }}
+
+    // Draw the active color legend as a compact, semi-transparent overlay in the
+    // top-right corner of a screenshot canvas. `px` scales fonts/spacing so the
+    // overlay stays proportional whether drawn on the high-res composite
+    // (px = resolution multiplier) or the DPR-scaled modal canvas (px = 1).
+    function drawScreenshotLegend(ctx, viewW, viewH, px) {{
+        let config;
+        try {{ config = getColorConfig(); }} catch (e) {{ return; }}
+        if (!config) return;
+        const label = currentGene || currentColor || '';
+        if (!label) return;
+        const dark = currentTheme === 'dark';
+        const panelBg = dark ? 'rgba(24,24,28,0.82)' : 'rgba(255,255,255,0.88)';
+        const panelBorder = dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.2)';
+        const textColor = dark ? '#ececec' : '#222222';
+        const pad = 8 * px, margin = 10 * px, gap = 6 * px;
+        const swatch = 10 * px, lineH = 16 * px, fontPx = 11 * px;
+        const titleFont = `600 ${{12 * px}}px sans-serif`;
+        const itemFont = `${{fontPx}}px sans-serif`;
+
+        ctx.save();
+        ctx.textBaseline = 'top';
+
+        if (config.is_continuous) {{
+            const barW = 14 * px, barH = 120 * px, labelW = 44 * px;
+            ctx.font = titleFont;
+            const titleW = ctx.measureText(label).width;
+            const panelW = Math.max(titleW, barW + gap + labelW) + pad * 2;
+            const panelH = lineH + gap + barH + pad * 2;
+            const x = Math.max(margin, viewW - panelW - margin), y = margin;
+            roundRectPath(ctx, x, y, panelW, panelH, 6 * px);
+            ctx.fillStyle = panelBg; ctx.fill();
+            ctx.strokeStyle = panelBorder; ctx.lineWidth = px; ctx.stroke();
+            ctx.fillStyle = textColor; ctx.font = titleFont;
+            ctx.fillText(label, x + pad, y + pad);
+            const bx = x + pad, by = y + pad + lineH + gap;
+            const steps = Math.max(1, Math.round(barH));
+            for (let i = 0; i < steps; i++) {{
+                ctx.fillStyle = magma(1 - i / (steps - 1 || 1));
+                ctx.fillRect(bx, by + i, barW, 1);
+            }}
+            ctx.strokeStyle = panelBorder; ctx.lineWidth = px;
+            ctx.strokeRect(bx, by, barW, barH);
+            ctx.fillStyle = textColor; ctx.font = itemFont;
+            const lx = bx + barW + gap;
+            ctx.fillText(Number(config.vmax).toFixed(2), lx, by);
+            ctx.fillText(((Number(config.vmax) + Number(config.vmin)) / 2).toFixed(2), lx, by + barH / 2 - fontPx / 2);
+            ctx.fillText(Number(config.vmin).toFixed(2), lx, by + barH - fontPx);
+            ctx.restore();
+            return;
         }}
+
+        const entries = [];
+        (config.categories || []).forEach((cat, idx) => {{
+            if (hiddenCategories.has(cat)) return;
+            entries.push({{ label: String(cat), color: getCategoryColor(idx, config.colorCol) }});
+        }});
+        if (!entries.length) {{ ctx.restore(); return; }}
+        const MAX = 28;
+        let extra = 0, shown = entries;
+        if (entries.length > MAX) {{ shown = entries.slice(0, MAX); extra = entries.length - MAX; }}
+
+        ctx.font = itemFont;
+        let maxLabelW = 0;
+        shown.forEach((e) => {{ maxLabelW = Math.max(maxLabelW, ctx.measureText(e.label).width); }});
+        if (extra) maxLabelW = Math.max(maxLabelW, ctx.measureText(`+${{extra}} more`).width);
+        ctx.font = titleFont;
+        const titleW = ctx.measureText(label).width;
+        const panelW = Math.max(titleW, swatch + gap + maxLabelW) + pad * 2;
+        const rows = shown.length + (extra ? 1 : 0);
+        const panelH = lineH + gap + rows * lineH + pad * 2;
+        const x = Math.max(margin, viewW - panelW - margin), y = margin;
+
+        roundRectPath(ctx, x, y, panelW, panelH, 6 * px);
+        ctx.fillStyle = panelBg; ctx.fill();
+        ctx.strokeStyle = panelBorder; ctx.lineWidth = px; ctx.stroke();
+
+        ctx.fillStyle = textColor; ctx.font = titleFont;
+        ctx.fillText(label, x + pad, y + pad);
+
+        ctx.font = itemFont;
+        let ry = y + pad + lineH + gap;
+        shown.forEach((e) => {{
+            ctx.fillStyle = e.color || '#999999';
+            ctx.beginPath();
+            ctx.arc(x + pad + swatch / 2, ry + lineH / 2, swatch / 2, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = textColor;
+            ctx.fillText(e.label, x + pad + swatch + gap, ry + (lineH - fontPx) / 2);
+            ry += lineH;
+        }});
+        if (extra) {{
+            ctx.fillStyle = textColor;
+            ctx.fillText(`+${{extra}} more`, x + pad + swatch + gap, ry + (lineH - fontPx) / 2);
+        }}
+        ctx.restore();
     }}
 
     // Color utilities
@@ -12132,6 +12264,35 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
     }}
 
+    function applyHeAlignmentToState(st, saved) {{
+        if (!st || !saved) return false;
+        if (Number.isFinite(saved.cx)) st.cx = saved.cx;
+        if (Number.isFinite(saved.cy)) st.cy = saved.cy;
+        if (Number.isFinite(saved.scaleSlider)) st.scaleSlider = saved.scaleSlider;
+        if (Number.isFinite(saved.rotation)) st.rotation = saved.rotation;
+        if (Number.isFinite(saved.opacity)) st.opacity = Math.max(0, Math.min(1, saved.opacity));
+        if (typeof saved.visible === 'boolean') st.visible = saved.visible;
+        if (typeof saved.flipH === 'boolean') st.flipH = saved.flipH;
+        return true;
+    }}
+
+    function buildSessionHeAlignment() {{
+        const out = {{}};
+        Object.entries(sectionImageStates).forEach(([sid, st]) => {{
+            if (!st || !st.img) return;
+            out[sid] = {{
+                cx: st.cx,
+                cy: st.cy,
+                scaleSlider: st.scaleSlider,
+                rotation: st.rotation,
+                opacity: st.opacity,
+                visible: !!st.visible,
+                flipH: !!st.flipH,
+            }};
+        }});
+        return out;
+    }}
+
     function buildSessionState() {{
         const sectionRotations = {{}};
         (DATA.sections || []).forEach((section) => {{
@@ -12152,6 +12313,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             samples_color_col: samplesColorCol || null,
             samples_meta_sort_by: samplesMetaSortBy || null,
             section_rotations: sectionRotations,
+            he_alignment: buildSessionHeAlignment(),
             annotations: buildModalAnnotationExport(),
         }};
     }}
@@ -12229,6 +12391,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }});
         }}
 
+        let heAlignApplied = 0;
+        if (state.he_alignment && typeof state.he_alignment === 'object') {{
+            // Stash for any image still loading; apply immediately to loaded ones.
+            pendingHeAlignment = state.he_alignment;
+            Object.entries(state.he_alignment).forEach(([sectionId, saved]) => {{
+                const st = sectionImageStates[sectionId];
+                if (st && st.img && applyHeAlignmentToState(st, saved)) heAlignApplied++;
+            }});
+        }}
+
         const annResult = state.annotations
             ? applyAnnotationsFromExport(state.annotations)
             : {{ restored: 0, skipped: 0 }};
@@ -12258,12 +12430,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderLegend('modal-legend');
             renderAllSections();
             if (modalSection) renderModalSection();
+            // Keep the H&E slider controls in sync with any restored alignment.
+            if (modalSection && sectionImageStates[modalSection.id]) {{
+                const st = sectionImageStates[modalSection.id];
+                const setVal = (id, v) => {{ const el = document.getElementById(id); if (el) el.value = String(v); }};
+                const opPct = Math.round(st.opacity * 100);
+                const rotDeg = Math.round(st.rotation * 180 / Math.PI);
+                setVal('modal-he-opacity', opPct); setVal('modal-he-opacity-num', opPct);
+                setVal('modal-he-scale', st.scaleSlider); setVal('modal-he-scale-num', st.scaleSlider);
+                setVal('modal-he-rotation', rotDeg); setVal('modal-he-rotation-num', rotDeg);
+            }}
             if (typeof umapVisible !== 'undefined' && umapVisible) renderUMAP();
             renderActiveInsightsPanel();
             const summary = [];
             if (labelUpdatesApplied) summary.push(`${{labelUpdatesApplied}} label set${{labelUpdatesApplied === 1 ? '' : 's'}}`);
             if (paletteUpdatesApplied) summary.push(`${{paletteUpdatesApplied}} palette${{paletteUpdatesApplied === 1 ? '' : 's'}}`);
             if (rotationsApplied) summary.push(`${{rotationsApplied}} rotation${{rotationsApplied === 1 ? '' : 's'}}`);
+            if (heAlignApplied) summary.push(`${{heAlignApplied}} H&E alignment${{heAlignApplied === 1 ? '' : 's'}}`);
             if (annResult.restored) summary.push(`${{annResult.restored}} annotation${{annResult.restored === 1 ? '' : 's'}}`);
             if (annResult.skipped) summary.push(`${{annResult.skipped}} skipped (missing section)`);
             console.log('Session restored', summary.length ? '\u2014 ' + summary.join(', ') : '(no rotations / annotations)');
@@ -21176,6 +21359,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (!modalSection || !sectionImageStates[modalSection.id]) return;
                 apply(sectionImageStates[modalSection.id], parseFloat(e.target.value));
                 renderModalSection();
+                rerenderSectionPanel(modalSection.id);
             }});
             num?.addEventListener('input', (e) => {{
                 const v = Math.max(parseFloat(num.min || '-Infinity'), Math.min(parseFloat(num.max || 'Infinity'), parseFloat(e.target.value) || 0));
@@ -21183,6 +21367,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (!modalSection || !sectionImageStates[modalSection.id]) return;
                 apply(sectionImageStates[modalSection.id], v);
                 renderModalSection();
+                rerenderSectionPanel(modalSection.id);
             }});
         }}
 
