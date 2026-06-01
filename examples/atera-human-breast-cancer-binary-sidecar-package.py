@@ -22,7 +22,7 @@ from karospace import export_to_html, load_spatial_data
 
 H5AD_PATH = os.environ.get(
     "ATERA_HUMAN_BREAST_CANCER_H5AD_PATH",
-    "/Users/chrislangseth/work/karolinska_institutet/projects/KaroSpaceDataWrangling/data/xenium_cml/atera_human-breast_cancer.companion.ready.h5ad",
+    "/Users/chrislangseth/Downloads/atera_human-breast_cancer.companion.ready.h5ad",
 )
 
 PRIMARY_COLOR = "leiden"
