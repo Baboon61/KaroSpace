@@ -16,24 +16,39 @@ from pathlib import Path
 def convert_to_ome(input_path: str, output_path: str = None, pyramid_levels: int = 4):
     input_path = Path(input_path)
     if output_path is None:
-        output_path = input_path.with_suffix("").with_suffix(".ome.tif")
+        output_path = input_path.parent / (input_path.stem + ".ome.tif")
     else:
         output_path = Path(output_path)
+
+    # Make sure the destination directory exists before opening the writer.
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Converting: {input_path} -> {output_path}")
     img = tifffile.imread(str(input_path))
     print(f"  Shape: {img.shape}, dtype: {img.dtype}")
 
-    # Ensure contiguous RGB array to avoid discontiguous storage warnings
+    # Ensure contiguous RGB array to avoid discontiguous storage warnings.
+    # Detect whether this is an RGB image (channels-last or channels-first) or
+    # a single-channel grayscale image, and pick photometric accordingly.
     if img.ndim == 3 and img.shape[2] == 3:
         img = np.ascontiguousarray(img)
+        photometric = "rgb"
     elif img.ndim == 3 and img.shape[0] == 3:
         img = np.ascontiguousarray(np.moveaxis(img, 0, -1))
+        photometric = "rgb"
+    elif img.ndim == 2:
+        img = np.ascontiguousarray(img)
+        photometric = "minisblack"
+    else:
+        raise ValueError(
+            f"Unsupported image shape {img.shape}; expected RGB (H,W,3 / 3,H,W) "
+            "or grayscale (H,W)."
+        )
 
     options = {
         "tile": (1024, 1024),
         "compression": "zlib",
-        "photometric": "rgb",
+        "photometric": photometric,
         "metadata": None,
     }
 
@@ -57,5 +72,5 @@ if __name__ == "__main__":
         output_path = None
         if args.output_dir:
             p = Path(input_path)
-            output_path = Path(args.output_dir) / p.with_suffix("").with_suffix(".ome.tif").name
+            output_path = Path(args.output_dir) / (p.stem + ".ome.tif")
         convert_to_ome(input_path, output_path, args.pyramid_levels)
