@@ -418,10 +418,47 @@ def _run_package_sidecar_cli(argv=None):
     print(f"Done! Share {package_path} together with its .loader.html opener.")
 
 
+def _run_ome_convert_cli(argv=None):
+    parser = argparse.ArgumentParser(
+        prog="karospace ome-convert",
+        description=(
+            "Optional helper: convert stitched TIFF(s) to pyramidal tiled "
+            "OME-TIFF for import into Xenium Explorer. Independent of the HTML "
+            "export — use it only if you need OME-TIFFs."
+        ),
+    )
+    parser.add_argument("inputs", nargs="+", help="Input .tif file(s)")
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Output directory (default: alongside each input)",
+    )
+    parser.add_argument(
+        "--pyramid-levels",
+        type=int,
+        default=4,
+        help="Number of pyramid levels (default: 4)",
+    )
+    args = parser.parse_args(argv)
+
+    from .omeconvert import convert_to_ome
+
+    for input_path in args.inputs:
+        output_path = None
+        if args.output_dir:
+            p = Path(input_path)
+            output_path = str(Path(args.output_dir) / (p.stem + ".ome.tif"))
+        convert_to_ome(input_path, output_path, args.pyramid_levels)
+
+
 def main():
     argv = list(sys.argv[1:])
     if argv and argv[0] in {"package-sidecar", "package"}:
         _run_package_sidecar_cli(argv[1:])
+        return
+    if argv and argv[0] in {"ome-convert", "omeconvert"}:
+        _run_ome_convert_cli(argv[1:])
         return
     _run_export_cli(argv)
 

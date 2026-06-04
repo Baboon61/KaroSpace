@@ -43,6 +43,7 @@ __all__ = [
     "export_to_html",
     "package_sidecar_viewer",
     "integrate_polygon_annotations",
+    "convert_to_ome",
 ]
 
 
@@ -55,6 +56,9 @@ def __getattr__(name):
         return getattr(module, name)
     if name == "integrate_polygon_annotations":
         module = import_module(".annotations", __name__)
+        return getattr(module, name)
+    if name == "convert_to_ome":
+        module = import_module(".omeconvert", __name__)
         return getattr(module, name)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 

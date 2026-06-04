@@ -44,6 +44,67 @@ _SPATIAL_KEY_FALLBACKS = (
 )
 
 
+def _rgb_nums_to_hex(nums) -> Optional[str]:
+    """Convert a 3/4-number RGB(A) sequence to a ``#RRGGBB`` hex string.
+
+    Accepts matplotlib-style 0..1 floats or 0..255 ints. Returns ``None`` if the
+    sequence isn't a usable RGB triple.
+    """
+    try:
+        vals = [float(v) for v in nums]
+    except (TypeError, ValueError):
+        return None
+    if len(vals) < 3:
+        return None
+    r, g, b = vals[0], vals[1], vals[2]
+    # Heuristic: matplotlib RGBA are 0..1 floats; scale those to 0..255.
+    if max(r, g, b) <= 1.0:
+        r, g, b = r * 255.0, g * 255.0, b * 255.0
+    clamp = lambda x: max(0, min(255, int(round(x))))
+    return "#%02X%02X%02X" % (clamp(r), clamp(g), clamp(b))
+
+
+def _to_css_color(c) -> Optional[str]:
+    """Normalize one ``uns[*_colors]`` entry to a CSS-usable color string.
+
+    Handles hex/``rgb()``/named strings (passed through), bytes, numpy RGB(A)
+    float/int arrays, and stringified arrays like ``"[0.88 0.47 0.72]"`` (which
+    is what ``str(np.array([...]))`` produces — the source of cells rendering
+    with no color). Returns ``None`` if it can't be made into a color.
+    """
+    if isinstance(c, bytes):
+        c = c.decode("utf-8", "replace")
+    if isinstance(c, np.str_):
+        c = str(c)
+    if isinstance(c, str):
+        s = c.strip()
+        if s.startswith("[") and s.endswith("]"):
+            parts = s[1:-1].replace(",", " ").split()
+            hexed = _rgb_nums_to_hex(parts)
+            return hexed if hexed is not None else None
+        return s or None
+    # numpy scalar / 0-d
+    if isinstance(c, np.generic):
+        return str(c)
+    # array / sequence of channel values
+    return _rgb_nums_to_hex(c)
+
+
+def _normalize_uns_palette(uns_palette) -> Optional[List[str]]:
+    """Convert a full ``uns[*_colors]`` palette to CSS strings.
+
+    Returns ``None`` if any entry can't be converted, so the caller can fall back
+    to the viewer's default palette rather than emit invalid colors.
+    """
+    out = []
+    for c in uns_palette:
+        css = _to_css_color(c)
+        if css is None:
+            return None
+        out.append(css)
+    return out
+
+
 def _resolve_spatial_key(adata, spatial_key: str = "spatial") -> str:
     """Return a usable spatial-coordinate key in ``adata.obsm``.
 
@@ -1100,6 +1161,20 @@ class SpatialDataset:
                 neighbor_graph = sp.csr_matrix(neighbor_graph)
             else:
                 neighbor_graph = neighbor_graph.tocsr()
+            # Some writers store CSR with mismatched index dtypes (e.g. squidpy
+            # spatial_connectivities: int64 indptr + int32 indices). scipy fancy
+            # indexing then raises "Output dtype not compatible with inputs", so
+            # canonicalize indptr/indices to a single consistent dtype.
+            if neighbor_graph.indptr.dtype != neighbor_graph.indices.dtype:
+                maxval = max(
+                    neighbor_graph.shape[0],
+                    neighbor_graph.shape[1],
+                    int(neighbor_graph.nnz),
+                    1,
+                )
+                idx_dtype = np.int64 if maxval > np.iinfo(np.int32).max else np.int32
+                neighbor_graph.indptr = neighbor_graph.indptr.astype(idx_dtype, copy=False)
+                neighbor_graph.indices = neighbor_graph.indices.astype(idx_dtype, copy=False)
 
         # Get initial color data
         values, is_continuous, categories = self.get_color_data(color, vmin, vmax)
@@ -2119,13 +2194,19 @@ class SpatialDataset:
                 cats = cdata.get("categories") or []
                 if uns_palette is not None and len(uns_palette) == len(cats) and len(cats) > 0:
                     try:
-                        palette_list = [str(c) for c in uns_palette]
-                        # uns palettes are aligned to the original category order;
-                        # follow the same numeric reorder applied to the categories.
-                        perm = cdata.get("_cat_perm")
-                        if perm is not None and len(perm) == len(palette_list):
-                            palette_list = [palette_list[old_idx] for old_idx in perm]
-                        meta["palette"] = palette_list
+                        # Normalize to CSS colors. uns palettes may be hex strings
+                        # OR matplotlib RGB(A) float arrays — the latter str()'d to
+                        # "[0.88 0.47 ...]", which the canvas can't parse (cells
+                        # render with no color). Fall back to the default palette
+                        # if anything fails to convert.
+                        palette_list = _normalize_uns_palette(uns_palette)
+                        if palette_list is not None:
+                            # uns palettes are aligned to the original category order;
+                            # follow the same numeric reorder applied to the categories.
+                            perm = cdata.get("_cat_perm")
+                            if perm is not None and len(perm) == len(palette_list):
+                                palette_list = [palette_list[old_idx] for old_idx in perm]
+                            meta["palette"] = palette_list
                     except Exception:
                         pass
             colors_meta[col] = meta

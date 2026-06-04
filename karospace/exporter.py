@@ -117,8 +117,46 @@ def _read_image_for_embed(path: Path, max_px: int):
     return img
 
 
-def _embed_section_images(data: dict, section_images: Dict[str, str], max_px: int = 4096) -> None:
-    """Read image files, downsample if needed, and embed as base64 data URLs in section dicts."""
+def _normalize_section_image_layers(value) -> List[tuple]:
+    """Normalize a section_images value into an ordered list of (name, path).
+
+    Accepts, per section:
+      - a single path:            "img.tif"
+      - a name->path mapping:     {"DAPI": "dapi.png", "H&E": "he.png"}
+      - a list of paths:          ["dapi.png", "he.png"]
+      - a list of {name, path}:   [{"name": "DAPI", "path": "dapi.png"}, ...]
+      - a list of (name, path):   [("DAPI", "dapi.png"), ...]
+    """
+    layers: List[tuple] = []
+    if value is None:
+        return layers
+    if isinstance(value, (str, Path)):
+        layers.append((Path(value).stem, str(value)))
+    elif isinstance(value, dict):
+        for name, path in value.items():
+            if path:
+                layers.append((str(name), str(path)))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            if isinstance(item, (str, Path)):
+                layers.append((Path(item).stem, str(item)))
+            elif isinstance(item, dict):
+                path = item.get("path") or item.get("url")
+                name = item.get("name") or (Path(path).stem if path else "Image")
+                if path:
+                    layers.append((str(name), str(path)))
+            elif isinstance(item, (list, tuple)) and len(item) == 2:
+                layers.append((str(item[0]), str(item[1])))
+    return layers
+
+
+def _embed_section_images(data: dict, section_images: Dict[str, object], max_px: int = 4096) -> None:
+    """Read image files, downsample if needed, and embed as base64 data URLs.
+
+    Each section may carry one or more named overlay layers (e.g. DAPI + H&E),
+    embedded into ``section["he_images"]`` as ``[{"name", "url"}, ...]``. The
+    first layer is also mirrored to the legacy ``section["he_image"]`` field.
+    """
     import io
     try:
         from PIL import Image as _PILImage  # noqa: F401
@@ -127,24 +165,35 @@ def _embed_section_images(data: dict, section_images: Dict[str, str], max_px: in
         _has_pil = False
 
     section_by_id = {s["id"]: s for s in data.get("sections", [])}
-    for section_id, image_path in section_images.items():
+    for section_id, value in section_images.items():
         if section_id not in section_by_id:
             print(f"  Warning: section_images key '{section_id}' not found in sections — skipping.")
             continue
-        path = Path(image_path)
-        if not path.exists():
-            print(f"  Warning: section image not found: {image_path} — skipping.")
+        spec = _normalize_section_image_layers(value)
+        if not spec:
             continue
         if not _has_pil:
-            print(f"  Warning: Pillow not installed — cannot embed {path.name}. Install Pillow.")
+            print("  Warning: Pillow not installed — cannot embed section images. Install Pillow.")
             continue
-        img = _read_image_for_embed(path, max_px)
-        print(f"  Embedded {path.name} at {img.size[0]}×{img.size[1]}px for section '{section_id}'")
-        buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
-        raw = buf.getvalue()
-        section_by_id[section_id]["he_image"] = f"data:image/jpeg;base64,{base64.b64encode(raw).decode()}"
-        print(f"    → {len(raw) // 1024}KB embedded")
+        embedded = []
+        for name, image_path in spec:
+            path = Path(image_path)
+            if not path.exists():
+                print(f"  Warning: section image not found: {image_path} — skipping.")
+                continue
+            img = _read_image_for_embed(path, max_px)
+            buf = io.BytesIO()
+            img.save(buf, format="JPEG", quality=85)
+            raw = buf.getvalue()
+            url = f"data:image/jpeg;base64,{base64.b64encode(raw).decode()}"
+            embedded.append({"name": name, "url": url})
+            print(
+                f"  Embedded {path.name} as '{name}' "
+                f"({img.size[0]}×{img.size[1]}px, {len(raw) // 1024}KB) for section '{section_id}'"
+            )
+        if embedded:
+            section_by_id[section_id]["he_images"] = embedded
+            section_by_id[section_id]["he_image"] = embedded[0]["url"]
 
 
 GENE_SIDECAR_SHARD_SIZE = 256
@@ -1744,6 +1793,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             overflow-y: auto;
             padding-right: 2px;
         }}
+        .color-aggregation.neighbor-stats-scrollable {{
+            max-height: 60vh;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding-right: 2px;
+        }}
+        /* The container is a flex column; without this the cell-type blocks
+           shrink to cram into max-height (and clip via their own overflow:hidden)
+           instead of overflowing and scrolling. */
+        .color-aggregation.neighbor-stats-scrollable > .agg-group {{
+            flex-shrink: 0;
+        }}
         .color-item {{
             padding: 5px 8px;
             border: 1px solid var(--border-color);
@@ -2481,6 +2542,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .gene-distribution-table th:hover {{ color: var(--text-color); }}
         .gene-distribution-table tbody tr {{ cursor: pointer; }}
         .gene-distribution-table tbody tr:hover {{ background: var(--hover-bg); }}
+        .dispersion-summary {{ font-size: 11px; color: var(--muted-color); margin: 8px 0 6px; }}
+        .dispersion-label-clustered {{ color: #e07b54; font-weight: 600; }}
+        .dispersion-label-random {{ color: var(--muted-color); }}
+        .dispersion-label-dispersed {{ color: #5aa05a; font-weight: 600; }}
         .legend-title {{
             font-size: 13px;
             font-weight: 600;
@@ -4062,6 +4127,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <button class="size-step" id="spot-size-inc" type="button">+</button>
                 </div>
             </div>
+            <div class="control-group">
+                <label>Cells:</label>
+                <div class="size-control">
+                    <button class="size-step" id="cell-opacity-dec" type="button">−</button>
+                    <input type="range" id="cell-opacity" min="0" max="100" step="1" value="100" style="width:80px" title="Cell opacity — fades the cells in every panel and the modal (e.g. to see an H&amp;E / DAPI overlay through them)">
+                    <button class="size-step" id="cell-opacity-inc" type="button">+</button>
+                </div>
+            </div>
+            <div class="control-group" id="global-overlay-group" style="display: none;">
+                <label>Overlay:</label>
+                <select id="global-overlay-select" title="Switch the overlay image (e.g. DAPI / H&amp;E) for every section at once"></select>
+            </div>
             <button class="graph-toggle" id="show-hidden-sections-btn" title="Show all hidden sections" style="display: none;">
                 Show hidden
             </button>
@@ -4363,38 +4440,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <div class="modal-control-group" data-modal-group="he-overlay">
                             <div class="modal-control-group-title">H&amp;E Overlay</div>
                             <div class="modal-control-group-body" style="flex-direction: column; gap: 5px;">
+                                <!-- Everyday controls: pick a layer, show/hide it, set opacities, load an image. -->
                                 <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-                                    <button class="graph-toggle" id="modal-he-align-btn" type="button" title="Toggle alignment mode: drag to reposition image">Align</button>
-                                    <button class="graph-toggle" id="modal-he-fliph-btn" type="button" title="Flip image horizontally">Flip H</button>
-                                    <button class="graph-toggle" id="modal-he-export-btn" type="button" title="Export alignment transform as JSON">Export JSON</button>
-                                </div>
-                                <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                    <select class="graph-toggle" id="modal-he-layer-select" title="Switch overlay image (e.g. DAPI / H&amp;E)" style="display:none; padding: 2px 4px;"></select>
+                                    <button class="graph-toggle" id="modal-he-eye-btn" type="button" title="Show or hide this overlay layer" style="display:none;">👁</button>
                                     <div style="display: flex; gap: 3px; align-items: center;">
-                                        <label style="font-size: 10px; color: var(--muted-color);">Opacity</label>
+                                        <label style="font-size: 10px; color: var(--muted-color);">Image</label>
                                         <div class="size-control">
                                             <button class="size-step" id="modal-he-opacity-dec" type="button">−</button>
                                             <input type="range" id="modal-he-opacity" min="0" max="100" step="1" value="50" style="width: 60px;">
                                             <button class="size-step" id="modal-he-opacity-inc" type="button">+</button>
                                         </div>
                                         <input type="number" id="modal-he-opacity-num" min="0" max="100" step="1" value="50" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
-                                    </div>
-                                    <div style="display: flex; gap: 3px; align-items: center;">
-                                        <label style="font-size: 10px; color: var(--muted-color);">Scale</label>
-                                        <div class="size-control">
-                                            <button class="size-step" id="modal-he-scale-dec" type="button">−</button>
-                                            <input type="range" id="modal-he-scale" min="-100" max="100" step="1" value="0" style="width: 60px;">
-                                            <button class="size-step" id="modal-he-scale-inc" type="button">+</button>
-                                        </div>
-                                        <input type="number" id="modal-he-scale-num" min="-100" max="100" step="1" value="0" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
-                                    </div>
-                                    <div style="display: flex; gap: 3px; align-items: center;">
-                                        <label style="font-size: 10px; color: var(--muted-color);">Rotate</label>
-                                        <div class="size-control">
-                                            <button class="size-step" id="modal-he-rotation-dec" type="button">−</button>
-                                            <input type="range" id="modal-he-rotation" min="-180" max="180" step="1" value="0" style="width: 60px;">
-                                            <button class="size-step" id="modal-he-rotation-inc" type="button">+</button>
-                                        </div>
-                                        <input type="number" id="modal-he-rotation-num" min="-180" max="180" step="1" value="0" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
                                     </div>
                                     <div style="display: flex; gap: 3px; align-items: center;">
                                         <label style="font-size: 10px; color: var(--muted-color);">Cells</label>
@@ -4404,6 +4461,39 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                             <button class="size-step" id="modal-cell-opacity-inc" type="button">+</button>
                                         </div>
                                         <input type="number" id="modal-cell-opacity-num" min="0" max="100" step="1" value="100" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
+                                    </div>
+                                    <button class="graph-toggle" id="modal-he-load-btn" type="button" title="Load an H&amp;E / histology image for this section">Load image</button>
+                                    <button class="graph-toggle" id="modal-he-align-btn" type="button" title="Show alignment tools: drag to reposition, scale, rotate, flip" aria-expanded="false">Align ▾</button>
+                                    <input type="file" id="modal-he-upload-input" accept="image/*" style="display:none">
+                                </div>
+                                <!-- Collapsible alignment panel: only shown while aligning. Opening it
+                                     enables drag-to-reposition; closing it leaves align mode. -->
+                                <div id="modal-he-align-panel" style="display:none; flex-direction: column; gap: 6px; padding: 7px 9px; border: 1px dashed var(--border-color); border-radius: 5px; background: var(--input-bg);">
+                                    <div style="font-size: 10px; color: var(--muted-color);">Drag the image in the view to reposition it, then fine-tune below — or let it snap to the cells automatically.</div>
+                                    <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
+                                        <button class="graph-toggle" id="modal-he-autoalign-btn" type="button" title="Automatically align this overlay to the cell positions (translation, rotation, scale). Works best on a nuclear stain like DAPI.">✨ Auto-align</button>
+                                    </div>
+                                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                                        <div style="display: flex; gap: 3px; align-items: center;">
+                                            <label style="font-size: 10px; color: var(--muted-color);">Scale</label>
+                                            <div class="size-control">
+                                                <button class="size-step" id="modal-he-scale-dec" type="button">−</button>
+                                                <input type="range" id="modal-he-scale" min="-100" max="100" step="1" value="0" style="width: 60px;">
+                                                <button class="size-step" id="modal-he-scale-inc" type="button">+</button>
+                                            </div>
+                                            <input type="number" id="modal-he-scale-num" min="-100" max="100" step="1" value="0" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
+                                        </div>
+                                        <div style="display: flex; gap: 3px; align-items: center;">
+                                            <label style="font-size: 10px; color: var(--muted-color);">Rotate</label>
+                                            <div class="size-control">
+                                                <button class="size-step" id="modal-he-rotation-dec" type="button">−</button>
+                                                <input type="range" id="modal-he-rotation" min="-180" max="180" step="1" value="0" style="width: 60px;">
+                                                <button class="size-step" id="modal-he-rotation-inc" type="button">+</button>
+                                            </div>
+                                            <input type="number" id="modal-he-rotation-num" min="-180" max="180" step="1" value="0" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
+                                        </div>
+                                        <button class="graph-toggle" id="modal-he-fliph-btn" type="button" title="Flip image horizontally">Flip H</button>
+                                        <button class="graph-toggle" id="modal-he-export-btn" type="button" title="Export alignment transform as JSON">Export JSON</button>
                                     </div>
                                 </div>
                                 <div id="modal-he-status" style="font-size: 10px; color: var(--muted-color);"></div>
@@ -5008,6 +5098,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let geneDistributionSortDir = 'desc';
     let geneDistributionRestrictBy = '';
     let geneDistributionRestrictValue = '';
+    // Spatial dispersion (restricted-vs-dispersed) insights table state. Results
+    // are cached per color column (cell positions are static) and invalidated
+    // whenever currentColor changes.
+    let dispersionSortKey = 'nni';
+    let dispersionSortDir = 'asc';
+    const _dispersionCache = new Map();
     let geneAuxManifest = null;
     let geneAuxManifestPromise = null;
     const geneAuxShardCache = new Map();
@@ -5068,7 +5164,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     // H&E alignment restored from a session before the image finished loading;
     // applied in the image onload handler once the state object exists.
     let pendingHeAlignment = null;
-    let modalCellOpacity = 1.0;
+    let cellOpacity = 1.0;
+    // Global cell opacity drives BOTH the overview grid panels and the modal.
+    // Setting it keeps the toolbar slider and the modal slider in sync and
+    // repaints whatever is currently on screen.
+    function setCellOpacity(v, opts) {{
+        opts = opts || {{}};
+        cellOpacity = Math.max(0, Math.min(1, v));
+        const pct = Math.round(cellOpacity * 100);
+        ['cell-opacity', 'modal-cell-opacity', 'modal-cell-opacity-num'].forEach((id) => {{
+            const el = document.getElementById(id);
+            if (el && el !== opts.skip) el.value = String(pct);
+        }});
+        if (!opts.noRender) {{
+            renderAllSections();
+            if (modalSection) renderModalSection();
+        }}
+    }}
     let heAlignModeActive = false;
     let heIsDragging = false;
     let heDragStartX = 0, heDragStartY = 0;
@@ -5136,36 +5248,154 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const annotationDeFullCache = new Map();
     const sectionById = new Map((DATA.sections || []).map(section => [section.id, section]));
 
-    // Auto-load any H&E images embedded at export time
-    (DATA.sections || []).forEach((section) => {{
-        if (!section.he_image) return;
-        const img = new Image();
-        img.onload = () => {{
+    // A section's overlay can hold MULTIPLE named image layers (e.g. DAPI and
+    // H&E). They share one alignment (cx/cy/scale/rotation/opacity/flip);
+    // switching the active layer just swaps which image is drawn. The active
+    // layer's img/url/imgDataScaleBase are mirrored onto the state object so all
+    // existing render code (which reads sectionImageStates[id].img) is unchanged.
+    function ensureSectionImageState(section) {{
+        let st = sectionImageStates[section.id];
+        if (!st) {{
             const b = section.bounds || {{}};
-            const dataWidth = (b.xmax - b.xmin) || 1;
-            const dataHeight = (b.ymax - b.ymin) || 1;
-            const imgDataScaleBase = Math.max(dataWidth / img.naturalWidth, dataHeight / img.naturalHeight);
-            sectionImageStates[section.id] = {{
-                img,
-                url: section.he_image,
+            st = {{
+                layers: [],
+                activeLayer: 0,
+                img: null,
+                url: null,
+                imgDataScaleBase: 1,
                 cx: (b.xmin + b.xmax) / 2,
                 cy: (b.ymin + b.ymax) / 2,
-                imgDataScaleBase,
                 scaleSlider: 0,
                 rotation: 0,
                 opacity: 0.5,
                 visible: true,
                 flipH: false,
             }};
-            // Re-apply any alignment that was loaded from a session before the
-            // image was ready.
+            sectionImageStates[section.id] = st;
+        }}
+        return st;
+    }}
+
+    function makeHeLayer(section, img, url, name) {{
+        const b = section.bounds || {{}};
+        const dataWidth = (b.xmax - b.xmin) || 1;
+        const dataHeight = (b.ymax - b.ymin) || 1;
+        const imgDataScaleBase = Math.max(dataWidth / img.naturalWidth, dataHeight / img.naturalHeight);
+        // Each layer carries its OWN visibility, so DAPI can be shown while H&E
+        // is hidden (and vice versa). The active layer's `visible` is mirrored
+        // onto st.visible below so existing renderers stay unchanged.
+        return {{ name: name || 'Image', img, url, imgDataScaleBase, visible: true }};
+    }}
+
+    // Point the shared alignment state at a given layer's image. The layer's own
+    // visibility is mirrored onto st.visible so all render code (which reads
+    // st.visible / st.img) draws exactly the active layer's show/hide state.
+    function activateHeLayer(st, idx) {{
+        if (!st || !st.layers || idx < 0 || idx >= st.layers.length) return;
+        st.activeLayer = idx;
+        const l = st.layers[idx];
+        st.img = l.img;
+        st.url = l.url;
+        st.imgDataScaleBase = l.imgDataScaleBase;
+        st.visible = (l.visible !== false);
+    }}
+
+    // Load one overlay image (embedded data URL or user-picked file) and register
+    // it as a named layer on the section. Used by both the export-time
+    // auto-loader and the in-viewer upload control.
+    function addHeLayer(section, url, name, makeActive, onReady) {{
+        if (!section || !url) return;
+        const img = new Image();
+        img.onload = () => {{
+            const st = ensureSectionImageState(section);
+            const layer = makeHeLayer(section, img, url, name);
+            const existing = st.layers.findIndex(l => l.name === layer.name);
+            let idx;
+            if (existing >= 0) {{
+                // Re-uploading the same layer keeps its current show/hide state.
+                layer.visible = (st.layers[existing].visible !== false);
+                st.layers[existing] = layer; idx = existing;
+            }}
+            else {{ st.layers.push(layer); idx = st.layers.length - 1; }}
+            if (makeActive || st.layers.length === 1 || st.activeLayer === idx) {{
+                activateHeLayer(st, idx);
+            }}
+            // If a global overlay layer is selected, keep newly-loaded sections in sync.
+            if (globalOverlayLayerName) {{
+                const gi = st.layers.findIndex(l => l.name === globalOverlayLayerName);
+                if (gi >= 0) activateHeLayer(st, gi);
+            }}
+            // Re-apply any alignment loaded from a session before the image was ready.
             if (pendingHeAlignment && pendingHeAlignment[section.id]) {{
-                applyHeAlignmentToState(sectionImageStates[section.id], pendingHeAlignment[section.id]);
+                applyHeAlignmentToState(st, pendingHeAlignment[section.id]);
             }}
             renderAllSections();
+            if (typeof onReady === 'function') onReady(st);
         }};
-        img.src = section.he_image;
+        img.onerror = () => {{ console.warn('Could not load overlay image', name, 'for section', section.id); }};
+        img.src = url;
+    }}
+
+    // Auto-load any images embedded at export time: a multi-layer `he_images`
+    // list ([{{name, url}}, ...]) or a single legacy `he_image` data URL.
+    (DATA.sections || []).forEach((section) => {{
+        let imgs = Array.isArray(section.he_images) ? section.he_images : null;
+        if (!imgs && section.he_image) imgs = [{{ name: 'Image', url: section.he_image }}];
+        if (!imgs) return;
+        imgs.forEach((entry, i) => {{
+            const url = entry && (entry.url || entry.data);
+            const name = (entry && entry.name) || `Image ${{i + 1}}`;
+            if (url) addHeLayer(section, url, name, i === 0);
+        }});
     }});
+
+    // ---- Global overlay-image switch (top toolbar) ----
+    // Switches the active overlay LAYER (e.g. DAPI / H&E) for every section at
+    // once, mirroring the per-section dropdown inside the modal.
+    let globalOverlayLayerName = null;
+
+    // Union of overlay layer names across sections (from embedded he_images),
+    // in first-seen order.
+    function getOverlayLayerNames() {{
+        const names = [], seen = new Set();
+        (DATA.sections || []).forEach((section) => {{
+            let imgs = Array.isArray(section.he_images) ? section.he_images : null;
+            if (!imgs && section.he_image) imgs = [{{ name: 'Image' }}];
+            (imgs || []).forEach((entry, i) => {{
+                const name = (entry && entry.name) || `Image ${{i + 1}}`;
+                if (!seen.has(name)) {{ seen.add(name); names.push(name); }}
+            }});
+        }});
+        return names;
+    }}
+
+    function populateGlobalOverlaySelect() {{
+        const group = document.getElementById('global-overlay-group');
+        const sel = document.getElementById('global-overlay-select');
+        if (!group || !sel) return;
+        const names = getOverlayLayerNames();
+        // Only worth showing when there's more than one overlay to switch between.
+        if (names.length < 2) {{ group.style.display = 'none'; return; }}
+        sel.innerHTML = names.map((n) => `<option value="${{escapeHtml(n)}}">${{escapeHtml(n)}}</option>`).join('');
+        if (!globalOverlayLayerName || !names.includes(globalOverlayLayerName)) globalOverlayLayerName = names[0];
+        sel.value = globalOverlayLayerName;
+        group.style.display = '';
+    }}
+
+    // Switch the active overlay layer to `name` for EVERY section.
+    function setGlobalOverlayLayer(name) {{
+        if (!name) return;
+        globalOverlayLayerName = name;
+        Object.values(sectionImageStates).forEach((st) => {{
+            if (!st || !st.layers) return;
+            const idx = st.layers.findIndex(l => l.name === name);
+            if (idx >= 0) activateHeLayer(st, idx);
+        }});
+        const sel = document.getElementById('global-overlay-select');
+        if (sel && sel.value !== name) sel.value = name;
+        renderAllSections();
+        if (modalSection) {{ renderModalSection(); refreshModalHeControls(); }}
+    }}
 
     const colorNameByLower = new Map((DATA.available_colors || []).map((name) => [String(name).toLowerCase(), String(name)]));
     const sectionMetadataKeyByLower = new Map();
@@ -12273,6 +12503,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (Number.isFinite(saved.opacity)) st.opacity = Math.max(0, Math.min(1, saved.opacity));
         if (typeof saved.visible === 'boolean') st.visible = saved.visible;
         if (typeof saved.flipH === 'boolean') st.flipH = saved.flipH;
+        // Restore per-layer show/hide (keyed by name) before activating, so the
+        // active layer's mirrored st.visible ends up correct.
+        if (saved.layerVisibility && st.layers && st.layers.length) {{
+            st.layers.forEach((l) => {{
+                if (typeof saved.layerVisibility[l.name] === 'boolean') l.visible = saved.layerVisibility[l.name];
+            }});
+        }}
+        if (typeof saved.activeLayer === 'string' && st.layers && st.layers.length) {{
+            const i = st.layers.findIndex(l => l.name === saved.activeLayer);
+            if (i >= 0) activateHeLayer(st, i);
+        }}
         return true;
     }}
 
@@ -12280,6 +12521,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const out = {{}};
         Object.entries(sectionImageStates).forEach(([sid, st]) => {{
             if (!st || !st.img) return;
+            const activeName = (st.layers && st.layers[st.activeLayer]) ? st.layers[st.activeLayer].name : undefined;
+            const layerVisibility = {{}};
+            (st.layers || []).forEach((l) => {{ layerVisibility[l.name] = (l.visible !== false); }});
             out[sid] = {{
                 cx: st.cx,
                 cy: st.cy,
@@ -12288,6 +12532,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 opacity: st.opacity,
                 visible: !!st.visible,
                 flipH: !!st.flipH,
+                activeLayer: activeName,
+                layerVisibility,
             }};
         }});
         return out;
@@ -12313,6 +12559,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             samples_color_col: samplesColorCol || null,
             samples_meta_sort_by: samplesMetaSortBy || null,
             section_rotations: sectionRotations,
+            cell_opacity: cellOpacity,
             he_alignment: buildSessionHeAlignment(),
             annotations: buildModalAnnotationExport(),
         }};
@@ -12419,6 +12666,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (state.samples_color_col) samplesColorCol = state.samples_color_col;
         if (typeof state.samples_meta_sort_by === 'string') samplesMetaSortBy = state.samples_meta_sort_by;
 
+        // Restore global cell opacity (syncs both sliders; finalize() repaints).
+        if (Number.isFinite(state.cell_opacity)) setCellOpacity(state.cell_opacity, {{ noRender: true }});
+
         const targetColor = state.color_column;
         const targetGene = state.active_gene;
 
@@ -12430,16 +12680,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderLegend('modal-legend');
             renderAllSections();
             if (modalSection) renderModalSection();
-            // Keep the H&E slider controls in sync with any restored alignment.
-            if (modalSection && sectionImageStates[modalSection.id]) {{
-                const st = sectionImageStates[modalSection.id];
-                const setVal = (id, v) => {{ const el = document.getElementById(id); if (el) el.value = String(v); }};
-                const opPct = Math.round(st.opacity * 100);
-                const rotDeg = Math.round(st.rotation * 180 / Math.PI);
-                setVal('modal-he-opacity', opPct); setVal('modal-he-opacity-num', opPct);
-                setVal('modal-he-scale', st.scaleSlider); setVal('modal-he-scale-num', st.scaleSlider);
-                setVal('modal-he-rotation', rotDeg); setVal('modal-he-rotation-num', rotDeg);
-            }}
+            // Keep the H&E controls (layer, sliders, status) in sync with any
+            // restored alignment.
+            if (modalSection) refreshModalHeControls();
             if (typeof umapVisible !== 'undefined' && umapVisible) renderUMAP();
             renderActiveInsightsPanel();
             const summary = [];
@@ -13482,6 +13725,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             const drawOrder = getSortedCellDrawOrder(section, values, config);
             let lastFill = '';
+            ctx.globalAlpha = cellOpacity;
             for (let di = 0; di < section.x.length; di++) {{
                 const i = drawOrder ? drawOrder[di] : di;
                 const point = transform.dataToScreen(section.x[i], section.y[i]);
@@ -13495,6 +13739,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 ctx.arc(point.x, point.y, spotSize, 0, Math.PI * 2);
                 ctx.fill();
             }}
+            ctx.globalAlpha = 1;
             // Split line
             ctx.strokeStyle = currentTheme === 'dark' ? 'rgba(255,255,255,0.6)' : 'rgba(0,0,0,0.3)';
             ctx.lineWidth = 1;
@@ -13565,7 +13810,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const hasHidden = showGeneCells && hiddenCategories.size > 0 && !config.is_continuous;
         if (hasHidden) {{
             ctx.fillStyle = '#cccccc';
-            ctx.globalAlpha = 0.2;
+            ctx.globalAlpha = 0.2 * cellOpacity;
             for (let di = 0; di < section.x.length; di++) {{
                 const i = drawOrder ? drawOrder[di] : di;
                 const val = values[i];
@@ -13603,7 +13848,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const off = i * k;
                         // Reject rows that are all-zero/NaN (already encoded as missing val above).
                         const point = transform.dataToScreen(section.x[i], section.y[i]);
-                        ctx.globalAlpha = 1;
+                        ctx.globalAlpha = cellOpacity;
                         drawProportionsPie(
                             ctx, point.x, point.y, spotSize,
                             matrix.subarray(off, off + k), k, hiddenMask, paletteCss,
@@ -13619,7 +13864,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         if (!catInfo || hiddenCategories.has(catInfo.catName)) continue;
                         const point = transform.dataToScreen(section.x[i], section.y[i]);
                         ctx.fillStyle = paletteCss[catInfo.catIdx];
-                        ctx.globalAlpha = 1;
+                        ctx.globalAlpha = cellOpacity;
                         ctx.beginPath();
                         ctx.arc(point.x, point.y, spotSize, 0, Math.PI * 2);
                         ctx.fill();
@@ -13648,10 +13893,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const point = transform.dataToScreen(section.x[i], section.y[i]);
                 if (hasTypeFocus && !isSelectedCat) {{
                     ctx.fillStyle = '#bbbbbb';
-                    ctx.globalAlpha = 0.15;
+                    ctx.globalAlpha = 0.15 * cellOpacity;
                 }} else {{
                     ctx.fillStyle = color;
-                    ctx.globalAlpha = 1;
+                    ctx.globalAlpha = cellOpacity;
                 }}
                 ctx.beginPath();
                 ctx.arc(point.x, point.y, spotSize, 0, Math.PI * 2);
@@ -14411,6 +14656,198 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return state.imgDataScaleBase * Math.pow(2, state.scaleSlider / 100);
     }}
 
+    // ---- Automatic overlay alignment (translation + rotation + scale) ----
+    // A deliberately simple in-browser image registration. We rasterise the cell
+    // positions into a smooth density grid, then search for the image
+    // translation / rotation / scale whose sampled intensities best correlate
+    // with that density. Nuclear stains (DAPI) track cell density directly and
+    // H&E nuclei track it inversely, so we maximise |NCC| (normalised
+    // cross-correlation) to stay agnostic to stain polarity. A coarse grid
+    // search escapes bad starting points; a pattern search then refines.
+
+    // 2D histogram of cell positions over the section bounds, lightly blurred.
+    function buildCellDensityGrid(section, G) {{
+        const b = section.bounds || {{}};
+        const xmin = b.xmin, ymin = b.ymin;
+        const w = (b.xmax - b.xmin) || 1, h = (b.ymax - b.ymin) || 1;
+        const grid = new Float32Array(G * G);
+        const xs = section.x, ys = section.y, n = xs.length;
+        for (let i = 0; i < n; i++) {{
+            const gx = Math.floor((xs[i] - xmin) / w * G);
+            const gy = Math.floor((ys[i] - ymin) / h * G);
+            if (gx < 0 || gx >= G || gy < 0 || gy >= G) continue;
+            grid[gy * G + gx] += 1;
+        }}
+        const tmp = new Float32Array(G * G);
+        for (let pass = 0; pass < 2; pass++) {{
+            for (let y = 0; y < G; y++) for (let x = 0; x < G; x++) {{
+                let s = 0, c = 0;
+                for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {{
+                    const xx = x + dx, yy = y + dy;
+                    if (xx < 0 || xx >= G || yy < 0 || yy >= G) continue;
+                    s += grid[yy * G + xx]; c++;
+                }}
+                tmp[y * G + x] = s / c;
+            }}
+            grid.set(tmp);
+        }}
+        return {{ grid, xmin, ymin, w, h, G }};
+    }}
+
+    // Downsample an overlay image to a cached grayscale Float32 array.
+    function getLayerGray(layer, MAX) {{
+        if (layer._gray && layer._gray.max === MAX) return layer._gray;
+        const img = layer.img;
+        const sc = Math.min(1, MAX / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * sc));
+        const h = Math.max(1, Math.round(img.naturalHeight * sc));
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        const cctx = c.getContext('2d');
+        cctx.drawImage(img, 0, 0, w, h);
+        const d = cctx.getImageData(0, 0, w, h).data;
+        const gray = new Float32Array(w * h);
+        for (let i = 0, j = 0; i < gray.length; i++, j += 4) {{
+            gray[i] = 0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2];
+        }}
+        layer._gray = {{ gray, w, h, max: MAX }};
+        return layer._gray;
+    }}
+
+    // Signed NCC between the density grid and the image sampled at each grid
+    // cell, using the same image->data transform the renderer uses (inverted).
+    // Returns {{ ncc, coverage }} where coverage is the fraction of the section
+    // bounds that the image actually covers — used to reject transforms that let
+    // the image drift off / shrink away from the tissue.
+    function scoreHeAlignment(dens, gray, img, p) {{
+        const s = p.scaleBase * Math.pow(2, p.scaleSlider / 100);
+        if (!(s > 0) || !isFinite(s)) return {{ ncc: 0, coverage: 0 }};
+        const cos = Math.cos(p.rotation), sin = Math.sin(p.rotation);
+        const fx = p.flipH ? -1 : 1;
+        const G = dens.G, grid = dens.grid;
+        const W = gray.w, H = gray.h, garr = gray.gray;
+        const rx = W / img.naturalWidth, ry = H / img.naturalHeight;
+        let n = 0, sA = 0, sB = 0, sAA = 0, sBB = 0, sAB = 0;
+        for (let gy = 0; gy < G; gy++) {{
+            const vy = (dens.ymin + (gy + 0.5) / G * dens.h) - p.cy;
+            for (let gx = 0; gx < G; gx++) {{
+                const vx = (dens.xmin + (gx + 0.5) / G * dens.w) - p.cx;
+                const pxNat = (cos * vx + sin * vy) / (s * fx);
+                const pyNat = (sin * vx - cos * vy) / s;
+                const ix = pxNat * rx + W / 2;
+                const iy = pyNat * ry + H / 2;
+                if (ix < 0 || ix >= W || iy < 0 || iy >= H) continue;
+                const a = grid[gy * G + gx];
+                const b = garr[(iy | 0) * W + (ix | 0)];
+                n++; sA += a; sB += b; sAA += a * a; sBB += b * b; sAB += a * b;
+            }}
+        }}
+        const coverage = n / (G * G);
+        const covA = n * sAA - sA * sA, covB = n * sBB - sB * sB;
+        if (n < 4 || covA <= 1e-9 || covB <= 1e-9) return {{ ncc: 0, coverage }};
+        return {{ ncc: (n * sAB - sA * sB) / Math.sqrt(covA * covB), coverage }};
+    }}
+
+    // Auto-align refines the CURRENT placement locally — the overlay already
+    // spans the tissue, it just needs a translation/rotation/scale nudge. A
+    // bounded pattern search (capped near the start) plus a coverage gate keep
+    // it from flying off to a spurious far-away "match".
+    function autoAlignHeOverlay() {{
+        if (!modalSection) {{ alert('Open a section first.'); return; }}
+        ensureSectionXY(modalSection);
+        const st = sectionImageStates[modalSection.id];
+        const layer = st && st.layers && st.layers[st.activeLayer];
+        if (!st || !layer || !layer.img) {{ alert('No overlay image to align.'); return; }}
+        if (!modalSection.x || modalSection.x.length === 0) {{ alert('No cells to align against.'); return; }}
+
+        const statusEl = document.getElementById('modal-he-status');
+        if (statusEl) statusEl.textContent = 'Auto-aligning…';
+
+        const G = 80;
+        const dens = buildCellDensityGrid(modalSection, G);
+        const gray = getLayerGray(layer, 256);
+        const img = layer.img;
+        const scaleBase = st.imgDataScaleBase;
+        const flipH = !!st.flipH;
+        const start = {{ cx: st.cx, cy: st.cy, rotation: st.rotation, scaleSlider: st.scaleSlider }};
+
+        // Lock stain polarity from the starting placement: DAPI correlates
+        // positively with density, H&E negatively. Optimising the SIGNED
+        // correlation in this fixed direction stops it flipping stains.
+        const startScore = scoreHeAlignment(dens, gray, img, {{ ...start, scaleBase, flipH }});
+        const sign = startScore.ncc >= 0 ? 1 : -1;
+        const MIN_COVERAGE = Math.min(0.7, Math.max(0.4, startScore.coverage - 0.1));
+
+        // Objective: signed correlation, but reject anything that uncovers the
+        // tissue or wanders past the local bounds around the start.
+        const maxTx = 0.2 * dens.w, maxTy = 0.2 * dens.h;
+        const maxR = 25 * Math.PI / 180, maxS = 30;
+        const obj = (cx, cy, rotation, scaleSlider) => {{
+            if (Math.abs(cx - start.cx) > maxTx || Math.abs(cy - start.cy) > maxTy) return -2;
+            if (Math.abs(rotation - start.rotation) > maxR) return -2;
+            if (Math.abs(scaleSlider - start.scaleSlider) > maxS) return -2;
+            const r = scoreHeAlignment(dens, gray, img, {{ cx, cy, rotation, scaleSlider, scaleBase, flipH }});
+            if (r.coverage < MIN_COVERAGE) return -2;
+            return sign * r.ncc;
+        }};
+
+        let best = {{ ...start, score: obj(start.cx, start.cy, start.rotation, start.scaleSlider) }};
+
+        // Light rotation/scale multi-start (translation stays put — it's already
+        // roughly placed) to escape a shallow local minimum.
+        for (let r = -10; r <= 10; r += 5) {{
+            for (let ds = -10; ds <= 10; ds += 10) {{
+                const rotation = start.rotation + r * Math.PI / 180;
+                const scaleSlider = start.scaleSlider + ds;
+                const sc = obj(start.cx, start.cy, rotation, scaleSlider);
+                if (sc > best.score) best = {{ cx: start.cx, cy: start.cy, rotation, scaleSlider, score: sc }};
+            }}
+        }}
+
+        // Bounded pattern search: small initial steps, halve when stuck.
+        let stepTx = 0.04 * dens.w, stepTy = 0.04 * dens.h;
+        let stepR = 4 * Math.PI / 180, stepS = 6;
+        for (let iter = 0; iter < 120; iter++) {{
+            let improved = false;
+            const trials = [
+                {{ k: 'cx', d: stepTx }}, {{ k: 'cx', d: -stepTx }},
+                {{ k: 'cy', d: stepTy }}, {{ k: 'cy', d: -stepTy }},
+                {{ k: 'rotation', d: stepR }}, {{ k: 'rotation', d: -stepR }},
+                {{ k: 'scaleSlider', d: stepS }}, {{ k: 'scaleSlider', d: -stepS }},
+            ];
+            for (const t of trials) {{
+                const cand = {{ cx: best.cx, cy: best.cy, rotation: best.rotation, scaleSlider: best.scaleSlider }};
+                cand[t.k] += t.d;
+                const sc = obj(cand.cx, cand.cy, cand.rotation, cand.scaleSlider);
+                if (sc > best.score) {{ best = {{ cx: cand.cx, cy: cand.cy, rotation: cand.rotation, scaleSlider: cand.scaleSlider, score: sc }}; improved = true; }}
+            }}
+            if (!improved) {{ stepTx *= 0.5; stepTy *= 0.5; stepR *= 0.5; stepS *= 0.5; }}
+            if (stepTx < dens.w * 0.001 && stepR < 0.001 && stepS < 0.25) break;
+        }}
+
+        // If we couldn't beat the start (or it degenerated), leave it untouched.
+        if (!(best.score > startScore.ncc * sign + 1e-4)) {{
+            renderModalSection();
+            refreshModalHeControls();
+            if (statusEl) statusEl.textContent = 'Auto-align: already close — no better fit found. Fine-tune by hand.';
+            return;
+        }}
+
+        st.cx = best.cx; st.cy = best.cy;
+        st.rotation = best.rotation;
+        st.scaleSlider = Math.max(-100, Math.min(100, best.scaleSlider));
+        while (st.rotation > Math.PI) st.rotation -= 2 * Math.PI;
+        while (st.rotation < -Math.PI) st.rotation += 2 * Math.PI;
+
+        renderModalSection();
+        rerenderSectionPanel(modalSection.id);
+        refreshModalHeControls();
+        if (statusEl) {{
+            const pct = Math.round(Math.max(0, best.score) * 100);
+            statusEl.textContent = `Auto-aligned (match ${{pct}}%) — drag or use the sliders to fine-tune.`;
+        }}
+    }}
+
     function drawHistologyImage(ctx, transform, state) {{
         if (!state || !state.img || !state.visible) return;
         const center = transform.dataToScreen(state.cx, state.cy);
@@ -14537,7 +14974,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const hasHidden = showGeneCells && !blendActive && hiddenCategories.size > 0 && !config.is_continuous;
         if (hasHidden) {{
             ctx.fillStyle = '#cccccc';
-            ctx.globalAlpha = 0.2 * modalCellOpacity;
+            ctx.globalAlpha = 0.2 * cellOpacity;
             for (let k = 0; k < nCandidates; k++) {{
                 const i = candidateIndices ? candidateIndices[k] : k;
                 const val = values[i];
@@ -14568,7 +15005,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
                 const runtime = x <= splitX ? blendRuntimes.a : blendRuntimes.b;
                 ctx.fillStyle = rgbToCss(getModalBlendCellRgb(runtime, i));
-                ctx.globalAlpha = modalCellOpacity;
+                ctx.globalAlpha = cellOpacity;
                 ctx.beginPath();
                 ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
                 ctx.fill();
@@ -14600,7 +15037,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const y = point.y;
                         if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
                         const off = i * k;
-                        ctx.globalAlpha = modalCellOpacity;
+                        ctx.globalAlpha = cellOpacity;
                         drawProportionsPie(
                             ctx, x, y, adjustedSpotSize,
                             matrix.subarray(off, off + k), k, hiddenMask, paletteCss,
@@ -14618,7 +15055,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const y = point.y;
                         if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
                         ctx.fillStyle = paletteCss[catInfo.catIdx];
-                        ctx.globalAlpha = modalCellOpacity;
+                        ctx.globalAlpha = cellOpacity;
                         ctx.beginPath();
                         ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
                         ctx.fill();
@@ -14655,10 +15092,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
                 if (hasTypeFocus && !isSelectedCat) {{
                     ctx.fillStyle = '#bbbbbb';
-                    ctx.globalAlpha = 0.15 * modalCellOpacity;
+                    ctx.globalAlpha = 0.15 * cellOpacity;
                 }} else {{
                     ctx.fillStyle = color;
-                    ctx.globalAlpha = modalCellOpacity;
+                    ctx.globalAlpha = cellOpacity;
                 }}
                 ctx.beginPath();
                 ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
@@ -14988,7 +15425,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         overview: ['summary', 'sections'],
         genes: ['markers', 'spatial', 'distribution'],
         compare: ['groups', 'regions', 'cell-de', 'river'],
-        neighbors: ['enrichment', 'interactions'],
+        neighbors: ['enrichment', 'interactions', 'dispersion'],
     }};
 
     function normalizeInsightsTabsState() {{
@@ -15076,6 +15513,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (insightsNeighborsTab === 'interactions') {{
             renderInteractionBrowser();
+        }} else if (insightsNeighborsTab === 'dispersion') {{
+            renderDispersionInsights();
         }} else {{
             renderNeighborStats();
         }}
@@ -15648,6 +16087,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="color-tabs insights-subtabs">
                         <button class="color-tab active" id="neighbors-tab-enrichment" data-insights-parent="neighbors" data-insights-subtab="enrichment" type="button">Enrichment</button>
                         <button class="color-tab" id="neighbors-tab-interactions" data-insights-parent="neighbors" data-insights-subtab="interactions" type="button">Interactions</button>
+                        <button class="color-tab" id="neighbors-tab-dispersion" data-insights-parent="neighbors" data-insights-subtab="dispersion" type="button" title="How spatially restricted vs dispersed each cell type is">Dispersion</button>
                     </div>
                     <div class="color-tab-content active" id="neighbors-tab-enrichment-content">
                         <div>
@@ -15683,6 +16123,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                         <div class="color-aggregation" id="interaction-browser">
                             <div class="agg-group-meta">Select a source cell type to browse interactions.</div>
+                        </div>
+                    </div>
+                    <div class="color-tab-content" id="neighbors-tab-dispersion-content">
+                        <div class="color-aggregation" id="dispersion-panel">
+                            <div class="agg-group-meta">Select a categorical color to view spatial dispersion.</div>
                         </div>
                     </div>
                 </div>
@@ -15916,6 +16361,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!col || !(DATA.available_colors || []).includes(col)) return;
         currentColor = col;
         currentGene = null;
+        _dispersionCache.clear();
         invalidateGeneDensityCaches();
         celltypeTrendTarget = null;
         modalSelectedCategory = null;
@@ -19731,6 +20177,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function renderNeighborNetworkView(viewState) {{
         const {{ categories, nCells, zscores, permN }} = viewState;
+        // If this dataset has no z-scores, don't default to the z-score metric
+        // (it would only show an error) — fall back to edge count so the network
+        // still renders. The user can still pick z-score manually elsewhere.
+        if (!zscores && neighborNetworkMetric === 'zscore') neighborNetworkMetric = 'count';
         const controls = getNeighborViewControlState('bubble');
         const controlPanel = renderNeighborVisualizationControlPanel('bubble', viewState);
         const vizState = getNeighborVisualizationState('bubble');
@@ -20139,9 +20589,278 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         `;
     }}
 
+    // ---- Spatial dispersion (restricted vs dispersed) per cell type ----
+    // Self-clustering metrics computed in the browser from cell positions and
+    // the existing spatial neighbor graph (no predefined regions needed):
+    //   SAI (self-aggregation, 0..1) = mean fraction of a cell's graph neighbors
+    //       that share its type. Higher = more clustered with its own kind.
+    //   NNI (Clark-Evans) = observed mean nearest-neighbour distance among a
+    //       type's cells / expected under complete spatial randomness. <1
+    //       clustered/restricted, ~1 random, >1 dispersed/regular.
+    // Per-section, then cell-weighted aggregation across sections.
+    function computeDispersionForSection(section, colorCol, config) {{
+        ensureSectionXY(section);
+        const bounds = ensureSectionBounds(section);
+        const n = Math.min(section.x.length, section.y.length);
+        if (!n || !bounds) return [];
+        const colorVals = getSectionColorValues(section, colorCol);
+        if (!colorVals) return [];
+        const categories = config.categories || [];
+        const K = categories.length;
+        if (!K) return [];
+
+        // Precompute each cell's category index ONCE — avoids repeated
+        // getCategoricalValueInfo calls inside the per-type inner loops.
+        const catIdxOf = new Int32Array(n).fill(-1);
+        const typeIndices = Array.from({{ length: K }}, () => []);
+        for (let i = 0; i < n; i++) {{
+            const info = getCategoricalValueInfo(config, colorVals[i]);
+            if (info && info.catIdx >= 0 && info.catIdx < K) {{
+                catIdxOf[i] = info.catIdx;
+                typeIndices[info.catIdx].push(i);
+            }}
+        }}
+
+        const adjAvail = !!DATA.has_neighbors;
+        const adj = adjAvail ? getSectionAdjacency(section) : null;
+        const si = ensureSectionSpatialIndex(section);
+        // Bounding-box area for the CSR expectation. This overestimates area for
+        // non-rectangular tissue (biasing NNI slightly up), but the bias is
+        // uniform across types in a section so relative ranking holds. Could be
+        // refined later with occupied-quadrat area via buildCellDensityGrid.
+        const area = Math.max((bounds.xmax - bounds.xmin) * (bounds.ymax - bounds.ymin), 1e-10);
+        const cellSizeApprox = si ? Math.max(1 / si.invCellWidth, 1 / si.invCellHeight) : 0;
+        const xs = section.x, ys = section.y;
+
+        // Nearest same-type neighbour distance via expanding-ring grid search.
+        const nearestSameTypeDist = (ci, t) => {{
+            const qx = xs[ci], qy = ys[ci];
+            const gc = clampNumber(Math.floor((qx - si.xmin) * si.invCellWidth), 0, si.cols - 1);
+            const gr = clampNumber(Math.floor((qy - si.ymin) * si.invCellHeight), 0, si.rows - 1);
+            let best = Infinity;
+            const maxRing = si.cols + si.rows;
+            for (let ring = 0; ring <= maxRing; ring++) {{
+                const rMin = gr - ring, rMax = gr + ring, cMin = gc - ring, cMax = gc + ring;
+                for (let br = Math.max(0, rMin); br <= Math.min(si.rows - 1, rMax); br++) {{
+                    const onRowEdge = (br === rMin || br === rMax);
+                    for (let bc = Math.max(0, cMin); bc <= Math.min(si.cols - 1, cMax); bc++) {{
+                        // Visit only the shell of this ring; interior already searched.
+                        if (ring > 0 && !onRowEdge && bc !== cMin && bc !== cMax) continue;
+                        const bucket = si.buckets.get(br * si.cols + bc);
+                        if (!bucket) continue;
+                        for (let bi = 0; bi < bucket.length; bi++) {{
+                            const cj = bucket[bi];
+                            if (cj === ci || catIdxOf[cj] !== t) continue;
+                            const dx = xs[cj] - qx, dy = ys[cj] - qy;
+                            const d2 = dx * dx + dy * dy;
+                            if (d2 < best) best = d2;
+                        }}
+                    }}
+                }}
+                // Stop once the best found beats the nearest possible cell one ring out.
+                if (ring > 0 && best < (ring * cellSizeApprox) * (ring * cellSizeApprox)) break;
+            }}
+            return best === Infinity ? null : Math.sqrt(best);
+        }};
+
+        const results = [];
+        for (let t = 0; t < K; t++) {{
+            const indices = typeIndices[t];
+            const nT = indices.length;
+            const catName = String(categories[t] != null ? categories[t] : t);
+
+            let sai = null;
+            if (adjAvail && nT >= 1) {{
+                let sumFrac = 0;
+                for (let ii = 0; ii < nT; ii++) {{
+                    const neighbors = adj[indices[ii]] || [];
+                    const deg = neighbors.length;
+                    if (!deg) continue;  // isolated cell contributes 0
+                    let same = 0;
+                    for (let ni = 0; ni < deg; ni++) if (catIdxOf[neighbors[ni]] === t) same++;
+                    sumFrac += same / deg;
+                }}
+                sai = sumFrac / nT;
+            }}
+
+            let nni = null;
+            if (nT >= 3 && si) {{
+                // For very large types, estimate NNI on a random subsample (unbiased).
+                let sampleIdx = indices;
+                if (nT > 4000) {{
+                    const prob = 3000 / nT;
+                    const sub = [];
+                    for (let ii = 0; ii < nT; ii++) if (Math.random() < prob) sub.push(indices[ii]);
+                    if (sub.length >= 3) sampleIdx = sub;
+                }}
+                let sumDist = 0, cnt = 0;
+                for (let ii = 0; ii < sampleIdx.length; ii++) {{
+                    const d = nearestSameTypeDist(sampleIdx[ii], t);
+                    if (d != null) {{ sumDist += d; cnt++; }}
+                }}
+                if (cnt > 0) {{
+                    const observedMean = sumDist / cnt;
+                    const expectedMean = 0.5 / Math.sqrt(nT / area);
+                    nni = expectedMean > 0 ? observedMean / expectedMean : null;
+                }}
+            }}
+
+            results.push({{ catIdx: t, catName, n: nT, sai, nni }});
+        }}
+        return results;
+    }}
+
+    // Cached, cross-section cell-weighted aggregation for the current color.
+    function computeDispersionInsights(colorCol) {{
+        if (_dispersionCache.has(colorCol)) return _dispersionCache.get(colorCol);
+        const config = getColorConfig();
+        if (!config || config.is_continuous || !(config.categories && config.categories.length)) return null;
+        const sections = getFilteredSections();
+        if (!sections.length) return null;
+
+        const K = config.categories.length;
+        const agg = Array.from({{ length: K }}, (_, t) => ({{
+            catName: String(config.categories[t] != null ? config.categories[t] : t),
+            n: 0, saiSum: 0, saiW: 0, nniSum: 0, nniW: 0,
+        }}));
+
+        sections.forEach((section) => {{
+            const rows = computeDispersionForSection(section, colorCol, config);
+            for (let t = 0; t < rows.length && t < K; t++) {{
+                const r = rows[t];
+                if (!r) continue;
+                agg[t].n += r.n;
+                if (r.sai != null) {{ agg[t].saiSum += r.sai * r.n; agg[t].saiW += r.n; }}
+                if (r.nni != null) {{ agg[t].nniSum += r.nni * r.n; agg[t].nniW += r.n; }}
+            }}
+        }});
+
+        const result = agg.map((a) => ({{
+            catName: a.catName,
+            n: a.n,
+            sai: a.saiW > 0 ? a.saiSum / a.saiW : null,
+            nni: a.nniW > 0 ? a.nniSum / a.nniW : null,
+        }})).filter((r) => r.n > 0);
+
+        _dispersionCache.set(colorCol, result);
+        return result;
+    }}
+
+    function renderDispersionInsights() {{
+        const container = document.getElementById('dispersion-panel');
+        if (!container) return;
+        if (currentGene || getColorConfig().is_continuous) {{
+            container.innerHTML = '<div class="agg-group-meta">Pick a categorical color (not a gene) to view spatial dispersion metrics.</div>';
+            return;
+        }}
+        const config = getColorConfig();
+        if (!(config.categories && config.categories.length)) {{
+            container.innerHTML = '<div class="agg-group-meta">No categories available for the current color.</div>';
+            return;
+        }}
+
+        container.innerHTML = '<div class="agg-group-meta">Computing…</div>';
+        const colorAtRequest = currentColor;
+        // Defer so "Computing…" paints before the synchronous nearest-neighbour scan.
+        setTimeout(() => {{
+            if (currentColor !== colorAtRequest || insightsNeighborsTab !== 'dispersion') return;
+            const rows = computeDispersionInsights(currentColor);
+            if (!rows || !rows.length) {{
+                container.innerHTML = '<div class="agg-group-meta">No position data available for the current sections.</div>';
+                return;
+            }}
+
+            const dir = dispersionSortDir === 'asc' ? 1 : -1;
+            const sorted = rows.slice().sort((a, b) => {{
+                if (dispersionSortKey === 'cat') return String(a.catName).localeCompare(String(b.catName)) * dir;
+                const va = a[dispersionSortKey], vb = b[dispersionSortKey];
+                if (va == null && vb == null) return 0;
+                if (va == null) return 1;
+                if (vb == null) return -1;
+                if (va === vb) return 0;
+                return (va < vb ? -1 : 1) * dir;
+            }});
+
+            const fmtN = (v) => (v == null) ? '—' : Number(v).toLocaleString();
+            const fmtPct = (v) => (v == null) ? '—' : (v * 100).toFixed(1) + '%';
+            const fmtNNI = (v) => (v == null) ? '—' : Number(v).toFixed(3);
+            const label = (nni) => {{
+                if (nni == null) return {{ text: '—', cls: '' }};
+                if (nni < 0.9) return {{ text: 'Clustered', cls: 'dispersion-label-clustered' }};
+                if (nni > 1.1) return {{ text: 'Dispersed', cls: 'dispersion-label-dispersed' }};
+                return {{ text: 'Random', cls: 'dispersion-label-random' }};
+            }};
+            const arrow = (k) => dispersionSortKey === k ? (dispersionSortDir === 'asc' ? ' ↑' : ' ↓') : '';
+            const hasAdj = !!DATA.has_neighbors;
+
+            const tbody = sorted.map((r) => {{
+                const color = getCategoryColorForValue(currentColor, r.catName);
+                const lbl = label(r.nni);
+                const saiCell = hasAdj ? `<td>${{fmtPct(r.sai)}}</td>` : '<td>—</td>';
+                return `<tr data-dispersion-cat="${{escapeHtml(r.catName)}}" title="Click to spotlight ${{escapeHtml(r.catName)}}">
+                    <td><span class="agg-dot" style="background:${{color}}"></span>${{escapeHtml(r.catName)}}</td>
+                    <td>${{fmtN(r.n)}}</td>
+                    ${{saiCell}}
+                    <td>${{fmtNNI(r.nni)}}</td>
+                    <td class="${{lbl.cls}}">${{lbl.text}}</td>
+                </tr>`;
+            }}).join('');
+
+            const saiHeader = hasAdj
+                ? `<th data-dispersion-sort="sai" title="Mean fraction of each cell's spatial neighbours that share its type">Self-Agg%${{arrow('sai')}}</th>`
+                : '<th title="No spatial neighbour graph in this dataset, so self-aggregation is unavailable">Self-Agg%</th>';
+
+            container.innerHTML = `
+                <div class="dispersion-summary">
+                    Spatial pattern per cell type &mdash; ${{sorted.length}} types. NNI &lt;0.9 clustered/restricted, ~1 random, &gt;1.1 dispersed.
+                    ${{hasAdj ? '' : '<span style="margin-left:6px;">(no neighbour graph: Self-Agg% unavailable)</span>'}}
+                </div>
+                <table class="gene-distribution-table">
+                    <thead><tr>
+                        <th data-dispersion-sort="cat">Cell Type${{arrow('cat')}}</th>
+                        <th data-dispersion-sort="n">n${{arrow('n')}}</th>
+                        ${{saiHeader}}
+                        <th data-dispersion-sort="nni" title="Clark-Evans nearest-neighbour index">NNI${{arrow('nni')}}</th>
+                        <th>Pattern</th>
+                    </tr></thead>
+                    <tbody>${{tbody}}</tbody>
+                </table>
+            `;
+
+            container.querySelectorAll('[data-dispersion-sort]').forEach((th) => {{
+                th.addEventListener('click', () => {{
+                    const key = th.getAttribute('data-dispersion-sort');
+                    if (!key) return;
+                    if (dispersionSortKey === key) {{
+                        dispersionSortDir = dispersionSortDir === 'asc' ? 'desc' : 'asc';
+                    }} else {{
+                        dispersionSortKey = key;
+                        dispersionSortDir = key === 'cat' ? 'asc' : 'desc';
+                    }}
+                    renderDispersionInsights();
+                }});
+            }});
+
+            container.querySelectorAll('[data-dispersion-cat]').forEach((tr) => {{
+                tr.addEventListener('click', () => {{
+                    const cat = tr.getAttribute('data-dispersion-cat');
+                    if (!cat) return;
+                    linkedSpotlightEnabled = true;
+                    spotlightPinnedCategory = (spotlightPinnedCategory === cat) ? null : cat;
+                    spotlightHoverCategory = null;
+                    updateAllLegendSpotlightClasses();
+                    rerenderForSpotlightChange();
+                }});
+            }});
+        }}, 0);
+    }}
+
     function renderNeighborStats() {{
         const container = document.getElementById('neighbor-stats');
         if (!container) return;
+        // Only the enrichment table view scrolls internally (like the legend);
+        // network/chord views size their own SVG, so clear the scroll class.
+        container.classList.remove('neighbor-stats-scrollable');
 
         document.querySelectorAll('[data-neighbor-view]').forEach((btn) => {{
             btn.classList.toggle('active', btn.getAttribute('data-neighbor-view') === neighborStatsView);
@@ -20168,6 +20887,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return;
         }}
 
+        // Enrichment table: keep the agg-group blocks as direct children (so
+        // their layout is unchanged) and just make the container scroll
+        // internally for long cell-type lists, like the legend's .color-list.
+        container.classList.add('neighbor-stats-scrollable');
         container.innerHTML = renderNeighborStatsTableView(viewState);
         container.querySelectorAll('[data-neighbor-toggle]').forEach((btn) => {{
             btn.addEventListener('click', () => {{
@@ -20489,6 +21212,69 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     // Modal
+    // Sync the modal H&E controls (layer dropdown, sliders, status) to the
+    // active section's overlay state. Module-scope so openModal / session
+    // restore / layer switching can all call it.
+    // Open/close the collapsible alignment panel. Opening it IS entering align
+    // mode (drag-to-reposition); closing it leaves align mode. Keeping the two
+    // in lockstep is what makes the overlay controls feel tidy.
+    function setHeAlignPanelOpen(open) {{
+        heAlignModeActive = !!open;
+        const panel = document.getElementById('modal-he-align-panel');
+        if (panel) panel.style.display = heAlignModeActive ? 'flex' : 'none';
+        const btn = document.getElementById('modal-he-align-btn');
+        if (btn) {{
+            btn.classList.toggle('active', heAlignModeActive);
+            btn.textContent = heAlignModeActive ? 'Align ▴' : 'Align ▾';
+            btn.setAttribute('aria-expanded', heAlignModeActive ? 'true' : 'false');
+        }}
+        if (typeof updateModalCanvasCursor === 'function') updateModalCanvasCursor();
+    }}
+
+    function refreshModalHeControls() {{
+        const st = modalSection ? sectionImageStates[modalSection.id] : null;
+        const sel = document.getElementById('modal-he-layer-select');
+        if (sel) {{
+            if (st && st.layers && st.layers.length) {{
+                sel.innerHTML = st.layers.map((l, i) =>
+                    `<option value="${{i}}" ${{i === st.activeLayer ? 'selected' : ''}}>${{escapeHtml(l.name)}}</option>`
+                ).join('');
+                sel.style.display = st.layers.length > 1 ? '' : 'none';
+            }} else {{
+                sel.innerHTML = '';
+                sel.style.display = 'none';
+            }}
+        }}
+        const eyeBtn = document.getElementById('modal-he-eye-btn');
+        if (eyeBtn) {{
+            const layer = (st && st.layers && st.layers[st.activeLayer]) || null;
+            if (layer) {{
+                const shown = (layer.visible !== false);
+                eyeBtn.style.display = '';
+                eyeBtn.textContent = shown ? '👁' : '🚫';
+                eyeBtn.classList.toggle('active', shown);
+                const label = st.layers.length > 1 ? `“${{layer.name}}” layer` : 'overlay';
+                eyeBtn.title = (shown ? 'Hide ' : 'Show ') + label;
+            }} else {{
+                eyeBtn.style.display = 'none';
+            }}
+        }}
+        const setVal = (id, v) => {{ const el = document.getElementById(id); if (el) el.value = String(v); }};
+        if (st) {{
+            const opPct = Math.round((st.opacity != null ? st.opacity : 0.5) * 100);
+            const rotDeg = Math.round((st.rotation || 0) * 180 / Math.PI);
+            setVal('modal-he-opacity', opPct); setVal('modal-he-opacity-num', opPct);
+            setVal('modal-he-scale', st.scaleSlider || 0); setVal('modal-he-scale-num', st.scaleSlider || 0);
+            setVal('modal-he-rotation', rotDeg); setVal('modal-he-rotation-num', rotDeg);
+        }}
+        const statusEl = document.getElementById('modal-he-status');
+        if (statusEl) {{
+            statusEl.textContent = (st && st.img)
+                ? `${{st.img.naturalWidth}}×${{st.img.naturalHeight}}px — drag in Align mode to reposition`
+                : 'No image loaded';
+        }}
+    }}
+
     function openModal(sectionId) {{
         modalSection = DATA.sections.find(s => s.id === sectionId);
         if (!modalSection) return;
@@ -20519,6 +21305,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             layoutModalAnnotationPanel();
             renderModalAnnotationPanel();
             renderModalSection();
+            setHeAlignPanelOpen(false);
+            refreshModalHeControls();
         }});
     }}
 
@@ -21213,6 +22001,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         document.getElementById('spot-size-dec')?.addEventListener('click', () => stepRange(spotRange, -1));
         document.getElementById('spot-size-inc')?.addEventListener('click', () => stepRange(spotRange, 1));
 
+        const cellOpacityGlobalRange = document.getElementById('cell-opacity');
+        cellOpacityGlobalRange?.addEventListener('input', (e) => {{
+            setCellOpacity(parseInt(e.target.value, 10) / 100, {{ skip: e.target }});
+        }});
+        document.getElementById('cell-opacity-dec')?.addEventListener('click', () => stepRange(cellOpacityGlobalRange, -10));
+        document.getElementById('cell-opacity-inc')?.addEventListener('click', () => stepRange(cellOpacityGlobalRange, 10));
+
+        // Global overlay-image switch (DAPI / H&E across all sections).
+        populateGlobalOverlaySelect();
+        document.getElementById('global-overlay-select')?.addEventListener('change', (e) => {{
+            setGlobalOverlayLayer(e.target.value);
+        }});
+
         const umapRange = document.getElementById('umap-spot-size');
         if (umapRange) {{
             umapRange.addEventListener('input', (e) => {{
@@ -21389,21 +22190,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         document.getElementById('modal-cell-opacity-inc')?.addEventListener('click', () => stepRange(cellOpacityRange, 10));
         const cellOpacityNum = document.getElementById('modal-cell-opacity-num');
         cellOpacityRange?.addEventListener('input', (e) => {{
-            modalCellOpacity = parseInt(e.target.value) / 100;
-            if (cellOpacityNum) cellOpacityNum.value = e.target.value;
-            if (modalSection) renderModalSection();
+            setCellOpacity(parseInt(e.target.value, 10) / 100, {{ skip: e.target }});
         }});
         cellOpacityNum?.addEventListener('input', (e) => {{
             const v = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-            modalCellOpacity = v / 100;
-            if (cellOpacityRange) cellOpacityRange.value = String(v);
-            if (modalSection) renderModalSection();
+            setCellOpacity(v / 100, {{ skip: e.target }});
         }});
 
         document.getElementById('modal-he-align-btn')?.addEventListener('click', () => {{
-            heAlignModeActive = !heAlignModeActive;
-            document.getElementById('modal-he-align-btn')?.classList.toggle('active', heAlignModeActive);
-            updateModalCanvasCursor();
+            setHeAlignPanelOpen(!heAlignModeActive);
+        }});
+
+        document.getElementById('modal-he-autoalign-btn')?.addEventListener('click', () => {{
+            const btn = document.getElementById('modal-he-autoalign-btn');
+            if (btn) {{ btn.disabled = true; btn.textContent = '✨ Aligning…'; }}
+            // Defer so the button label repaints before the (synchronous) search.
+            requestAnimationFrame(() => requestAnimationFrame(() => {{
+                try {{ autoAlignHeOverlay(); }}
+                finally {{ if (btn) {{ btn.disabled = false; btn.textContent = '✨ Auto-align'; }} }}
+            }}));
         }});
 
         document.getElementById('modal-he-fliph-btn')?.addEventListener('click', () => {{
@@ -21411,6 +22216,54 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             sectionImageStates[modalSection.id].flipH = !sectionImageStates[modalSection.id].flipH;
             renderModalSection();
             renderAllSections();
+        }});
+
+        const heUploadInput = document.getElementById('modal-he-upload-input');
+        document.getElementById('modal-he-load-btn')?.addEventListener('click', () => {{
+            if (!modalSection) {{ alert('Open a section first.'); return; }}
+            heUploadInput?.click();
+        }});
+        heUploadInput?.addEventListener('change', (e) => {{
+            const file = e.target.files && e.target.files[0];
+            if (!file || !modalSection) {{ e.target.value = ''; return; }}
+            const section = modalSection;
+            const layerName = (file.name || 'Uploaded').replace(/\.[^.]+$/, '') || 'Uploaded';
+            const reader = new FileReader();
+            reader.onload = () => {{
+                // Add as a new named layer (from the file name) and make it active.
+                addHeLayer(section, String(reader.result || ''), layerName, true, () => {{
+                    if (modalSection && modalSection.id === section.id) {{
+                        renderModalSection();
+                        refreshModalHeControls();
+                    }}
+                }});
+            }};
+            reader.onerror = () => alert('Could not read the selected image.');
+            reader.readAsDataURL(file);
+            e.target.value = '';
+        }});
+
+        document.getElementById('modal-he-layer-select')?.addEventListener('change', (e) => {{
+            if (!modalSection) return;
+            const st = sectionImageStates[modalSection.id];
+            if (!st || !st.layers) return;
+            activateHeLayer(st, parseInt(e.target.value, 10) || 0);
+            renderModalSection();
+            rerenderSectionPanel(modalSection.id);
+            refreshModalHeControls();
+        }});
+
+        document.getElementById('modal-he-eye-btn')?.addEventListener('click', () => {{
+            if (!modalSection) return;
+            const st = sectionImageStates[modalSection.id];
+            const layer = st && st.layers && st.layers[st.activeLayer];
+            if (!layer) return;
+            // Toggle just this layer; mirror onto st.visible so renderers update.
+            layer.visible = (layer.visible === false);
+            st.visible = layer.visible;
+            renderModalSection();
+            rerenderSectionPanel(modalSection.id);
+            refreshModalHeControls();
         }});
 
         document.getElementById('modal-he-export-btn')?.addEventListener('click', () => {{
