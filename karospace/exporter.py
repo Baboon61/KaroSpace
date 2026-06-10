@@ -9682,7 +9682,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
         const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
         const log2fc = Math.log2((meanA + 1e-6) / (meanB + 1e-6));
-        if (!(log2fc > 0 || score > 0 || pctA > pctB)) return null;
+        // Two-sided: keep genes enriched in EITHER group; direction is encoded by
+        // the sign of score / log2fc and resolved later by selectTwoSidedTopN.
         return {{
             gene,
             meanA,
@@ -9694,17 +9695,35 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
     }}
 
+    // Descending by signed score (up-in-A first, up-in-B last), with fold-change
+    // and pct-difference tiebreakers.
+    function compareDEResults(a, b) {{
+        const scoreDiff = (b.score - a.score);
+        if (Math.abs(scoreDiff) > 1e-9) return scoreDiff;
+        const fcDiff = (b.log2fc - a.log2fc);
+        if (Math.abs(fcDiff) > 1e-9) return fcDiff;
+        const pctDiff = ((b.pctA - b.pctB) - (a.pctA - a.pctB));
+        if (Math.abs(pctDiff) > 1e-9) return pctDiff > 0 ? 1 : -1;
+        return a.gene.localeCompare(b.gene);
+    }}
+
     function sortCellSetDEResults(results) {{
-        results.sort((a, b) => {{
-            const scoreDiff = (b.score - a.score);
-            if (Math.abs(scoreDiff) > 1e-9) return scoreDiff;
-            const fcDiff = (b.log2fc - a.log2fc);
-            if (Math.abs(fcDiff) > 1e-9) return fcDiff;
-            const pctDiff = ((b.pctA - b.pctB) - (a.pctA - a.pctB));
-            if (Math.abs(pctDiff) > 1e-9) return pctDiff > 0 ? 1 : -1;
-            return a.gene.localeCompare(b.gene);
-        }});
+        results.sort(compareDEResults);
         return results;
+    }}
+
+    // Two-sided top-N: DE is symmetric, so keep the strongest hits in EITHER
+    // direction (ranked by |score|), then display them signed-score descending
+    // (genes up in A at the top, genes up in B at the bottom). Replaces the old
+    // one-sided behaviour that silently dropped every gene enriched in group B.
+    function selectTwoSidedTopN(results, topN) {{
+        if (!Array.isArray(results)) return [];
+        const n = Math.max(1, Number(topN) || 1);
+        if (results.length <= n) return results.slice().sort(compareDEResults);
+        const byAbs = results.slice().sort((a, b) => Math.abs(b.score) - Math.abs(a.score));
+        const top = byAbs.slice(0, n);
+        top.sort(compareDEResults);
+        return top;
     }}
 
     function computeQuickStatsForGroupGene(group, gene) {{
@@ -9715,7 +9734,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const section = sectionById.get(sectionGroup.sectionId);
             if (!section) continue;
             const values = getSectionGeneValues(section, gene);
-            if (!values) return null;
+            // A section lacking this gene contributes zeros (consistent with the
+            // full-sidecar path) rather than dropping the gene from the result.
+            if (!values) continue;
             if (sectionGroup.indices === null) {{
                 for (let i = 0; i < values.length; i++) {{
                     const value = Number(values[i] ?? 0);
@@ -9787,7 +9808,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             nB: Number(groupB.nCells || 0),
             loadedGeneCount: loadedGenes.length,
             totalGeneCount: totalGenes,
-            results: results.slice(0, topN),
+            results: selectTwoSidedTopN(results, topN),
         }};
     }}
 
@@ -10009,7 +10030,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
             const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
             const log2fc = Math.log2((meanA + eps) / (meanB + eps));
-            if (!(log2fc > 0 || score > 0 || pctA > pctB)) return;
+            // Two-sided: keep genes enriched in either region (see selectTwoSidedTopN).
 
             results.push({{
                 gene,
@@ -10039,7 +10060,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             nB: indicesB.length,
             loadedGeneCount: loadedGenes.length,
             totalGeneCount: totalGenes,
-            results: results.slice(0, topN),
+            results: selectTwoSidedTopN(results, topN),
         }};
     }}
 
@@ -10204,7 +10225,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
         const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
         const log2fc = Math.log2((meanA + 1e-6) / (meanB + 1e-6));
-        if (!(log2fc > 0 || score > 0 || pctA > pctB)) return null;
+        // Two-sided: keep genes enriched in EITHER group; direction is encoded by
+        // the sign of score / log2fc and resolved later by selectTwoSidedTopN.
 
         return {{
             gene,
@@ -10219,19 +10241,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     async function runFullRegionAnnotationDE(annotationA, annotationB) {{
         if (!annotationA || !annotationB || !DATA.gene_aux_url) return;
+        // Grab the cancellation token BEFORE the await so a concurrent run / a
+        // cancel during manifest loading correctly supersedes this one (otherwise
+        // the new "Run Full DE" appears to do nothing).
+        const key = getAnnotationDECacheKey(annotationA, annotationB);
+        const token = ++annotationDeFullRunToken;
         const manifest = await loadGeneAuxManifest();
+        if (annotationDeFullRunToken !== token) return;
         if (!manifest) {{
             annotationDeFullRun = {{
+                token,
                 running: false,
-                key: getAnnotationDECacheKey(annotationA, annotationB),
+                key,
                 error: 'Failed to load the gene sidecar manifest.',
             }};
             renderAnnotationComparison();
             return;
         }}
 
-        const key = getAnnotationDECacheKey(annotationA, annotationB);
-        const token = ++annotationDeFullRunToken;
         const shardEntries = Object.entries(manifest.shards || {{}});
         const sidecarFormat = getGeneAuxSidecarFormat(manifest);
         const totalGenes = shardEntries.reduce((sum, [, genes]) => sum + (Array.isArray(genes) ? genes.length : 0), 0);
@@ -10370,7 +10397,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!annotationA || !annotationB || !exportState?.result) return null;
         const result = exportState.result;
         const topN = Math.max(1, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N);
-        const exportedGenes = (result.results || []).slice(0, topN).map((entry, index) => ({{
+        const exportedGenes = selectTwoSidedTopN(result.results || [], topN).map((entry, index) => ({{
             rank: index + 1,
             gene: entry.gene,
             log2fc_a_vs_b: entry.log2fc,
@@ -15576,15 +15603,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         `;
 
-        const deResult = computeRegionAnnotationDE(source, reference, {{ topN: annotationDeTopN }});
-        const exportState = getAnnotationDEExportState(source, reference, deResult);
         const pairKey = getAnnotationDECacheKey(source, reference);
         const fullCached = pairKey ? annotationDeFullCache.get(pairKey) : null;
         const fullRun = (annotationDeFullRun && annotationDeFullRun.key === pairKey) ? annotationDeFullRun : null;
         const sidecarAvailable = !!DATA.gene_aux_url;
+        // Skip the synchronous quick compute while a full sidecar run is active:
+        // its result is hidden behind the progress bar, so recomputing it on every
+        // per-shard re-render just freezes the UI for no benefit.
+        const deResult = (fullRun && fullRun.running)
+            ? {{ available: false, reason: 'full_running', results: [] }}
+            : computeRegionAnnotationDE(source, reference, {{ topN: annotationDeTopN }});
+        const exportState = deResult.available ? getAnnotationDEExportState(source, reference, deResult) : null;
         const renderCards = (result) => {{
             const topN = Math.max(1, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N);
-            return (result.results || []).slice(0, topN).map((entry) => {{
+            return selectTwoSidedTopN(result.results || [], topN).map((entry) => {{
                 return `
                     <div class="comparison-card">
                         <div class="comparison-card-title">
@@ -15639,10 +15671,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <div class="agg-group-meta">
                     ${{
                         Number(deResult.loadedGeneCount || 0) < Number(deResult.totalGeneCount || 0)
-                            ? `Using ${{Number(deResult.loadedGeneCount || 0).toLocaleString()}} of ${{Number(deResult.totalGeneCount || 0).toLocaleString()}} genes currently loaded in the viewer.`
-                            : `Using ${{Number(deResult.loadedGeneCount || 0).toLocaleString()}} loaded genes.`
+                            ? `Quick preview over ${{Number(deResult.loadedGeneCount || 0).toLocaleString()}} of ${{Number(deResult.totalGeneCount || 0).toLocaleString()}} genes — run the full sidecar DE for the complete result.`
+                            : ''
                     }}
-                    Showing top ${{topNLabel}} genes. Positive scores indicate enrichment in Region A.
+                    Showing top ${{topNLabel}} genes in both directions — positive scores = enriched in Region A, negative = enriched in Region B.
                 </div>
                 ${{buildGroupVolcanoPlot(deResult.results || [])}}
                 <div class="comparison-stack">${{renderCards(deResult)}}</div>
@@ -15661,7 +15693,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="agg-group-meta">
                         Cached full sidecar DE${{cachedTimestamp ? ` from ${{cachedTimestamp}}` : ''}}
                         across ${{Number(fullCached.totalGeneCount || 0).toLocaleString()}} genes.
-                        Showing top ${{topNLabel}} genes. Positive scores indicate enrichment in Region A.
+                        Showing top ${{topNLabel}} genes in both directions — positive scores = enriched in Region A, negative = enriched in Region B.
                     </div>
                     ${{buildGroupVolcanoPlot(fullCached.results || [])}}
                     <div class="comparison-stack">${{renderCards(fullCached)}}</div>
@@ -15722,11 +15754,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const totalGenes = Number(deResult.totalGeneCount || 0).toLocaleString();
             resultHtml = `
                 <div class="agg-group-meta">
-                    No genes are currently loaded for quick region DE.
-                    ${{totalGenes !== '0' ? `This viewer knows about ${{totalGenes}} sidecar genes that can be scanned on demand.` : ''}}
+                    Differential expression runs across ${{totalGenes !== '0' ? `all ${{totalGenes}} genes` : 'all genes'}} from the gene sidecar.
                 </div>
                 <div style="display:flex; justify-content:flex-end;">
-                    <button class="legend-btn" id="annotation-de-run-full" type="button">Run Full Region DE</button>
+                    <button class="legend-btn" id="annotation-de-run-full" type="button">Compute Region DE across all genes</button>
                 </div>
             `;
         }} else if (!deResult.available && deResult.reason === 'no_loaded_genes') {{
@@ -18093,7 +18124,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!groupA || !groupB || !exportState?.result) return null;
         const result = exportState.result;
         const topN = Math.max(1, Number(groupDeTopN) || ANNOTATION_DE_TOP_N);
-        const exportedGenes = (result.results || []).slice(0, topN).map((entry, index) => ({{
+        const exportedGenes = selectTwoSidedTopN(result.results || [], topN).map((entry, index) => ({{
             rank: index + 1,
             gene: entry.gene,
             log2fc_a_vs_b: entry.log2fc,
@@ -18469,7 +18500,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             nB: Number(groupB.nCells || 0),
             loadedGeneCount: loadedGenes.length,
             totalGeneCount: totalGenes,
-            results: results.slice(0, topN),
+            results: selectTwoSidedTopN(results, topN),
         }};
     }}
 
@@ -18587,7 +18618,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             'group-de-summary',
             `${{summaryLabel}}: ${{String(groupDeSourceValue ?? 'A')}} vs ${{String(groupDeReferenceValue ?? 'B')}}${{restrictSummary}}`,
         );
-        html += '<div id="group-de-results"><div class="agg-group-meta">Computing...</div></div>';
+        // Synchronous placeholder. Only show the indeterminate "Computing…" bar
+        // when a real quick compute (over already-loaded genes) is about to run.
+        // During a full sidecar run this function is re-invoked after every shard,
+        // so showing the indeterminate bar here would flicker against the
+        // determinate bar the async step renders. For sidecar-only datasets the
+        // async step renders the "Compute DE" button, so an empty placeholder
+        // avoids a misleading flash.
+        const groupDeHasLoadedGenes = Object.keys(DATA.genes_meta || {{}}).length > 0;
+        html += (groupDeHasLoadedGenes && !(groupDeFullRun && groupDeFullRun.running))
+            ? '<div id="group-de-results"><progress style="width:100%; height:12px;"></progress>'
+                + '<div class="agg-group-meta">Computing differential expression…</div></div>'
+            : '<div id="group-de-results"></div>';
         container.innerHTML = html;
 
         const sourceSpecSelect = container.querySelector('#group-de-source-spec');
@@ -18690,7 +18732,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const sidecarAvailable = !!DATA.gene_aux_url;
             const renderCards = (result) => {{
                 const topN = Math.max(1, Number(deferredTopN) || ANNOTATION_DE_TOP_N);
-                return (result.results || []).slice(0, topN).map((entry) => {{
+                return selectTwoSidedTopN(result.results || [], topN).map((entry) => {{
                     return `
                         <div class="comparison-card">
                             <div class="comparison-card-title">
@@ -18752,10 +18794,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="agg-group-meta">
                         ${{
                             Number(quickResult.loadedGeneCount || 0) < Number(quickResult.totalGeneCount || 0)
-                                ? `Using ${{Number(quickResult.loadedGeneCount || 0).toLocaleString()}} of ${{Number(quickResult.totalGeneCount || 0).toLocaleString()}} genes currently loaded in the viewer.`
-                                : `Using ${{Number(quickResult.loadedGeneCount || 0).toLocaleString()}} loaded genes.`
+                                ? `Quick preview over ${{Number(quickResult.loadedGeneCount || 0).toLocaleString()}} of ${{Number(quickResult.totalGeneCount || 0).toLocaleString()}} genes — run the full sidecar DE for the complete result.`
+                                : ''
                         }}
-                        Showing top ${{topNLabel}} genes. Positive scores indicate enrichment in Group A.
+                        Showing top ${{topNLabel}} genes in both directions — positive scores = enriched in Group A, negative = enriched in Group B.
                     </div>
                     ${{buildGroupVolcanoPlot(quickResult.results || [])}}
                     <div class="comparison-stack">${{renderCards(quickResult)}}</div>
@@ -18774,7 +18816,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <div class="agg-group-meta">
                             Cached full sidecar DE${{cachedTimestamp ? ` from ${{cachedTimestamp}}` : ''}}
                             across ${{Number(fullCached.totalGeneCount || 0).toLocaleString()}} genes.
-                            Showing top ${{topNLabel}} genes. Positive scores indicate enrichment in Group A.
+                            Showing top ${{topNLabel}} genes in both directions — positive scores = enriched in Group A, negative = enriched in Group B.
                         </div>
                         ${{buildGroupVolcanoPlot(fullCached.results || [])}}
                         <div class="comparison-stack">${{renderCards(fullCached)}}</div>
@@ -18835,11 +18877,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const totalGenes = Number(quickResult.totalGeneCount || 0).toLocaleString();
                 resultHtml = `
                     <div class="agg-group-meta">
-                        No genes are currently loaded for quick group DE.
-                        ${{totalGenes !== '0' ? `This viewer knows about ${{totalGenes}} sidecar genes that can be scanned on demand.` : ''}}
+                        Differential expression runs across ${{totalGenes !== '0' ? `all ${{totalGenes}} genes` : 'all genes'}} from the gene sidecar.
                     </div>
                     <div style="display:flex; justify-content:flex-end;">
-                        <button class="legend-btn" id="group-de-run-full" type="button">Run Full DE</button>
+                        <button class="legend-btn" id="group-de-run-full" type="button">Compute DE across all genes</button>
                     </div>
                 `;
             }} else if (!quickResult.available && quickResult.reason === 'no_loaded_genes') {{
@@ -18911,7 +18952,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             bindVolcanoGroupInteraction(resultsDiv, renderGroupDE);
             bindGeneActivateButtons(resultsDiv, renderGroupDE);
             bindGeneGoogleSearchButtons(resultsDiv);
-        }})();
+        }})().catch((asyncErr) => {{
+            // Without this, a throw inside the async compute would leave the
+            // "Computing…" placeholder stuck on screen forever.
+            console.error('group DE async compute failed:', asyncErr);
+            if (groupDeRenderToken !== token) return;
+            const rd = document.getElementById('group-de-results');
+            if (rd) rd.innerHTML = '<div class="agg-group-meta">Differential expression could not be computed. Adjust the selection and try again.</div>';
+        }});
         }} catch (err) {{
             console.error('renderGroupDE crashed:', err);
         }} finally {{
@@ -20759,11 +20807,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return;
         }}
 
-        container.innerHTML = '<div class="agg-group-meta">Computing…</div>';
+        container.innerHTML = '<progress style="width:100%; height:12px;"></progress>'
+            + '<div class="agg-group-meta">Computing spatial dispersion…</div>';
         const colorAtRequest = currentColor;
         // Defer so "Computing…" paints before the synchronous nearest-neighbour scan.
         setTimeout(() => {{
-            if (currentColor !== colorAtRequest || insightsNeighborsTab !== 'dispersion') return;
+            // Bail if anything that invalidates this run changed while deferred:
+            // a gene was loaded, the color switched, or the user left the tab.
+            // (Missing the currentGene check let a stale table overwrite the
+            // "pick a categorical color" message.)
+            if (currentGene || currentColor !== colorAtRequest
+                || insightsTopLevelTab !== 'neighbors' || insightsNeighborsTab !== 'dispersion') return;
             const rows = computeDispersionInsights(currentColor);
             if (!rows || !rows.length) {{
                 container.innerHTML = '<div class="agg-group-meta">No position data available for the current sections.</div>';
