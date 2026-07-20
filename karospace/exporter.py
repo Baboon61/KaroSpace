@@ -834,11 +834,11 @@ def _estimate_auto_spot_size(dataset: SpatialDataset, min_panel_size: int) -> fl
             spacing_px_samples.append(spacing_px)
 
     if not spacing_px_samples:
-        return 2.0
+        return 10.0
 
     # Target a radius that keeps neighboring cells separable without looking sparse.
-    est = 0.38 * float(np.median(spacing_px_samples))
-    return float(np.clip(est, 0.35, 4.0))
+    est = 1.9 * float(np.median(spacing_px_samples))
+    return float(np.clip(est, 1.75, 20.0))
 
 
 def _resolve_spot_size(
@@ -894,6 +894,17 @@ def _json_sanitize_nonfinite(value):
     if isinstance(value, tuple):
         return [_json_sanitize_nonfinite(v) for v in value]
     return value
+
+
+def _escape_html_attr(value: object) -> str:
+    """Escape a short string for use inside an HTML attribute."""
+    text = str(value)
+    return (
+        text.replace("&", "&amp;")
+        .replace('"', "&quot;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+    )
 
 
 def _resolve_section_rotations(
@@ -990,6 +1001,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             --hover-bg: #3a3a3a;
             --graph-color: rgba(255, 255, 255, 0.12);
             --selection-outline-color: rgba(255, 255, 255, 0.5);
+            --icon-hover-bg: rgba(135, 0, 82, 0.28);
+            --icon-blue-hover-bg: rgba(76, 201, 240, 0.22);
         }}
         :root.light {{
             --background: #f5f5f5;
@@ -1002,6 +1015,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             --hover-bg: #f0f0f0;
             --graph-color: rgba(0, 0, 0, 0.12);
             --selection-outline-color: rgba(22, 22, 22, 0.42);
+            --icon-hover-bg: rgba(247, 182, 218, 0.45);
+            --icon-blue-hover-bg: rgba(76, 201, 240, 0.22);
         }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -1014,6 +1029,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             min-height: 100vh;
             display: flex;
             flex-direction: column;
+            --sticky-header-height: 0px;
+            --sticky-visual-height: 0px;
+            --sticky-filter-height: 0px;
+            --sticky-stack-height: 0px;
             transition: background 0.3s, color 0.3s;
         }}
         .header {{
@@ -1028,12 +1047,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             flex-wrap: wrap;
             gap: 8px;
             transition: background 0.3s, border-color 0.3s;
+            flex-shrink: 0;
+            position: sticky;
+            top: 0;
+            z-index: 90;
         }}
         .header-title {{
             display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            position: relative;
+        }}
+        .header-title-row {{
+            display: flex;
             align-items: center;
             gap: 8px;
-            position: relative;
         }}
         .header h1 {{ font-size: 16px; font-weight: 600; }}
         .info-trigger {{
@@ -1052,7 +1081,37 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--hover-bg);
             border-color: var(--accent-strong);
         }}
-        .controls {{ display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }}
+        .controls {{ display: flex; align-items: center; justify-content: flex-end; gap: 6px 8px; flex-wrap: wrap; margin-left: auto; max-width: 560px; }}
+        .sr-only {{
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0, 0, 0, 0);
+            white-space: nowrap;
+            border: 0;
+        }}
+        .downsample-warning {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 5px 9px;
+            border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-color));
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--accent) 14%, var(--input-bg));
+            color: var(--accent-strong);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.2;
+            white-space: nowrap;
+        }}
+        :root.dark .downsample-warning {{
+            border-color: rgba(255, 120, 198, 0.45);
+            background: rgba(135, 0, 82, 0.24);
+            color: #f7b6da;
+        }}
         .control-group {{ display: flex; align-items: center; gap: 4px; }}
         #expression-scale-section {{
             flex-direction: column;
@@ -1237,7 +1296,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             flex-wrap: wrap;
             gap: 6px;
         }}
-        .stats {{ font-size: 11px; color: var(--muted-color); }}
+        .stats {{
+            font-size: 11px;
+            color: var(--muted-color);
+            text-align: right;
+            white-space: nowrap;
+            flex: 0 0 100%;
+            order: 20;
+        }}
         .size-control {{
             display: inline-flex;
             align-items: center;
@@ -1265,12 +1331,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--input-bg);
             border: 1px solid var(--border-color);
             border-radius: 4px;
-            padding: 5px 10px;
+            width: 30px;
+            height: 30px;
+            padding: 0;
             cursor: pointer;
             font-size: 14px;
-            transition: background 0.3s, border-color 0.3s;
+            color: var(--accent-strong);
+            transition: background 0.3s, border-color 0.3s, color 0.3s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
         }}
-        .theme-toggle:hover {{ background: var(--hover-bg); }}
+        .theme-toggle:hover {{
+            background: rgba(247, 182, 218, 0.22);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
         .export-btn {{
             background: var(--input-bg);
             border: 1px solid var(--border-color);
@@ -1281,7 +1357,252 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.3s, border-color 0.3s;
         }}
         .export-btn:hover {{ background: var(--hover-bg); }}
+        .toolbar-actions {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .toolbar-menu-wrap {{
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }}
+        .icon-btn {{
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }}
+        .icon-btn:hover,
+        .icon-btn.active:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .icon-btn.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .icon-btn svg {{
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
+        .toolbar-popover {{
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            min-width: 190px;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            z-index: 60;
+        }}
+        .toolbar-popover.open {{ display: block; }}
+        .toolbar-popover-title {{
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--muted-color);
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            margin-bottom: 7px;
+        }}
+        .toolbar-action-row {{
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            margin: 0;
+        }}
+        .toolbar-action-row + .toolbar-action-row {{ margin-top: 6px; }}
+        .toolbar-popover .export-btn,
+        .toolbar-popover .graph-toggle {{
+            width: 100%;
+            justify-content: flex-start;
+            text-align: left;
+        }}
+        .screenshot-options {{
+            display: grid;
+            grid-template-columns: auto 1fr;
+            align-items: center;
+            gap: 8px;
+            font-size: 11px;
+        }}
+        .screenshot-options label {{
+            color: var(--muted-color);
+        }}
+        .screenshot-options .toolbar-action-row {{
+            grid-column: 1 / -1;
+        }}
+        .screenshot-target-switch {{
+            grid-column: 1 / -1;
+            display: inline-flex;
+            align-items: center;
+            padding: 2px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--input-bg);
+        }}
+        .screenshot-target-btn {{
+            flex: 1;
+            min-width: 70px;
+            padding: 5px 9px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--muted-color);
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        .screenshot-target-btn.active {{
+            background: var(--accent-strong);
+            color: #ffffff;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+        }}
+        :root.dark .screenshot-target-btn.active {{
+            background: var(--accent-strong);
+            color: #ffffff;
+        }}
 
+        .visual-params-bar {{
+            padding: 6px 16px;
+            background: var(--accent-strong);
+            border-bottom: 1px solid color-mix(in srgb, var(--accent-strong) 70%, var(--border-color));
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            min-height: 44px;
+            position: sticky;
+            top: var(--sticky-header-height);
+            z-index: 80;
+            flex-shrink: 0;
+        }}
+        .visual-params-bar .control-group label {{
+            color: rgba(255, 255, 255, 0.82);
+        }}
+        .visual-mode-switch {{
+            display: inline-flex;
+            align-items: center;
+            padding: 2px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.16);
+        }}
+        .visual-mode-btn {{
+            min-width: 64px;
+            padding: 5px 10px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.82);
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        .visual-mode-btn.active {{
+            background: #ffffff;
+            color: var(--accent-strong);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
+        }}
+        .visual-default-controls {{
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }}
+        .visual-source-switch {{
+            display: inline-flex;
+            align-items: center;
+            padding: 2px;
+            border: 1px solid rgba(255, 255, 255, 0.28);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.12);
+        }}
+        .visual-source-btn {{
+            min-width: 54px;
+            padding: 4px 9px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: rgba(255, 255, 255, 0.82);
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        .visual-source-btn.active {{
+            background: #ffffff;
+            color: var(--accent-strong);
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+        }}
+        .visual-color-controls,
+        .visual-gene-controls {{
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }}
+        .visual-default-controls.color-mode .visual-gene-controls {{
+            display: none;
+        }}
+        .visual-default-controls.gene-mode .visual-color-controls {{
+            display: none;
+        }}
+        .visual-params-bar.split-mode .visual-default-controls {{
+            display: none;
+        }}
+        .visual-nav-actions {{
+            margin-left: auto;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }}
+        .visual-nav-actions .umap-toggle,
+        .visual-nav-actions .legend-toggle,
+        .visual-nav-actions .color-toggle {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(255, 255, 255, 0.14);
+            border-color: rgba(255, 255, 255, 0.42);
+            color: #ffffff;
+            font-weight: 600;
+        }}
+        .visual-nav-actions .umap-toggle:hover,
+        .visual-nav-actions .legend-toggle:hover,
+        .visual-nav-actions .color-toggle:hover {{
+            background: rgba(255, 255, 255, 0.22);
+            border-color: rgba(255, 255, 255, 0.7);
+            color: #ffffff;
+        }}
+        .visual-nav-actions .umap-toggle.active,
+        .visual-nav-actions .legend-toggle.active,
+        .visual-nav-actions .color-toggle.active {{
+            background: #ffffff;
+            border-color: #ffffff;
+            color: var(--accent-strong);
+            box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.26);
+        }}
         /* Filter bar */
         .filter-bar {{
             padding: 6px 16px;
@@ -1292,6 +1613,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 12px;
             flex-wrap: wrap;
             transition: background 0.3s, border-color 0.3s;
+            flex-shrink: 0;
+            position: sticky;
+            top: calc(var(--sticky-header-height) + var(--sticky-visual-height));
+            z-index: 70;
         }}
         .filter-bar:empty {{ display: none; }}
         .overview-blend-panel {{
@@ -1306,12 +1631,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.3s, border-color 0.3s;
         }}
         .overview-blend-panel.visible {{ display: flex; }}
+        .visual-params-bar .overview-blend-panel {{
+            padding: 0;
+            background: transparent;
+            border-bottom: 0;
+            color: rgba(255, 255, 255, 0.86);
+        }}
+        .visual-params-bar .overview-blend-panel select,
+        .visual-params-bar .overview-blend-panel input[type="text"] {{
+            min-width: 96px;
+        }}
         .overview-blend-row {{ display: flex; align-items: center; gap: 4px; }}
         .overview-blend-side {{
             font-weight: 600;
             min-width: 16px;
             text-align: center;
-            color: var(--muted-color);
+            color: #ffffff;
+        }}
+        .overview-blend-icon {{
+            width: 17px;
+            height: 17px;
+            stroke: #ffffff;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            opacity: 0.9;
+            transform: rotate(-90deg);
         }}
         .filter-group {{ display: flex; align-items: center; gap: 4px; }}
         .filter-group label {{ font-size: 10px; color: var(--muted-color); text-transform: capitalize; }}
@@ -1369,6 +1715,245 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             --umap-reserve-left: 0px;
             --umap-reserve-right: 0px;
         }}
+        .grid-stage {{
+            flex: 1;
+            min-height: 0;
+            min-width: 0;
+            display: flex;
+            position: relative;
+        }}
+        .grid-side-toolbar {{
+            flex: 0 0 42px;
+            margin-left: 14px;
+            margin-top: 8px;
+            margin-bottom: 18px;
+            padding: 10px 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            background: var(--header-bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 7px;
+            position: sticky;
+            top: var(--sticky-stack-height);
+            align-self: flex-start;
+            height: fit-content;
+            min-height: 0;
+            max-height: calc(100vh - var(--sticky-stack-height) - 26px);
+            z-index: 30;
+        }}
+        .visual-params-toggle {{
+            width: 30px;
+            height: 30px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }}
+        .gene-params-toggle {{
+            width: 30px;
+            height: 30px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }}
+        .gene-params-toggle svg {{
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
+        .visual-params-toggle svg {{
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
+        .focused-modal-tool-toggle {{
+            width: 30px;
+            height: 30px;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }}
+        .grid-side-toolbar.focused-mode .focused-modal-tool-toggle {{
+            display: inline-flex;
+        }}
+        .grid-side-toolbar.focused-mode .visual-params-toggle {{
+            display: none;
+        }}
+        .focused-modal-tool-toggle svg {{
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
+        .gene-params-toggle.hidden {{
+            display: none;
+        }}
+        .visual-params-toggle:hover,
+        .gene-params-toggle:hover,
+        .focused-modal-tool-toggle:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .grid-side-toolbar.visual-open .visual-params-toggle,
+        .grid-side-toolbar.gene-open .gene-params-toggle,
+        .focused-modal-tool-toggle.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .focused-modal-tool-toggle.hidden {{
+            display: none !important;
+        }}
+        .visual-params-panel {{
+            display: none;
+            min-width: 198px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            position: absolute;
+            left: calc(100% + 6px);
+            top: 8px;
+            z-index: 55;
+        }}
+        .grid-side-toolbar.visual-open .visual-params-panel {{ display: block; }}
+        .gene-params-panel {{
+            display: none;
+            min-width: 360px;
+            max-width: min(560px, calc(100vw - 88px));
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            position: absolute;
+            left: calc(100% + 6px);
+            top: 45px;
+            z-index: 55;
+        }}
+        .grid-side-toolbar.gene-open .gene-params-panel {{ display: block; }}
+        .gene-params-panel #expression-scale-section {{
+            gap: 6px;
+        }}
+        .gene-params-panel #split-expression-scale-section {{
+            flex-direction: column;
+            align-items: stretch;
+            gap: 7px;
+        }}
+        .split-scale-controls {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            flex-wrap: nowrap;
+            min-width: 0;
+        }}
+        .split-scale-side {{
+            display: inline-flex;
+            align-items: center;
+            min-width: 24px;
+            justify-content: center;
+            flex: 0 0 auto;
+            font-size: 10px;
+            line-height: 1.3;
+            padding: 2px 7px;
+            border-radius: 999px;
+        }}
+        .split-scale-controls input[type="number"] {{
+            width: 52px;
+            min-width: 0;
+            padding: 3px 4px;
+            font-size: 10px;
+        }}
+        .split-scale-controls .scale-sep {{
+            flex: 0 0 auto;
+            font-size: 10px;
+        }}
+        .split-scale-controls .legend-btn {{
+            flex: 0 0 auto;
+            min-width: 38px;
+            padding: 3px 5px;
+            font-size: 10px;
+        }}
+        .split-scale-controls .split-propagate-btn {{
+            min-width: 64px;
+        }}
+        .gene-params-panel .control-group label {{
+            color: var(--muted-color);
+        }}
+        .gene-param-section + .gene-param-section {{
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border-color);
+        }}
+        .gene-param-section-title {{
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--muted-color);
+            margin-bottom: 7px;
+        }}
+        .visual-params-title {{
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--accent-strong);
+            margin-bottom: 7px;
+        }}
+        .visual-param-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }}
+        .visual-param-row:first-of-type .size-control {{
+            flex: 1;
+            justify-content: center;
+        }}
+        .visual-param-row + .visual-param-row {{ margin-top: 7px; }}
+        .visual-param-row label {{
+            font-size: 11px;
+            color: var(--muted-color);
+            min-width: 46px;
+        }}
         .grid-container {{
             flex: 1;
             min-height: 0;
@@ -1401,6 +1986,51 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             max-width: 900px;
             margin: 0 auto;
         }}
+        .grid-container.focused-section-layout {{
+            display: block;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            padding-left: calc(8px + var(--umap-reserve-left));
+            padding-right: calc(8px + var(--umap-reserve-right));
+            height: calc(100vh - var(--sticky-stack-height) - 16px);
+            max-height: calc(100vh - var(--sticky-stack-height) - 16px);
+            overflow: hidden;
+        }}
+        .grid-container.panel-opening {{
+            overflow: visible;
+            position: relative;
+            z-index: 120;
+        }}
+        .grid-container.focused-section-layout > .section-panel,
+        .grid-container.focused-section-layout > .no-results {{
+            display: none;
+        }}
+        .grid-container.focused-section-layout > .modal-content {{
+            width: 100%;
+            height: 100%;
+            max-height: 100%;
+            min-height: 0;
+            max-width: none;
+            border-radius: 6px;
+            box-shadow: none;
+            border: 1px solid var(--border-color);
+        }}
+        .grid-container.focused-section-layout > .modal-content.is-expanding {{
+            will-change: transform, opacity, box-shadow, filter;
+            pointer-events: none;
+        }}
+        .section-panel-diffuse-ghost {{
+            position: fixed;
+            pointer-events: none;
+            z-index: 121;
+            overflow: hidden;
+            transform-origin: center center;
+            will-change: transform, opacity, filter, box-shadow;
+        }}
+        .section-panel-diffuse-ghost canvas,
+        .section-panel-diffuse-ghost img {{
+            display: block;
+        }}
         .section-panel {{
             background: var(--panel-bg);
             border: 1px solid var(--border-color);
@@ -1408,6 +2038,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             overflow: hidden;
             cursor: pointer;
             transition: box-shadow 0.2s, transform 0.2s, background 0.3s, border-color 0.3s;
+        }}
+        .section-panel.is-opening {{
+            position: relative;
+            z-index: 94;
+            pointer-events: none;
+            will-change: transform, box-shadow, filter;
         }}
         .section-panel:hover {{
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -1447,28 +2083,66 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 2px;
         }}
         .section-rotate-btn {{
-            min-width: 28px;
-            padding: 2px 4px;
-            border: 1px solid var(--border-color);
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: 1px solid transparent;
             border-radius: 4px;
-            background: var(--input-bg);
-            color: var(--text-color);
+            background: transparent;
+            color: var(--accent-strong);
             cursor: pointer;
-            font-size: 9px;
-            line-height: 1.2;
-            transition: background 0.2s, border-color 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
         }}
         .section-rotate-btn:hover {{
-            background: var(--hover-bg);
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+        }}
+        .section-rotate-btn svg {{
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
         }}
         .section-panel[draggable="true"] .section-header {{ cursor: grab; }}
         .section-panel[draggable="true"] .section-header:active {{ cursor: grabbing; }}
+        .section-panel[draggable="true"] {{ cursor: grab; }}
+        .section-panel[draggable="true"]:active {{ cursor: grabbing; }}
+        .section-panel.grid-lasso-active,
+        .section-panel.grid-lasso-active .section-canvas,
+        .section-panel.grid-lasso-active[draggable="true"],
+        .section-panel.grid-lasso-active[draggable="true"]:active {{
+            cursor: crosshair;
+        }}
+        .section-panel.grid-lasso-active:hover {{
+            transform: none;
+        }}
         .section-panel.drag-over {{ box-shadow: 0 0 0 2px var(--accent-color, #4a9eff); transform: translateY(-2px); }}
         .section-panel.dragging {{ opacity: 0.4; }}
+        .section-drop-placeholder {{
+            display: none;
+            position: fixed;
+            width: 10px;
+            min-width: 10px;
+            height: 54px;
+            min-height: 54px;
+            border: 0;
+            border-radius: 7px;
+            background: rgba(172, 111, 255, 0.22);
+            pointer-events: none;
+            z-index: 130;
+            box-shadow: 0 0 0 1px rgba(122, 64, 210, 0.18);
+        }}
         .section-hide-btn {{
             background: none;
             border: none;
-            color: var(--muted-color);
+            color: #c1121f;
             cursor: pointer;
             font-size: 11px;
             padding: 0 2px;
@@ -1476,9 +2150,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             opacity: 0;
             transition: opacity 0.15s, color 0.15s;
         }}
-        .section-panel:hover .section-hide-btn {{ opacity: 0.6; }}
-        .section-hide-btn:hover {{ opacity: 1 !important; color: var(--text-color); }}
-        .section-header .expand-icon {{ font-size: 10px; opacity: 0.5; }}
+        .section-panel:hover .section-hide-btn {{ opacity: 0.75; }}
+        .section-hide-btn:hover {{ opacity: 1 !important; color: #9b0d18; }}
         .section-meta {{ font-size: 8px; color: var(--muted-color); margin-top: 1px; }}
         .section-canvas {{ display: block; width: 100%; aspect-ratio: 1; }}
 
@@ -1493,6 +2166,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: flex;
             flex-direction: column;
             min-height: 0;
+            max-height: calc(100vh - var(--sticky-stack-height));
+            position: sticky;
+            top: var(--sticky-stack-height);
+            align-self: flex-start;
             transition: background 0.3s, border-color 0.3s, width 0.3s, padding 0.3s;
         }}
         .legend-list {{
@@ -1547,10 +2224,45 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             justify-content: space-between;
             align-items: center;
             margin-bottom: 8px;
-            padding-bottom: 6px;
-            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0;
+            border-bottom: 0;
         }}
         .color-panel-title {{ font-size: 13px; font-weight: 600; }}
+        .insights-mode-switch {{
+            display: inline-flex;
+            align-items: center;
+            width: 100%;
+            padding: 2px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--input-bg);
+        }}
+        .insights-mode-btn {{
+            flex: 1;
+            padding: 5px 9px;
+            border: 0;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--muted-color);
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+        }}
+        .insights-mode-btn.active {{
+            background: var(--accent-strong);
+            color: #ffffff;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
+        }}
+        :root.dark .insights-mode-btn.active {{
+            background: var(--accent);
+            color: #ffffff;
+        }}
+        .color-panel-mode {{
+            display: none;
+        }}
+        .color-panel-mode.active {{
+            display: block;
+        }}
         .color-panel-section {{
             margin-bottom: 10px;
             display: flex;
@@ -1592,6 +2304,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .insights-subtabs .color-tab {{
             flex: 0 0 auto;
         }}
+        .insights-subtab-label {{
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin: 2px 0 -2px 0;
+            padding-left: 10px;
+            color: var(--muted-color);
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }}
+        .insights-subtab-label::before {{
+            content: "";
+            width: 8px;
+            height: 2px;
+            border-radius: 999px;
+            background: var(--accent);
+            opacity: 0.7;
+        }}
         .color-tab {{
             flex: 1 1 96px;
             min-width: 0;
@@ -1632,10 +2364,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .scale-sep {{
             font-size: 11px;
-            color: var(--muted-color);
-        }}
-        .scale-hint {{
-            font-size: 10px;
             color: var(--muted-color);
         }}
         .info-content {{
@@ -2571,6 +3299,75 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: #fff;
             border-color: var(--accent-strong);
         }}
+        .legend-btn.icon-only {{
+            flex: 0 0 28px;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-strong);
+        }}
+        .legend-btn.icon-only:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .legend-btn.icon-only.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .legend-btn.icon-only svg {{
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
+        .legend-export-wrap {{
+            position: relative;
+            display: inline-flex;
+        }}
+        .legend-export-menu {{
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            min-width: 128px;
+            padding: 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+            z-index: 5;
+        }}
+        .legend-export-menu.open {{
+            display: grid;
+            gap: 5px;
+        }}
+        .legend-export-option {{
+            width: 100%;
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            padding: 5px 7px;
+            border: 1px solid transparent;
+            border-radius: 5px;
+            background: transparent;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 11px;
+            text-align: left;
+        }}
+        .legend-export-option:hover {{
+            background: var(--hover-bg);
+            border-color: var(--border-color);
+        }}
         .legend-item {{
             display: flex;
             align-items: center;
@@ -2625,8 +3422,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--input-bg);
         }}
         .split-legend-list {{
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
             flex: 1 1 auto;
             min-height: 0;
@@ -2668,12 +3465,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: color-mix(in srgb, #be185d 12%, transparent);
             border-color: color-mix(in srgb, #be185d 28%, transparent);
         }}
-        .split-legend-label {{
-            font-size: 11px;
-            color: var(--text-color);
-            line-height: 1.35;
-            word-break: break-word;
-        }}
         .split-legend-key {{
             margin-top: 6px;
             display: flex;
@@ -2682,6 +3473,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 10px;
             color: var(--muted-color);
             min-height: 12px;
+        }}
+        .split-legend-key.gene-scale {{
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }}
+        .split-legend-scale-labels {{
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 54px;
+            font-size: 9px;
+            line-height: 1;
+            color: var(--muted-color);
+            text-align: left;
         }}
         .split-legend-swatch {{
             display: inline-block;
@@ -2697,6 +3503,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .split-legend-swatch-bar {{
             width: 40px;
             height: 10px;
+            border-radius: 999px;
+        }}
+        .split-legend-key.gene-scale .split-legend-swatch-bar {{
+            width: 12px;
+            height: 54px;
             border-radius: 999px;
         }}
         .split-legend-categories {{
@@ -2772,8 +3583,96 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             align-items: center;
             gap: 8px;
         }}
+        .modal-header-tool-group {{
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 2px;
+            position: relative;
+        }}
+        .modal-header-tool-group .zoom-info {{
+            margin: 0 4px 0 2px;
+            min-width: 48px;
+            text-align: right;
+        }}
+        .modal-header-icon {{
+            width: 26px;
+            height: 26px;
+            padding: 0;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s, border-color 0.2s, color 0.2s;
+        }}
+        .modal-header-icon:hover,
+        .modal-header-icon.active {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .modal-header-icon.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .modal-header-icon svg {{
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
+        .modal-visual-params-panel {{
+            display: none;
+            position: absolute;
+            top: calc(100% + 6px);
+            right: 0;
+            min-width: 220px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            z-index: 6;
+        }}
+        .modal-visual-params-panel.open {{
+            display: block;
+        }}
+        .modal-visual-params-panel .visual-param-row {{
+            display: grid;
+            grid-template-columns: 52px minmax(118px, 1fr);
+            align-items: center;
+            gap: 8px;
+        }}
         .modal-header h2 {{ font-size: 15px; font-weight: 600; }}
-        .modal-header .modal-meta {{ font-size: 11px; color: var(--muted-color); margin-left: 10px; }}
+        .modal-header .modal-meta {{
+            display: inline-flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 4px 8px;
+            font-size: 11px;
+            color: var(--muted-color);
+            margin-left: 10px;
+        }}
+        .modal-meta-item {{
+            display: inline-flex;
+            align-items: center;
+            gap: 3px;
+            min-width: 0;
+        }}
+        .modal-meta-sep {{
+            color: var(--muted-color);
+            opacity: 0.6;
+        }}
         .modal-controls-toggle {{
             padding: 4px 8px;
             border: 1px solid var(--border-color);
@@ -2946,22 +3845,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 flex: 1;
             }}
         }}
-        .modal-legend {{
-            width: 180px;
-            padding: 12px;
-            border-left: 1px solid var(--border-color);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-            transition: border-color 0.3s, width 0.2s ease;
-        }}
-        .modal-legend > .legend-title,
-        .modal-legend > .legend-subtitle,
-        .modal-legend > .legend-actions {{
-            flex-shrink: 0;
-        }}
-        .modal-legend.split-expanded {{ width: 280px; }}
         .zoom-info {{ font-size: 10px; color: var(--muted-color); margin-left: 6px; }}
         .modal-blend-panel {{
             position: absolute;
@@ -3254,20 +4137,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-color);
             font-weight: 600;
         }}
-        .modal-selection-info {{
-            position: absolute;
-            top: 8px;
-            left: 8px;
-            font-size: 11px;
-            color: var(--muted-color);
-            padding: 4px 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 999px;
-            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
-            backdrop-filter: blur(6px);
-            pointer-events: none;
-            z-index: 2;
-        }}
         .selection-summary {{
             position: absolute;
             left: 8px;
@@ -3283,6 +4152,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-color);
             pointer-events: auto;
             z-index: 2;
+        }}
+        #insights-selection-panel.selection-summary {{
+            position: static;
+            left: auto;
+            max-width: none;
+            max-height: none;
+            overflow-y: visible;
+            padding: 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            backdrop-filter: none;
+            z-index: auto;
         }}
         .selection-summary.expanded {{
             max-height: min(82%, 560px);
@@ -3328,7 +4210,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--hover-bg);
         }}
         .selection-summary-title {{
-            margin: 2px 0 6px;
+            margin: 8px 0 6px;
+            padding-top: 6px;
+            border-top: 1px solid var(--border-color);
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
@@ -3350,6 +4234,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             text-overflow: ellipsis;
             max-width: 210px;
         }}
+        .selection-summary-label-wrap {{
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 0;
+        }}
+        .selection-summary-dot {{
+            width: 8px;
+            height: 8px;
+            border-radius: 999px;
+            flex: 0 0 auto;
+            border: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+        }}
         .selection-summary-count {{
             color: var(--muted-color);
             font-variant-numeric: tabular-nums;
@@ -3359,6 +4256,41 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 10px;
             color: var(--muted-color);
             line-height: 1.35;
+        }}
+        .selection-summary-empty {{
+            color: var(--accent-strong);
+            font-weight: 400;
+            padding: 8px 10px;
+            border: 1px solid var(--accent-strong);
+            border-radius: 8px;
+            background: var(--icon-hover-bg);
+        }}
+        .selection-section-bar {{
+            display: flex;
+            width: 100%;
+            height: 14px;
+            overflow: hidden;
+            border-radius: 7px;
+            background: var(--border-color);
+            margin: 3px 0 6px;
+        }}
+        .selection-section-bar-segment {{
+            min-width: 2px;
+            height: 100%;
+        }}
+        .selection-section-legend {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 8px;
+            margin-bottom: 7px;
+            color: var(--muted-color);
+            font-size: 10px;
+        }}
+        .selection-section-legend-item {{
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 0;
         }}
         .selection-summary-toggle {{
             margin-top: 6px;
@@ -3463,23 +4395,128 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .selection-summary-compare-label.region-b {{ background: #4cc9f0; color: #000; }}
         .selection-summary-compare-row {{
             display: grid;
-            grid-template-columns: 1fr auto auto auto;
-            gap: 4px;
+            grid-template-columns: minmax(72px, 1fr) 38px minmax(72px, 1fr);
+            gap: 6px;
             align-items: center;
             font-size: 11px;
-            padding: 1px 0;
+            padding: 2px 0;
         }}
         .selection-summary-compare-row[data-spotlight-cat] {{ cursor: pointer; border-radius: 3px; padding: 1px 3px; margin: 0 -3px; }}
         .selection-summary-compare-row[data-spotlight-cat]:hover {{ background: var(--hover-bg); }}
         .selection-summary-compare-row[data-spotlight-cat].is-active {{ background: color-mix(in srgb, var(--accent-color, #4a9eff) 15%, transparent); }}
-        .selection-summary-compare-type {{ color: var(--text-color); font-weight: 500; }}
-        .selection-summary-compare-a {{ color: var(--accent-strong); font-variant-numeric: tabular-nums; }}
-        .selection-summary-compare-b {{ color: #4cc9f0; font-variant-numeric: tabular-nums; }}
-        .selection-summary-compare-sep {{ color: var(--muted-color); }}
+        .selection-summary-compare-type {{
+            color: #ffffff;
+            font-weight: 700;
+            font-size: 10px;
+            line-height: 1.25;
+            width: 34px;
+            max-width: 34px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            border-radius: 999px;
+            padding: 3px 4px;
+            box-sizing: border-box;
+            justify-self: center;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+        }}
+        .selection-summary-compare-bar {{
+            position: relative;
+            height: 18px;
+            border-radius: 999px;
+            overflow: hidden;
+            background: color-mix(in srgb, var(--border-color) 62%, transparent);
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            display: flex;
+            align-items: center;
+        }}
+        .selection-summary-compare-bar span {{
+            position: relative;
+            z-index: 1;
+            padding: 0 6px;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+        }}
+        .selection-summary-compare-fill {{
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            min-width: 2px;
+        }}
+        .selection-summary-compare-a {{
+            justify-content: flex-end;
+            text-align: right;
+        }}
+        .selection-summary-compare-a .selection-summary-compare-fill {{
+            right: 0;
+            background: var(--accent-strong);
+        }}
+        .selection-summary-compare-b {{
+            justify-content: flex-start;
+            text-align: left;
+            color: #000000;
+        }}
+        .selection-summary-compare-b .selection-summary-compare-fill {{
+            left: 0;
+            background: #4cc9f0;
+        }}
         .selection-query {{
-            margin-top: 8px;
-            padding-top: 6px;
-            border-top: 1px solid var(--border-color);
+            margin-top: 0;
+            padding-top: 0;
+            border-top: 0;
+        }}
+        .selection-query-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            border: 0;
+            padding-top: 0;
+        }}
+        .selection-query-header .selection-summary-title {{
+            margin: 0;
+            padding-top: 0;
+            border-top: 0;
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.05em;
+            text-transform: uppercase;
+            color: var(--accent-strong);
+        }}
+        .selection-query-close {{
+            width: 24px;
+            height: 24px;
+            padding: 0;
+            border: 1px solid transparent;
+            border-radius: 6px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+        }}
+        .selection-query-close:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .selection-query-close svg {{
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
         }}
         .selection-query-toggle {{
             width: 100%;
@@ -3557,10 +4594,40 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             flex-wrap: wrap;
             gap: 6px;
             margin-top: 6px;
+            justify-content: flex-end;
         }}
         .selection-query-actions .selection-summary-compare-btn {{
             flex: 1 1 110px;
             margin-top: 0;
+        }}
+        .selection-query-actions .selection-summary-compare-btn.icon-only {{
+            flex: 0 0 30px;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-strong);
+        }}
+        .selection-query-actions .selection-summary-compare-btn.icon-only:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .selection-query-actions .selection-summary-compare-btn.icon-only.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .selection-summary-compare-btn.icon-only svg {{
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }}
         .selection-query-status {{
             margin-top: 6px;
@@ -3588,54 +4655,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 8px;
             margin-top: 10px;
         }}
-        .modal-annotation-panel {{
-            position: absolute;
-            right: 8px;
-            bottom: 82px;
-            width: min(360px, calc(100% - 16px));
-            max-height: min(56%, 380px);
-            overflow-y: auto;
-            padding: 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
-            backdrop-filter: blur(6px);
-            z-index: 2;
-            pointer-events: auto;
+        .modal-annotation-section {{
+            display: none;
         }}
-        .modal-annotation-panel.dragging {{
-            user-select: none;
+        .modal-annotation-section.active {{
+            display: block;
         }}
-        .modal-annotation-title {{
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--muted-color);
-            margin: 0 0 6px;
-            cursor: grab;
-            user-select: none;
-            touch-action: none;
-        }}
-        .modal-annotation-panel.dragging .modal-annotation-title {{
-            cursor: grabbing;
+        .modal-annotation-section:not(.annotation-has-items) .modal-annotation-actions {{
+            display: none;
         }}
         .modal-annotation-actions {{
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
-            margin-bottom: 6px;
+            margin: 8px 0 0;
         }}
-        .modal-annotation-actions button {{
-            padding: 4px 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            background: var(--input-bg);
-            color: var(--text-color);
-            cursor: pointer;
-            font-size: 11px;
-            transition: background 0.3s, border-color 0.3s, color 0.3s;
-        }}
-        .modal-annotation-actions button:hover {{ background: var(--hover-bg); }}
         .modal-annotation-list {{
             display: flex;
             flex-direction: column;
@@ -3643,59 +4677,118 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .modal-annotation-empty {{
             font-size: 10px;
-            color: var(--muted-color);
+            color: var(--accent-strong);
             line-height: 1.35;
+            padding: 8px 10px;
+            border: 1px solid var(--accent-strong);
+            border-radius: 8px;
+            background: var(--icon-hover-bg);
         }}
         .modal-annotation-row {{
             border: 1px solid var(--border-color);
             border-radius: 6px;
             padding: 6px;
             background: color-mix(in srgb, var(--panel-bg) 85%, transparent);
+            overflow: hidden;
+        }}
+        .modal-annotation-row.annotation-selected {{
+            border-color: #4F0433;
+        }}
+        .modal-annotation-row.annotation-compared {{
+            border-color: #4cc9f0;
         }}
         .modal-annotation-row-main {{
             display: grid;
-            grid-template-columns: 12px 1fr auto;
-            gap: 6px;
+            grid-template-columns: 78px 86px 62px;
+            gap: 8px;
             align-items: center;
-        }}
-        .modal-annotation-color {{
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            border: 1px solid rgba(255, 255, 255, 0.65);
+            justify-content: start;
+            min-width: 0;
+            max-width: 100%;
         }}
         .modal-annotation-label {{
+            width: 78px;
             min-width: 0;
-            width: 100%;
+            max-width: 78px;
             border: 1px solid var(--border-color);
             border-radius: 4px;
             background: var(--input-bg);
             color: var(--text-color);
             font-size: 11px;
             padding: 3px 6px;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }}
         .modal-annotation-count {{
+            width: 62px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px 7px;
+            border: 1px solid transparent;
+            border-radius: 999px;
             font-size: 10px;
-            color: var(--muted-color);
+            color: #ffffff;
             white-space: nowrap;
         }}
         .modal-annotation-row-actions {{
-            margin-top: 6px;
             display: flex;
+            justify-content: flex-end;
             gap: 6px;
         }}
         .modal-annotation-row-actions button {{
-            flex: 1;
-            padding: 4px 6px;
-            border: 1px solid var(--border-color);
+            flex: 0 0 28px;
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid transparent;
             border-radius: 4px;
             background: var(--input-bg);
-            color: var(--text-color);
+            color: var(--accent-strong);
             font-size: 10px;
             cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
             transition: background 0.3s, border-color 0.3s, color 0.3s;
         }}
-        .modal-annotation-row-actions button:hover {{ background: var(--hover-bg); }}
+        .modal-annotation-row-actions button[data-annotation-select],
+        .modal-annotation-row-actions button.annotation-compare {{
+            flex-basis: 52px;
+            width: 52px;
+        }}
+        .modal-annotation-row-actions button:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .modal-annotation-row-actions button.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .modal-annotation-row-actions button:disabled {{
+            opacity: 0.45;
+            cursor: default;
+            pointer-events: none;
+        }}
+        .modal-annotation-row-actions button.annotation-compare {{
+            color: #4cc9f0;
+        }}
+        .modal-annotation-row-actions button.annotation-compare:hover {{
+            background: var(--icon-blue-hover-bg);
+            border-color: #4cc9f0;
+            color: #4cc9f0;
+        }}
+        .modal-annotation-row-actions svg {{
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }}
 
         .no-results {{
             grid-column: 1 / -1;
@@ -3771,7 +4864,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid var(--border-color);
             border-radius: 8px;
             box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
-            overflow: hidden;
+            overflow: visible;
             display: none;
             flex-direction: column;
             transition: background 0.3s, border-color 0.3s;
@@ -3782,19 +4875,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .umap-panel.dock-bottom-left {{ bottom: 8px; left: 8px; right: auto; top: auto; }}
         .umap-panel.visible {{ display: flex; }}
         .umap-header {{
-            padding: 8px 12px;
+            padding: 8px;
             background: var(--header-bg);
             border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
             align-items: center;
+            gap: 8px;
             transition: background 0.3s, border-color 0.3s;
         }}
-        .umap-header h3 {{ font-size: 13px; font-weight: 600; }}
+        .umap-header-tools {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }}
         .umap-header-actions {{
             display: flex;
             align-items: center;
             gap: 4px;
+            margin-left: auto;
         }}
         .umap-canvas-container {{
             flex: 1;
@@ -3811,18 +4910,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .umap-controls {{
             position: absolute;
             left: 8px;
-            right: 8px;
-            bottom: 8px;
-            padding: 6px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
-            backdrop-filter: blur(6px);
+            top: 8px;
             display: flex;
-            flex-wrap: wrap;
             gap: 6px;
             align-items: center;
-            transition: border-color 0.3s, background 0.3s;
+            z-index: 4;
+        }}
+        .visual-spatial-tools {{
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            align-items: center;
+            margin-top: 1px;
+            padding-top: 6px;
+            border-top: 1px solid color-mix(in srgb, var(--border-color) 70%, transparent);
         }}
         .umap-btn {{
             padding: 5px 10px;
@@ -3835,28 +4936,201 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.3s, border-color 0.3s, color 0.3s;
         }}
         .umap-btn:hover {{ background: var(--hover-bg); }}
+        .visual-spatial-tools .umap-btn {{
+            border-color: transparent;
+        }}
+        .umap-btn.icon-only {{
+            color: var(--accent-strong);
+        }}
+        .umap-btn.icon-only:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        #umap-params-toggle,
+        #umap-params-toggle:hover,
+        #umap-params-toggle.active {{
+            border-color: transparent;
+        }}
         .umap-btn.active {{
             background: var(--accent-strong);
             color: white;
             border-color: var(--accent-strong);
         }}
-        .umap-selection-info {{
+        .visual-spatial-tools #umap-compare-toggle {{
+            color: #168aad;
+        }}
+        .visual-spatial-tools #umap-compare-toggle:hover {{
+            background: var(--icon-blue-hover-bg);
+            border-color: #4cc9f0;
+            color: #168aad;
+        }}
+        .visual-spatial-tools #umap-compare-toggle.active,
+        .visual-spatial-tools #umap-compare-toggle.compare-complete {{
+            background: #4cc9f0;
+            border-color: #4cc9f0;
+            color: #ffffff;
+        }}
+        .visual-spatial-tools #umap-compare-toggle.lasso-ready {{
+            border-color: #4cc9f0;
+        }}
+        .umap-btn:disabled {{
+            opacity: 0.45;
+            cursor: not-allowed;
+        }}
+        .umap-btn.icon-only {{
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .umap-btn.icon-only svg {{
+            width: 16px;
+            height: 16px;
+            stroke: currentColor;
+        }}
+        .umap-tool-wrap {{
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }}
+        .umap-params-panel {{
             position: absolute;
-            top: 8px;
-            left: 8px;
+            left: 0;
+            top: calc(100% + 8px);
+            width: 180px;
+            padding: 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+            display: none;
+            flex-direction: column;
+            gap: 8px;
+            z-index: 5;
+        }}
+        .umap-params-panel.visible {{
+            display: flex;
+        }}
+        .umap-compare-hint {{
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 8px);
+            width: 210px;
+            padding: 8px 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+            display: none;
+            font-size: 11px;
+            line-height: 1.35;
+            z-index: 5;
+        }}
+        .umap-compare-hint.visible {{
+            display: block;
+        }}
+        .umap-btn.compare-complete {{
+            background: #4cc9f0;
+            border-color: #4cc9f0;
+            color: #000000;
+        }}
+        .umap-selection-query-panel {{
+            position: absolute;
+            left: 0;
+            bottom: calc(100% + 8px);
+            width: min(360px, calc(100vw - 48px));
+            max-height: min(52vh, 420px);
+            overflow: auto;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
+            display: none;
+            z-index: 5;
+        }}
+        .umap-selection-query-panel.visible {{
+            display: block;
+        }}
+        .visual-spatial-tools .umap-tool-wrap {{
+            position: relative;
+        }}
+        .visual-spatial-tools .umap-compare-hint,
+        .visual-spatial-tools .umap-selection-query-panel {{
+            left: calc(100% + 8px);
+            top: 0;
+            bottom: auto;
+        }}
+        .umap-param-row {{
+            display: grid;
+            grid-template-columns: 46px minmax(0, 1fr) 34px;
+            align-items: center;
+            gap: 6px;
             font-size: 11px;
             color: var(--muted-color);
-            padding: 4px 8px;
-            border: 1px solid var(--border-color);
+        }}
+        .umap-param-row input[type="range"] {{
+            width: 100%;
+        }}
+        .umap-param-value {{
+            text-align: right;
+            color: var(--text-color);
+            font-variant-numeric: tabular-nums;
+        }}
+        .umap-selection-info {{
+            display: none;
+            align-items: center;
+            gap: 7px;
+            font-size: 11px;
+            color: var(--accent-strong);
+            padding: 4px 5px 4px 10px;
+            border: 1px solid rgba(255, 255, 255, 0.45);
             border-radius: 999px;
-            background: color-mix(in srgb, var(--header-bg) 88%, transparent);
-            backdrop-filter: blur(6px);
+            background: #ffffff;
+            white-space: nowrap;
+            font-weight: 600;
+        }}
+        .umap-selection-info.visible {{
+            display: inline-flex;
+        }}
+        .umap-selection-clear {{
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            border: 0;
+            border-radius: 999px;
+            background: transparent;
+            color: #c1121f;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .umap-selection-clear:hover {{
+            background: transparent;
+            color: #9b0d18;
+        }}
+        .umap-selection-clear svg {{
+            width: 12px;
+            height: 12px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
         }}
         .umap-selection-summary {{
-            top: 38px;
-        }}
-        .modal-selection-summary {{
-            top: 38px;
+            position: relative;
+            margin: 0;
+            max-width: none;
+            max-height: none;
+            flex: 0 0 auto;
+            z-index: 4;
         }}
         .umap-toggle, .legend-toggle, .graph-toggle {{
             background: var(--input-bg);
@@ -4051,8 +5325,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     </div>
     <div class="header">
         <div class="header-title">
-            <h1>{title}</h1>
-            <button class="info-trigger" id="info-trigger" type="button" title="Viewer info" data-help="Open viewer notes with dataset context, control tips, and usage guidance.">Info</button>
+            <div class="header-title-row">
+                <h1>{title}</h1>
+                <button class="info-trigger" id="info-trigger" type="button" title="Viewer info" data-help="Open viewer notes with dataset context, control tips, and usage guidance.">Info</button>
+            </div>
+            {downsample_warning_html}
             <div class="info-popover" id="info-popover" aria-hidden="true">
                 <div class="info-content">
                     {viewer_info_html}
@@ -4076,65 +5353,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         </div>
         <div class="controls">
-            <div class="control-group">
-                <label>Color:</label>
-                <select id="color-select"></select>
-            </div>
-            <div class="control-group" id="modality-control-group" style="display: none;">
-                <label>Modality:</label>
-                <select id="modality-select"></select>
-            </div>
-            <div class="control-group gene-control-group">
-                <label>Gene:</label>
-                <div class="gene-input-shell" id="gene-input-shell">
-                    <input type="text" id="gene-input" placeholder="e.g. Cd4, Gfap..." list="gene-list" autocomplete="off" spellcheck="false" aria-expanded="false" aria-controls="gene-discovery-panel">
-                    <datalist id="gene-list"></datalist>
-                    <div class="gene-discovery-panel" id="gene-discovery-panel" aria-hidden="true">
-                        <div class="gene-discovery-header">
-                            <div class="gene-discovery-title">Gene discovery</div>
-                            <div class="gene-discovery-actions">
-                                <button class="gene-panel-btn" id="gene-panel-new" type="button">New panel</button>
-                            </div>
-                        </div>
-                        <div id="gene-discovery-content"></div>
-                    </div>
-                </div>
-            </div>
-            <div class="control-group" id="expression-scale-section" style="display: none;">
-                <label>Scale:</label>
-                <div class="scale-controls">
-                    <input type="number" id="expr-vmin" step="0.001" placeholder="min">
-                    <span class="scale-sep">to</span>
-                    <input type="number" id="expr-vmax" step="0.001" placeholder="max">
-                    <button class="legend-btn" id="expr-auto" type="button">Auto (1-99%)</button>
-                    <select id="expr-colormap" title="Colormap used for gene expression and continuous metadata" style="font-size:11px; padding:3px 4px; border:1px solid var(--border-color); border-radius:4px; background:var(--input-bg); color:var(--text-color);"></select>
-                </div>
-                <div class="scale-hint" id="expr-scale-hint">Auto scale: 1-99 percentile.</div>
-            </div>
-            <div class="control-group" id="overview-gene-view-block" style="display: none;">
-                <label>Gene view:</label>
-                <select id="overview-gene-view-mode" title="Choose how active gene expression is rendered in the overview panels">
-                    <option value="cells">Cells</option>
-                    <option value="density">Density</option>
-                    <option value="both">Both</option>
-                </select>
-            </div>
-            <div class="control-group">
-                <label>Size:</label>
-                <div class="size-control">
-                    <button class="size-step" id="spot-size-dec" type="button">−</button>
-                    <input type="range" id="spot-size" min="0.01" max="5" step="0.01" value="{spot_size}" style="width:80px">
-                    <button class="size-step" id="spot-size-inc" type="button">+</button>
-                </div>
-            </div>
-            <div class="control-group">
-                <label>Cells:</label>
-                <div class="size-control">
-                    <button class="size-step" id="cell-opacity-dec" type="button">−</button>
-                    <input type="range" id="cell-opacity" min="0" max="100" step="1" value="100" style="width:80px" title="Cell opacity — fades the cells in every panel and the modal (e.g. to see an H&amp;E / DAPI overlay through them)">
-                    <button class="size-step" id="cell-opacity-inc" type="button">+</button>
-                </div>
-            </div>
             <div class="control-group" id="global-overlay-group" style="display: none;">
                 <label>Overlay:</label>
                 <select id="global-overlay-select" title="Switch the overlay image (e.g. DAPI / H&amp;E) for every section at once"></select>
@@ -4142,15 +5360,128 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <button class="graph-toggle" id="show-hidden-sections-btn" title="Show all hidden sections" style="display: none;">
                 Show hidden
             </button>
-            <button class="graph-toggle" id="annotations-overview-toggle" title="Show polygon annotations in the overview" style="display: none;">
-                Annotations
+            <div class="toolbar-actions">
+                <div class="toolbar-menu-wrap" id="screenshot-menu-wrap">
+                    <button class="icon-btn" id="screenshot-btn" type="button" title="Screenshot options" aria-expanded="false" aria-controls="screenshot-menu" data-help="Open screenshot parameters before downloading a PNG of the current main viewer layout.">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg>
+                    </button>
+                    <div class="toolbar-popover" id="screenshot-menu" aria-hidden="true">
+                        <div class="toolbar-popover-title">Screenshot</div>
+                        <div class="screenshot-options">
+                            <div class="screenshot-target-switch" role="group" aria-label="Screenshot target">
+                                <button class="screenshot-target-btn active" id="screenshot-target-grid" type="button" data-screenshot-target="grid">Grid</button>
+                                <button class="screenshot-target-btn" id="screenshot-target-screen" type="button" data-screenshot-target="screen">Screen</button>
+                            </div>
+                            <label for="screenshot-res">Size</label>
+                            <select id="screenshot-res" title="Screenshot resolution multiplier" style="font-size:11px; padding:3px 2px; border:1px solid var(--border-color); border-radius:4px; background:var(--input-bg); color:var(--text-color);">
+                                <option value="1">1x</option>
+                                <option value="2" selected>2x</option>
+                                <option value="4">4x</option>
+                            </select>
+                            <label for="screenshot-transparent-bg">Transparent</label>
+                            <input type="checkbox" id="screenshot-transparent-bg" title="Export screenshot with transparent background (no fill)" style="cursor:pointer;">
+                            <button class="export-btn toolbar-action-row" id="screenshot-download-btn" type="button">Download screenshot</button>
+                        </div>
+                    </div>
+                </div>
+                <button class="icon-btn" id="save-session-btn" type="button" title="Save current viewer state (rotations, annotations, color/gene, hidden categories, spotlight, samples view) to a JSON file" aria-label="Save session">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
+                </button>
+                <button class="icon-btn" id="load-session-btn" type="button" title="Load a previously saved session JSON file" aria-label="Load session">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m17 8-5-5-5 5"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path></svg>
+                </button>
+                <input type="file" id="load-session-input" accept="application/json,.json" style="display:none">
+                <div class="toolbar-menu-wrap" id="export-menu-wrap">
+                    <button class="icon-btn" id="export-menu-toggle" type="button" title="Export options" aria-expanded="false" aria-controls="export-menu">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M12 18v-6"></path><path d="m9 15 3 3 3-3"></path></svg>
+                    </button>
+                    <div class="toolbar-popover" id="export-menu" aria-hidden="true">
+                        <div class="toolbar-popover-title">Export</div>
+                        <button class="graph-toggle toolbar-action-row" id="cluster-annotations-export" type="button" title="Export cluster annotations and colors (renamed labels + palette) as JSON">
+                            Export clusters
+                        </button>
+                        <button class="export-btn toolbar-action-row" id="export-data-btn" type="button" title="Export data as a .tar.gz bundle (obs.csv, var.csv, X.csv, spatial.csv, umap.csv + README) for rebuilding an AnnData object in Python">
+                            Export data
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light mode" data-help="Switch between light and dark themes.">
+                <span id="theme-icon">{theme_icon}</span>
             </button>
-            <button class="graph-toggle" id="annotations-overview-export" title="Export all polygon annotations as JSON" style="display: none;">
-                Export annotations
-            </button>
-            <button class="graph-toggle" id="cluster-annotations-export" title="Export cluster annotations and colors (renamed labels + palette) as JSON">
-                Export clusters
-            </button>
+            <div class="stats"><span id="stats-text"></span></div>
+        </div>
+    </div>
+
+    <div class="visual-params-bar" id="visual-params-bar">
+        <div class="visual-mode-switch" role="group" aria-label="Main view mode">
+            <button class="visual-mode-btn active" id="overview-mode-default" type="button" data-overview-mode="default">Default</button>
+            <button class="visual-mode-btn" id="overview-mode-split" type="button" data-overview-mode="split">Split</button>
+        </div>
+        <div class="visual-default-controls color-mode" id="visual-default-controls">
+            <div class="visual-source-switch" role="group" aria-label="Default view source">
+                <button class="visual-source-btn active" id="default-source-color" type="button" data-default-source="color">Color</button>
+                <button class="visual-source-btn" id="default-source-gene" type="button" data-default-source="gene">Gene</button>
+            </div>
+            <div class="visual-color-controls" id="visual-color-controls">
+                <div class="control-group">
+                    <label class="sr-only" for="color-select">Color</label>
+                    <select id="color-select"></select>
+                </div>
+            </div>
+            <div class="visual-gene-controls" id="visual-gene-controls">
+                <div class="control-group" id="modality-control-group" style="display: none;">
+                    <label>Modality:</label>
+                    <select id="modality-select"></select>
+                </div>
+                <div class="control-group gene-control-group">
+                    <label class="sr-only" for="gene-input">Gene</label>
+                    <div class="gene-input-shell" id="gene-input-shell">
+                        <input type="text" id="gene-input" placeholder="e.g. Cd4, Gfap..." list="gene-list" autocomplete="off" spellcheck="false" aria-expanded="false" aria-controls="gene-discovery-panel">
+                        <datalist id="gene-list"></datalist>
+                        <div class="gene-discovery-panel" id="gene-discovery-panel" aria-hidden="true">
+                            <div class="gene-discovery-header">
+                                <div class="gene-discovery-title">Gene discovery</div>
+                                <div class="gene-discovery-actions">
+                                    <button class="gene-panel-btn" id="gene-panel-new" type="button">New panel</button>
+                                </div>
+                            </div>
+                            <div id="gene-discovery-content"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="overview-blend-panel" id="overview-blend-panel">
+            <div class="overview-blend-row">
+                <span class="overview-blend-side">A</span>
+                <select id="overview-blend-a-kind"></select>
+                <select id="overview-blend-a-color"></select>
+                <select id="overview-blend-a-category"></select>
+                <input type="text" id="overview-blend-a-gene" list="overview-blend-a-gene-list" placeholder="Gene symbol" style="display:none;">
+                <datalist id="overview-blend-a-gene-list"></datalist>
+            </div>
+            <div class="overview-blend-row">
+                <span class="overview-blend-side">B</span>
+                <select id="overview-blend-b-kind"></select>
+                <select id="overview-blend-b-color"></select>
+                <select id="overview-blend-b-category"></select>
+                <input type="text" id="overview-blend-b-gene" list="overview-blend-b-gene-list" placeholder="Gene symbol" style="display:none;">
+                <datalist id="overview-blend-b-gene-list"></datalist>
+            </div>
+            <div class="overview-blend-row">
+                <svg class="overview-blend-icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 12h18"></path></svg>
+                <span id="overview-blend-mix-label" class="sr-only">A left 50% / B right 50%</span>
+                <input type="range" id="overview-blend-mix" min="0" max="100" step="1" value="50" style="width:100px;">
+            </div>
+        </div>
+        <div class="visual-nav-actions">
+            <div class="umap-selection-info" id="umap-selection-info" style="display: none;">
+                <span id="umap-selection-info-text">No cells selected</span>
+                <button class="umap-selection-clear" id="umap-selection-clear" type="button" title="Clear selected cells" aria-label="Clear selected cells">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                </button>
+            </div>
             <button class="umap-toggle" id="umap-toggle" title="Toggle UMAP view" data-help="Show or hide the UMAP panel for a global embedding view with shared selection tools." style="display: none;">
                 UMAP
             </button>
@@ -4160,69 +5491,139 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <button class="color-toggle" id="color-toggle" title="Toggle insights panel" data-help="Insights opens Overview, Genes, Compare, and Neighbors views for the current dataset and selection state.">
                 Insights
             </button>
-            <button class="graph-toggle" id="overview-blend-toggle" title="Compare two variables side by side across all sections">
-                Split
-            </button>
-            <button class="export-btn" id="screenshot-btn" title="Download screenshot" data-help="Download a PNG screenshot of the current main viewer layout.">
-                Screenshot
-            </button>
-            <select id="screenshot-res" title="Screenshot resolution multiplier" style="font-size:11px; padding:3px 2px; border:1px solid var(--border-color); border-radius:4px; background:var(--input-bg); color:var(--text-color);">
-                <option value="1">1x</option>
-                <option value="2" selected>2x</option>
-                <option value="4">4x</option>
-            </select>
-            <label style="font-size:11px; display:flex; align-items:center; gap:3px; cursor:pointer;" title="Export screenshot with transparent background (no fill)">
-                <input type="checkbox" id="screenshot-transparent-bg" style="cursor:pointer;">
-                Transparent
-            </label>
-            <button class="export-btn" id="save-session-btn" title="Save current viewer state (rotations, annotations, color/gene, hidden categories, spotlight, samples view) to a JSON file">
-                Save session
-            </button>
-            <button class="export-btn" id="load-session-btn" title="Load a previously saved session JSON file">
-                Load session
-            </button>
-            <input type="file" id="load-session-input" accept="application/json,.json" style="display:none">
-            <button class="export-btn" id="export-data-btn" title="Export data as a .tar.gz bundle (obs.csv, var.csv, X.csv, spatial.csv, umap.csv + README) for rebuilding an AnnData object in Python">
-                Export data
-            </button>
-            <button class="theme-toggle" id="theme-toggle" title="Toggle dark/light mode" data-help="Switch between light and dark themes.">
-                <span id="theme-icon">{theme_icon}</span>
-            </button>
         </div>
-        <div class="stats"><span id="stats-text"></span></div>
     </div>
-
     <div class="filter-bar" id="filter-bar"></div>
-    <div class="overview-blend-panel" id="overview-blend-panel">
-        <div class="overview-blend-row">
-            <span class="overview-blend-side">A</span>
-            <select id="overview-blend-a-kind"></select>
-            <select id="overview-blend-a-color"></select>
-            <select id="overview-blend-a-category"></select>
-            <input type="text" id="overview-blend-a-gene" list="overview-blend-a-gene-list" placeholder="Gene symbol" style="display:none;">
-            <datalist id="overview-blend-a-gene-list"></datalist>
-        </div>
-        <div class="overview-blend-row">
-            <span class="overview-blend-side">B</span>
-            <select id="overview-blend-b-kind"></select>
-            <select id="overview-blend-b-color"></select>
-            <select id="overview-blend-b-category"></select>
-            <input type="text" id="overview-blend-b-gene" list="overview-blend-b-gene-list" placeholder="Gene symbol" style="display:none;">
-            <datalist id="overview-blend-b-gene-list"></datalist>
-        </div>
-        <div class="overview-blend-row">
-            <span class="overview-blend-side">Split</span>
-            <span id="overview-blend-mix-label" style="font-size:10px;color:var(--muted-color);">A left 50% / B right 50%</span>
-            <input type="range" id="overview-blend-mix" min="0" max="100" step="1" value="50" style="width:100px;">
-        </div>
-    </div>
 
     <div class="main-container">
         <div class="content-column" id="content-column">
-            <div class="grid-container" id="grid"></div>
+            <div class="grid-stage" id="grid-stage">
+                <div class="grid-side-toolbar" id="grid-side-toolbar">
+                    <button class="visual-params-toggle" id="visual-params-toggle" type="button" title="Visual parameters" aria-expanded="false" aria-controls="visual-params-panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="bubbles"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg>
+                    </button>
+                    <button class="gene-params-toggle hidden" id="gene-params-toggle" type="button" title="Gene parameters" aria-expanded="false" aria-controls="gene-params-panel">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"></line><line x1="10" x2="3" y1="4" y2="4"></line><line x1="21" x2="12" y1="12" y2="12"></line><line x1="8" x2="3" y1="12" y2="12"></line><line x1="21" x2="16" y1="20" y2="20"></line><line x1="12" x2="3" y1="20" y2="20"></line><line x1="14" x2="14" y1="2" y2="6"></line><line x1="8" x2="8" y1="10" y2="14"></line><line x1="16" x2="16" y1="18" y2="22"></line></svg>
+                    </button>
+                    <div class="visual-params-panel" id="visual-params-panel">
+                        <div class="visual-params-title">Visual parameters</div>
+                        <div class="visual-param-row">
+                            <label>Size</label>
+                            <div class="size-control">
+                                <input type="range" id="spot-size" min="0.01" max="{spot_slider_max}" step="0.01" value="{spot_size}" style="width:118px">
+                            </div>
+                        </div>
+                        <div class="visual-param-row">
+                            <label>Opacity</label>
+                            <div class="size-control">
+                                <input type="range" id="cell-opacity" min="0" max="100" step="1" value="100" style="width:118px" title="Cell opacity — fades the cells in every panel and the modal (e.g. to see an H&amp;E / DAPI overlay through them)">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="visual-spatial-tools" id="visual-spatial-tools">
+                        <button class="umap-btn icon-only active" id="umap-pan-btn" title="Move around cells" aria-label="Move around cells">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0"></path><path d="M14 10V4a2 2 0 0 0-4 0v6"></path><path d="M10 10.5V6a2 2 0 0 0-4 0v8"></path><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6.5-2.8L2 16a2.3 2.3 0 0 1 3.2-3.3L7 14"></path></svg>
+                        </button>
+                        <button class="umap-btn icon-only" id="umap-lasso-btn" title="Select cells" aria-label="Select cells">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 22a5 5 0 0 1-2-4"></path><path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1"></path><path d="M5 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0"></path></svg>
+                        </button>
+                        <div class="umap-tool-wrap" id="umap-compare-wrap">
+                            <button class="umap-btn icon-only" id="umap-compare-toggle" type="button" title="Compare with a second region" aria-label="Compare with a second region">
+                                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>
+                            </button>
+                            <div class="umap-compare-hint" id="umap-compare-hint">Draw Region B with the lasso tool.</div>
+                        </div>
+                        <div class="umap-tool-wrap" id="umap-query-wrap">
+                            <button class="umap-btn icon-only" id="umap-query-toggle" type="button" title="Find cells by query" aria-label="Find cells by query">
+                                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" x2="18" y1="12" y2="12"></line><line x1="6" x2="2" y1="12" y2="12"></line><line x1="12" x2="12" y1="6" y2="2"></line><line x1="12" x2="12" y1="22" y2="18"></line></svg>
+                            </button>
+                            <div class="umap-selection-query-panel" id="umap-selection-query-panel"></div>
+                        </div>
+                    </div>
+                    <button class="focused-modal-tool-toggle" id="focused-modal-annotation-toggle" type="button" title="Polygon annotation" aria-label="Polygon annotation" aria-expanded="false" aria-controls="modal-annotation-section">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="hexagon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                    </button>
+                    <button class="focused-modal-tool-toggle hidden" id="focused-modal-neighbor-toggle" type="button" title="Neighbor hops" aria-label="Neighbor hops" data-modal-control-target="modal-neighbor-hover-toggle">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="bubbles"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg>
+                    </button>
+                    <button class="focused-modal-tool-toggle hidden" id="focused-modal-graph-toggle" type="button" title="Graph edges" aria-label="Graph edges" data-modal-control-target="modal-graph-toggle">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="network" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path></svg>
+                    </button>
+                    <button class="focused-modal-tool-toggle" id="focused-modal-he-toggle" type="button" title="H&amp;E options" aria-label="H&amp;E options" data-modal-control-target="he-overlay">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="microscope"><path d="M6 18h8"></path><path d="M3 22h18"></path><path d="M14 22a7 7 0 0 0 7-7h-4a3 3 0 0 1-3 3"></path><path d="M9 14h2"></path><path d="M8 6h4"></path><path d="M6 10h8"></path><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"></path><path d="M6 10v4a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2v-4"></path></svg>
+                    </button>
+                    <div class="gene-params-panel" id="gene-params-panel">
+                        <div class="visual-params-title">Gene parameters</div>
+                        <div class="gene-param-section">
+                            <div class="gene-param-section-title">Scale</div>
+                            <div class="control-group" id="expression-scale-section" style="display: none;">
+                                <div class="scale-controls">
+                                    <input type="number" id="expr-vmin" step="0.001" placeholder="min">
+                                    <span class="scale-sep">to</span>
+                                    <input type="number" id="expr-vmax" step="0.001" placeholder="max">
+                                    <button class="legend-btn" id="expr-auto" type="button">Auto (1-99%)</button>
+                                </div>
+                            </div>
+                            <div class="control-group" id="split-expression-scale-section" style="display: none;">
+                                <div class="split-scale-controls" id="split-scale-a" style="display: none;">
+                                    <span class="split-scale-side split-legend-side-a">A</span>
+                                    <input type="number" id="split-a-vmin" step="0.001" placeholder="min">
+                                    <span class="scale-sep">to</span>
+                                    <input type="number" id="split-a-vmax" step="0.001" placeholder="max">
+                                    <button class="legend-btn" id="split-a-auto" type="button">Auto</button>
+                                    <button class="legend-btn split-propagate-btn" id="split-a-propagate" type="button">Propagate</button>
+                                </div>
+                                <div class="split-scale-controls" id="split-scale-b" style="display: none;">
+                                    <span class="split-scale-side split-legend-side-b">B</span>
+                                    <input type="number" id="split-b-vmin" step="0.001" placeholder="min">
+                                    <span class="scale-sep">to</span>
+                                    <input type="number" id="split-b-vmax" step="0.001" placeholder="max">
+                                    <button class="legend-btn" id="split-b-auto" type="button">Auto</button>
+                                    <button class="legend-btn split-propagate-btn" id="split-b-propagate" type="button">Propagate</button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="gene-param-section">
+                            <div class="gene-param-section-title">Color</div>
+                            <div class="control-group" id="expression-color-section" style="display: none;">
+                                <select id="expr-colormap" title="Colormap used for gene expression and continuous metadata" style="font-size:11px; padding:3px 4px; border:1px solid var(--border-color); border-radius:4px; background:var(--input-bg); color:var(--text-color);"></select>
+                            </div>
+                        </div>
+                        <div class="gene-param-section">
+                            <div class="gene-param-section-title">View</div>
+                            <div class="control-group" id="overview-gene-view-block" style="display: none;">
+                                <select id="overview-gene-view-mode" title="Choose how active gene expression is rendered in the overview panels">
+                                    <option value="cells">Cells</option>
+                                    <option value="density">Density</option>
+                                    <option value="both">Both</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid-container" id="grid"></div>
+            </div>
             <div class="umap-panel dock-top-right" id="umap-panel">
                 <div class="umap-header">
-                    <h3>UMAP</h3>
+                    <div class="umap-header-tools">
+                        <div class="umap-tool-wrap" id="umap-params-wrap">
+                            <button class="umap-btn icon-only" id="umap-params-toggle" type="button" title="UMAP visual parameters" aria-label="UMAP visual parameters">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="bubbles" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg>
+                            </button>
+                            <div class="umap-params-panel" id="umap-params-panel">
+                                <label class="umap-param-row" for="umap-spot-size">
+                                    <span>Size</span>
+                                    <input type="range" id="umap-spot-size" min="0.01" max="6" step="0.01" value="2">
+                                    <span class="umap-param-value" id="umap-spot-size-label">2.00</span>
+                                </label>
+                                <label class="umap-param-row" for="umap-cell-opacity">
+                                    <span>Opacity</span>
+                                    <input type="range" id="umap-cell-opacity" min="5" max="100" step="1" value="100">
+                                    <span class="umap-param-value" id="umap-cell-opacity-label">100%</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
                     <div class="umap-header-actions">
                         <button class="umap-btn" id="umap-dock-btn" title="Cycle panel corner">TR</button>
                         <button class="umap-btn" id="umap-panel-smaller" title="Smaller panel">−</button>
@@ -4231,19 +5632,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
                 <div class="umap-canvas-container" id="umap-canvas-container">
                     <canvas class="umap-canvas" id="umap-canvas"></canvas>
-                    <div class="umap-controls">
-                        <button class="umap-btn" id="magic-wand-btn" title="Draw to select cells">Magic Wand</button>
-                        <button class="umap-btn" id="clear-selection-btn" title="Clear selection">Clear</button>
-                        <span style="margin-left: 6px; font-size: 11px; color: var(--muted-color);">Size:</span>
-                        <div class="size-control">
-                            <button class="size-step" id="umap-spot-size-dec" type="button">−</button>
-                            <input type="range" id="umap-spot-size" min="0.01" max="6" step="0.01" value="2" style="width: 60px;">
-                            <button class="size-step" id="umap-spot-size-inc" type="button">+</button>
-                        </div>
-                        <span id="umap-spot-size-label" style="font-size: 11px; min-width: 20px;">2</span>
-                    </div>
-                    <div class="umap-selection-info" id="umap-selection-info" style="display: none;">No cells selected</div>
-                    <div class="selection-summary umap-selection-summary" id="umap-selection-summary" style="display: none;"></div>
                 </div>
             </div>
         </div>
@@ -4287,9 +5675,41 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <h2 id="modal-title">Section</h2>
                     <span class="modal-meta" id="modal-meta"></span>
                     <span class="zoom-info" id="zoom-info">100%</span>
-                    <span class="zoom-info" id="modal-rotation-info">Rot 0 deg</span>
                 </div>
                 <div class="modal-header-actions">
+                    <div class="modal-header-tool-group" aria-label="Modal view controls">
+                        <button class="modal-header-icon" id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M11 8v6"></path><path d="M8 11h6"></path></svg>
+                        </button>
+                        <button class="modal-header-icon" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M8 11h6"></path></svg>
+                        </button>
+                        <span class="zoom-info" id="modal-rotation-info">Rot 0 deg</span>
+                        <button class="modal-header-icon" id="modal-rotate-left" type="button" title="Rotate section −45°" aria-label="Rotate section −45°">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                        </button>
+                        <button class="modal-header-icon" id="modal-rotate-right" type="button" title="Rotate section +45°" aria-label="Rotate section +45°">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
+                        </button>
+                        <button class="modal-header-icon" id="modal-visual-params-toggle" type="button" title="Modal visual parameters" aria-label="Modal visual parameters" aria-expanded="false" aria-controls="modal-visual-params-panel">
+                            <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="bubbles"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg>
+                        </button>
+                        <div class="modal-visual-params-panel" id="modal-visual-params-panel">
+                            <div class="visual-params-title">Modal visual parameters</div>
+                            <div class="visual-param-row">
+                                <label>Size</label>
+                                <div class="size-control">
+                                    <input type="range" id="modal-spot-size" min="0.01" max="{modal_spot_slider_max}" step="0.01" value="{modal_spot_size}" style="width:118px;">
+                                </div>
+                            </div>
+                            <div class="visual-param-row">
+                                <label>Opacity</label>
+                                <div class="size-control">
+                                    <input type="range" id="modal-cell-opacity" min="0" max="100" step="1" value="100" style="width:118px;">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <button class="modal-controls-toggle" id="modal-controls-toggle" type="button">Hide tools</button>
                     <button class="modal-close" id="modal-close">&times;</button>
                 </div>
@@ -4297,10 +5717,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="modal-body">
                 <div class="modal-canvas-container" id="modal-canvas-container">
                     <canvas class="modal-canvas" id="modal-canvas"></canvas>
-                    <div class="modal-selection-info" id="modal-selection-info">No cells selected</div>
-                    <div class="selection-summary modal-selection-summary" id="modal-selection-summary">
-                        <div class="selection-summary-meta">Draw a region with Magic Wand to inspect selected cells.</div>
-                    </div>
                     <div class="modal-gene-panel" id="modal-gene-panel" aria-hidden="true">
                         <div class="modal-gene-panel-header">
                             <div class="modal-gene-panel-title">Genes in selection</div>
@@ -4359,39 +5775,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                         <div class="modal-blend-meta" id="modal-blend-meta"></div>
                     </div>
-                    <div class="modal-annotation-panel" id="modal-annotation-panel">
-                        <div class="modal-annotation-title">Polygon Annotations</div>
-                        <div class="modal-annotation-actions">
-                            <button id="modal-annotations-export" type="button" title="Export all polygon annotations as JSON">Export JSON</button>
-                            <button id="modal-annotations-clear-section" type="button" title="Delete annotations in this section">Clear section</button>
-                            <button id="modal-annotations-clear-all" type="button" title="Delete all annotations">Clear all</button>
-                        </div>
-                        <div class="modal-annotation-list" id="modal-annotation-list">
-                            <div class="modal-annotation-empty">Enable Annotate and draw a region to create polygon annotations.</div>
-                        </div>
-                    </div>
                     <div class="modal-controls">
-                        <div class="modal-control-group" data-modal-group="view">
-                            <div class="modal-control-group-title">View</div>
-                            <div class="modal-control-group-body">
-                                <button id="zoom-in" type="button" title="Zoom in">+</button>
-                                <button id="zoom-out" type="button" title="Zoom out">−</button>
-                                <button id="zoom-reset" type="button" title="Reset zoom and pan">Fit</button>
-                                <button id="modal-rotate-left" type="button" title="Rotate section −45°">↺</button>
-                                <button id="modal-rotate-right" type="button" title="Rotate section +45°">↻</button>
-                                <button id="modal-rotate-reset" type="button" title="Reset section rotation">0°</button>
-                            </div>
-                        </div>
-                        <div class="modal-control-group" data-modal-group="tools">
-                            <div class="modal-control-group-title">Tools</div>
-                            <div class="modal-control-group-body">
-                                <button class="graph-toggle" id="modal-blend-toggle" type="button" title="Split the view between two selected variables">Split</button>
-                                <button class="graph-toggle" id="modal-magic-wand-btn" type="button" title="Draw to select cells in this section">Select</button>
-                                <button class="graph-toggle" id="modal-annotate-btn" type="button" title="Draw persistent polygon annotations in this section">Annotate</button>
-                                <button class="graph-toggle" id="modal-type-toggle" type="button" title="Select a category by clicking a cell">Pick type</button>
-                                <button class="graph-toggle" id="modal-type-clear" type="button" title="Clear selected type" hidden>Clear type</button>
-                            </div>
-                        </div>
                         <div class="modal-control-group" data-modal-group="graph" hidden>
                             <div class="modal-control-group-title">Graph</div>
                             <div class="modal-control-group-body">
@@ -4403,38 +5787,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                     <option value="3">3-hop</option>
                                     <option value="all" selected>All hops</option>
                                 </select>
-                            </div>
-                        </div>
-                        <div class="modal-control-group" data-modal-group="color">
-                            <div class="modal-control-group-title">Color by</div>
-                            <div class="modal-control-group-body">
-                                <select id="modal-color-select" title="Change the active color column (updates the whole viewer)"></select>
-                                <input type="text" id="modal-gene-input" list="gene-list" placeholder="Gene..." autocomplete="off" spellcheck="false" title="Type a gene name and press Enter to color by expression (updates the whole viewer)" style="max-width: 110px;">
-                                <button class="graph-toggle" id="modal-gene-clear" type="button" title="Clear active gene">Clear gene</button>
-                            </div>
-                        </div>
-                        <div class="modal-control-group" data-modal-group="actions">
-                            <div class="modal-control-group-title">Actions</div>
-                            <div class="modal-control-group-body">
-                                <button class="graph-toggle" id="modal-screenshot-btn" type="button" title="Download screenshot of this sample view (transparent bg if checked in toolbar)">Screenshot</button>
-                                <button class="graph-toggle" id="modal-clear-selection-btn" type="button" title="Clear selected cells" hidden>Clear sel.</button>
-                                <button class="graph-toggle" id="modal-exit-subview-btn" type="button" title="Return to the full section view" hidden>Back view</button>
-                                <div class="modal-gene-view-block" id="modal-gene-view-block" hidden>
-                                    <span class="modal-gene-view-label">Gene view</span>
-                                    <select id="modal-gene-view-mode" title="Choose how active gene expression is rendered in the sample view">
-                                        <option value="cells">Cells</option>
-                                        <option value="density">Density</option>
-                                        <option value="both">Both</option>
-                                    </select>
-                                </div>
-                                <div class="modal-size-block">
-                                    <div class="size-control">
-                                        <button class="size-step" id="modal-spot-size-dec" type="button">−</button>
-                                        <input type="range" id="modal-spot-size" min="0.01" max="5" step="0.01" value="{spot_size}" style="width: 60px;">
-                                        <button class="size-step" id="modal-spot-size-inc" type="button">+</button>
-                                    </div>
-                                    <span class="modal-size-value" id="modal-spot-size-label">{spot_size}</span>
-                                </div>
                             </div>
                         </div>
                         <div class="modal-control-group" data-modal-group="he-overlay">
@@ -4452,15 +5804,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                             <button class="size-step" id="modal-he-opacity-inc" type="button">+</button>
                                         </div>
                                         <input type="number" id="modal-he-opacity-num" min="0" max="100" step="1" value="50" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
-                                    </div>
-                                    <div style="display: flex; gap: 3px; align-items: center;">
-                                        <label style="font-size: 10px; color: var(--muted-color);">Cells</label>
-                                        <div class="size-control">
-                                            <button class="size-step" id="modal-cell-opacity-dec" type="button">−</button>
-                                            <input type="range" id="modal-cell-opacity" min="0" max="100" step="1" value="100" style="width: 60px;">
-                                            <button class="size-step" id="modal-cell-opacity-inc" type="button">+</button>
-                                        </div>
-                                        <input type="number" id="modal-cell-opacity-num" min="0" max="100" step="1" value="100" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
                                     </div>
                                     <button class="graph-toggle" id="modal-he-load-btn" type="button" title="Load an H&amp;E / histology image for this section">Load image</button>
                                     <button class="graph-toggle" id="modal-he-align-btn" type="button" title="Show alignment tools: drag to reposition, scale, rotate, flip" aria-expanded="false">Align ▾</button>
@@ -4501,7 +5844,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                     </div>
                 </div>
-                <div class="modal-legend" id="modal-legend"></div>
             </div>
         </div>
     </div>
@@ -4621,18 +5963,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function getActiveModalityDescriptor() {{
         return MODALITY_DESCRIPTORS.find(d => d && d.name === CURRENT_MODALITY) || null;
     }}
+    function getLoadedFeaturesForModality(modality = CURRENT_MODALITY) {{
+        const meta = (modality === CURRENT_MODALITY || (modality === 'gene' && CURRENT_MODALITY === 'rna'))
+            ? DATA.genes_meta
+            : (MODALITY_GENE_STATE[modality]?.genes_meta);
+        return Object.keys(meta || {{}}).sort((a, b) => a.localeCompare(b));
+    }}
     function getActiveFeatureList() {{
-        if (MODALITY_DESCRIPTORS.length && FEATURES_BY_MODALITY[CURRENT_MODALITY]) {{
-            return FEATURES_BY_MODALITY[CURRENT_MODALITY];
-        }}
-        return DATA.available_genes || [];
+        return getLoadedFeaturesForModality(CURRENT_MODALITY);
     }}
     function isActiveModalityIntensity() {{
         const desc = getActiveModalityDescriptor();
         return desc?.value_kind === 'intensity';
     }}
 
-    // Rebuilt on modality switch. Initialized to the default modality (or DATA.available_genes for legacy datasets).
+    // Rebuilt on modality switch. UI-facing gene choices are restricted to features loaded into the HTML.
     let AVAILABLE_GENE_SET = new Set(getActiveFeatureList());
     let GENE_NAME_BY_LOWER = new Map(
         getActiveFeatureList().map(gene => [String(gene).toLowerCase(), gene])
@@ -4729,6 +6074,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     let screenshotDprOverride = null;
     let screenshotTransparentBg = false;
+    let screenshotTarget = 'grid';
     function getRenderDpr() {{
         if (screenshotDprOverride) return screenshotDprOverride;
         const dpr = window.devicePixelRatio || 1;
@@ -5019,6 +6365,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let overviewGeneRenderMode = 'cells';
     const geneScaleOverrides = {{}};
     const geneScaleAuto = {{}};
+    function updateGeneParamsButtonState() {{}}
     const GENE_SCALE_PMIN = 1;
     const GENE_SCALE_PMAX = 99;
     const GENE_SCALE_MAX_SAMPLES = 200000;
@@ -5036,7 +6383,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const hiddenSections = new Set();
     let currentTheme = '{initial_theme}';
     let showGraph = false;
-    let showOverviewAnnotations = false;
+    let modalHeOptionsVisible = false;
     let showScalebar = true;
     let cellDrawOrder = 'default';
     let hoverNeighbors = null;
@@ -5091,6 +6438,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let insightsGenesTab = 'markers';
     let insightsCompareTab = 'groups';
     let insightsNeighborsTab = 'enrichment';
+    let insightsMode = 'exploration';
     let riverLeftColumn = null;
     let riverRightColumn = null;
     let geneDistributionGroupBy = '';
@@ -5122,9 +6470,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     // Modal state
     let modalSection = null;
+    let modalInlineActive = false;
     let modalZoom = 1;
     let modalPanX = 0, modalPanY = 0;
-    let modalSpotSize = {spot_size};
+    let modalSpotSize = {modal_spot_size};
     let modalSpacePanActive = false;
     let modalGeneRenderMode = 'cells';
     let isDragging = false;
@@ -5142,6 +6491,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let modalAnnotationPath = [];  // Array of {{x, y}} points in modal canvas space
     let modalAnnotations = [];
     let modalNextAnnotationId = 1;
+    let updateModalCanvasCursor = () => {{}};
     let modalBlendEnabled = false;
     let modalBlendMix = 0.5;  // Split position from left: 0 = all B, 1 = all A
     let modalBlendMarkersCollapsed = true;
@@ -5150,12 +6500,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let isDraggingModalControls = false;
     let modalControlsDragOffsetX = 0;
     let modalControlsDragOffsetY = 0;
-    let modalAnnotationPanelCustomPosition = null;
-    let isDraggingModalAnnotationPanel = false;
-    let modalAnnotationPanelDragOffsetX = 0;
-    let modalAnnotationPanelDragOffsetY = 0;
     let modalRenderedView = null;
     let modalInteractionCommitTimer = null;
+    let modalResizeObserver = null;
+    let modalResizeRenderFrame = null;
     let modalBlendRenderFrame = null;
     let modalBlendRenderCache = null;
     let modalGeneDensityCache = null;
@@ -5172,7 +6520,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         opts = opts || {{}};
         cellOpacity = Math.max(0, Math.min(1, v));
         const pct = Math.round(cellOpacity * 100);
-        ['cell-opacity', 'modal-cell-opacity', 'modal-cell-opacity-num'].forEach((id) => {{
+        ['cell-opacity', 'modal-cell-opacity'].forEach((id) => {{
             const el = document.getElementById(id);
             if (el && el !== opts.skip) el.value = String(pct);
         }});
@@ -5196,6 +6544,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         a: {{ kind: 'cell', color: null, category: null, gene: '' }},
         b: {{ kind: 'cell', color: null, category: null, gene: '' }},
     }};
+    let overviewBlendGeneScaleOverrides = {{
+        a: null,
+        b: null,
+    }};
 
     const MODAL_ANNOTATION_COLORS = [
         '#ff7f50', '#2a9d8f', '#ffd166', '#ef476f', '#06d6a0',
@@ -5207,8 +6559,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let umapZoom = 1;
     let umapPanX = 0, umapPanY = 0;
     let umapSpotSize = 2;
+    let umapCellOpacity = 1.0;
     let umapPanelDock = 'top-right';
     let umapPanelSize = 320;
+    let umapPanActive = true;
     const UMAP_PANEL_DOCKS = ['top-right', 'bottom-right', 'bottom-left', 'top-left'];
     const UMAP_PANEL_SIZE_STEP = 24;
     const UMAP_PANEL_MIN_SIZE = 220;
@@ -5223,11 +6577,38 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let magicWandActive = false;
     let isDrawingLasso = false;
     let lassoPath = [];  // Array of {{x, y}} points
+    let isDrawingGridLasso = false;
+    let gridLassoPath = [];
+    let gridLassoSectionId = null;
+    let gridLassoHandlersInitialized = false;
     let selectedCells = new Set();  // Set of "sectionId:cellIdx" strings
     let selectedCellsB = new Set();  // Second region for comparison
     let lassoModeB = false;  // Next lasso draw fills region B
+    let selectedLassoPath = [];
+    let selectedLassoPathB = [];
+    let selectedCellsFromGridLasso = false;
+    let selectedCellsBFromGridLasso = false;
+    let selectedGridLassoSectionId = null;
+    let selectedGridLassoSectionIdB = null;
+    let selectedGridLassoPath = [];
+    let selectedGridLassoPathB = [];
+    let selectedCellsFromModalLasso = false;
+    let selectedCellsBFromModalLasso = false;
+    let selectedCellsFromAnnotation = false;
+    let selectedAnnotationId = null;
+    let selectedAnnotationBId = null;
+    let selectedAnnotationSelectionColor = '#4F0433';
+    let selectedModalLassoSectionId = null;
+    let selectedModalLassoSectionIdB = null;
+    let selectedModalLassoPath = [];
+    let selectedModalLassoPathB = [];
+    let umapCompareHintTimeout = null;
+    const UMAP_LASSO_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 22a5 5 0 0 1-2-4"></path><path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1"></path><path d="M5 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0"></path></svg>';
+    const UMAP_CLEAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>';
+    const UMAP_COMPARE_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>';
     let selectionSummaryColor = DATA.initial_color;
     let selectionSummaryExpanded = false;
+    let selectionSectionSummaryExpanded = false;
     let selectionSummaryMinimized = false;
     const MAX_SELECTION_QUERY_MATCHES = 150000;
     let selectionQueryExpanded = false;
@@ -5536,23 +6917,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!titleEl || !metaEl) return;
         if (!modalSection) {{
             titleEl.textContent = 'Section';
-            metaEl.textContent = '';
+            metaEl.innerHTML = '';
             return;
         }}
         titleEl.textContent = modalSubview ? `${{modalSection.id}} • Focused view` : modalSection.id;
         const metaParts = Object.entries(modalSection.metadata || {{}})
-            .map(([k, v]) => `${{formatMetadataLabel(k)}}: ${{v}}`);
+            .map(([k, v]) => `<span class="modal-meta-item">${{escapeHtml(formatMetadataLabel(k))}}: ${{renderMetadataValueTag(k, v)}}</span>`);
         if (modalSubview?.indices?.length) {{
-            metaParts.unshift(`Focused selection: ${{modalSubview.indices.length.toLocaleString()}} cells`);
+            metaParts.unshift(`<span class="modal-meta-item">Focused selection: <span class="meta-color-tag">${{modalSubview.indices.length.toLocaleString()}} cells</span></span>`);
         }}
-        metaEl.textContent = metaParts.join(' | ');
+        metaEl.innerHTML = metaParts.join('<span class="modal-meta-sep">|</span>');
     }}
 
     function activateModalSubviewFromSelection() {{
         if (!modalSection) return false;
         const nextSubview = buildModalSubviewStateFromSelection(modalSection);
         if (!nextSubview) return false;
-        selectedCellsB.clear();
+        clearRegionBSelection();
         lassoModeB = false;
         modalSubview = nextSubview;
         modalZoom = 1;
@@ -5590,8 +6971,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const legend = document.getElementById('legend');
         const btn = document.getElementById('legend-toggle');
         if (!legend || !btn) return;
-        legend.classList.toggle('collapsed');
-        btn.classList.toggle('active');
+        const willCollapse = !legend.classList.contains('collapsed');
+        if (willCollapse) {{
+            if (legend.style.width && legend.style.width !== '0px') {{
+                legend.dataset.expandedWidth = legend.style.width;
+            }}
+            legend.classList.add('collapsed');
+            legend.style.width = '0px';
+            btn.classList.remove('active');
+        }} else {{
+            legend.classList.remove('collapsed');
+            legend.style.width = legend.dataset.expandedWidth || '';
+            btn.classList.add('active');
+        }}
         const resizer = document.getElementById('legend-resizer');
         if (resizer) resizer.classList.toggle('hidden', legend.classList.contains('collapsed'));
         requestAnimationFrame(renderAllSections);
@@ -5644,6 +7036,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderActiveInsightsPanel();
         }}
         requestAnimationFrame(renderAllSections);
+    }}
+
+    function openInsightsMode(mode) {{
+        const colorToggle = document.getElementById('color-toggle');
+        const colorPanel = document.getElementById('color-panel');
+        colorPanel?.classList.remove('collapsed');
+        colorToggle?.classList.add('active');
+        setInsightsMode(mode);
     }}
 
     function navigateModalSection(step) {{
@@ -5852,9 +7252,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
+    function getModalControlsElement() {{
+        return document.querySelector('#modal .modal-controls, #grid > .modal-content .modal-controls');
+    }}
+
     function setModalControlsCollapsed(collapsed) {{
         modalControlsCollapsed = !!collapsed;
-        const controls = document.querySelector('#modal .modal-controls');
+        const controls = getModalControlsElement();
         if (controls) controls.classList.toggle('hidden', modalControlsCollapsed);
         const toggle = document.getElementById('modal-controls-toggle');
         if (toggle) toggle.textContent = modalControlsCollapsed ? 'Show tools' : 'Hide tools';
@@ -5891,7 +7295,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function applyModalControlsPosition(position) {{
-        const controls = document.querySelector('#modal .modal-controls');
+        const controls = getModalControlsElement();
         if (!controls) return;
         if (!position) {{
             controls.style.left = '50%';
@@ -5909,7 +7313,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function layoutModalControls(forceReset = false) {{
-        const controls = document.querySelector('#modal .modal-controls');
+        const controls = getModalControlsElement();
         if (!controls) return;
         if (forceReset) modalControlsCustomPosition = null;
         const bounds = getModalControlsBounds();
@@ -5927,7 +7331,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function initModalControlsDragging() {{
-        const controls = document.querySelector('#modal .modal-controls');
+        const controls = getModalControlsElement();
         const container = document.getElementById('modal-canvas-container');
         if (!controls || !container) return;
 
@@ -5976,33 +7380,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function updateModalToolbarState() {{
-        const controls = document.querySelector('#modal .modal-controls');
+        const controls = getModalControlsElement();
         if (!controls) return;
 
-        const fitBtn = document.getElementById('zoom-reset');
         const zoomInBtn = document.getElementById('zoom-in');
         const zoomOutBtn = document.getElementById('zoom-out');
         const rotateLeftBtn = document.getElementById('modal-rotate-left');
         const rotateRightBtn = document.getElementById('modal-rotate-right');
-        const rotateResetBtn = document.getElementById('modal-rotate-reset');
-        const splitBtn = document.getElementById('modal-blend-toggle');
-        const selectBtn = document.getElementById('modal-magic-wand-btn');
-        const annotateBtn = document.getElementById('modal-annotate-btn');
-        const pickTypeBtn = document.getElementById('modal-type-toggle');
-        const clearTypeBtn = document.getElementById('modal-type-clear');
-        const screenshotBtn = document.getElementById('modal-screenshot-btn');
-        const clearSelectionBtn = document.getElementById('modal-clear-selection-btn');
-        if (clearSelectionBtn) clearSelectionBtn.hidden = selectedCells.size === 0;
-        const exitSubviewBtn = document.getElementById('modal-exit-subview-btn');
-        if (exitSubviewBtn) exitSubviewBtn.hidden = !modalSubview;
-        const geneViewBlock = document.getElementById('modal-gene-view-block');
-        const geneViewModeSelect = document.getElementById('modal-gene-view-mode');
 
         const graphGroup = controls.querySelector('[data-modal-group="graph"]');
         if (graphGroup) graphGroup.hidden = !DATA.has_neighbors;
 
-        const typeToggleBtn = document.getElementById('modal-type-toggle');
-        const typeClearBtn = document.getElementById('modal-type-clear');
         const config = getColorConfig();
         const blendActive = !!getModalBlendRuntimes(modalSection);
         const typeSelectionDisabled = !modalSection || config.is_continuous || blendActive || modalAnnotationModeActive;
@@ -6012,84 +7400,49 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }} else if (modalSelectedCategory && !config.categories?.includes(modalSelectedCategory)) {{
             modalSelectedCategory = null;
         }}
-        if (typeToggleBtn) {{
-            typeToggleBtn.disabled = typeSelectionDisabled;
-            typeToggleBtn.classList.toggle('active', modalTypeSelectEnabled && !typeSelectionDisabled);
-        }}
-        if (typeClearBtn) {{
-            typeClearBtn.disabled = typeSelectionDisabled;
-            typeClearBtn.hidden = typeSelectionDisabled || !modalSelectedCategory;
-        }}
 
         const modalGraphBtn = document.getElementById('modal-graph-toggle');
         const modalNeighborBtn = document.getElementById('modal-neighbor-hover-toggle');
+        const focusedAnnotationBtn = document.getElementById('focused-modal-annotation-toggle');
+        const focusedNeighborBtn = document.getElementById('focused-modal-neighbor-toggle');
+        const focusedGraphBtn = document.getElementById('focused-modal-graph-toggle');
+        const focusedHeBtn = document.getElementById('focused-modal-he-toggle');
+        const heGroup = controls.querySelector('[data-modal-group="he-overlay"]');
         const modalHopSelect = document.getElementById('modal-neighbor-hop-select');
         if (modalGraphBtn) modalGraphBtn.hidden = !DATA.has_neighbors;
         if (modalNeighborBtn) modalNeighborBtn.hidden = !DATA.has_neighbors;
+        if (focusedGraphBtn) {{
+            focusedGraphBtn.classList.toggle('hidden', !DATA.has_neighbors || !modalInlineActive);
+            focusedGraphBtn.classList.toggle('active', !!showGraph);
+        }}
+        if (focusedNeighborBtn) {{
+            focusedNeighborBtn.classList.toggle('hidden', !DATA.has_neighbors || !modalInlineActive);
+            focusedNeighborBtn.classList.toggle('active', !!neighborHoverEnabled);
+        }}
+        if (focusedAnnotationBtn) focusedAnnotationBtn.classList.toggle('active', !!modalAnnotationModeActive);
+        if (focusedHeBtn) focusedHeBtn.classList.toggle('active', !!modalHeOptionsVisible);
+        if (heGroup) heGroup.hidden = !modalHeOptionsVisible;
         if (modalHopSelect) {{
             const showHopSelect = DATA.has_neighbors && neighborHoverEnabled;
             modalHopSelect.hidden = !showHopSelect;
             modalHopSelect.disabled = !showHopSelect;
         }}
-
-        const showGeneViewBlock = !!modalSection && !!currentGene && !blendActive;
-        if (geneViewBlock) geneViewBlock.hidden = !showGeneViewBlock;
-        if (geneViewModeSelect) {{
-            geneViewModeSelect.disabled = !showGeneViewBlock;
-            geneViewModeSelect.value = modalGeneRenderMode;
-        }}
+        const hasVisibleModalGroup = Array.from(controls.querySelectorAll('.modal-control-group'))
+            .some((group) => !group.hidden);
+        controls.classList.toggle('hidden', modalControlsCollapsed || !hasVisibleModalGroup);
 
         [
-            fitBtn,
             zoomInBtn,
             zoomOutBtn,
             rotateLeftBtn,
             rotateRightBtn,
-            rotateResetBtn,
-            splitBtn,
-            selectBtn,
-            annotateBtn,
-            pickTypeBtn,
-            clearTypeBtn,
-            screenshotBtn,
-            clearSelectionBtn,
-            exitSubviewBtn,
             modalGraphBtn,
             modalNeighborBtn,
         ].forEach((btn) => setModalButtonPriority(btn));
 
-        [rotateLeftBtn, rotateRightBtn, rotateResetBtn, screenshotBtn, modalGraphBtn, modalNeighborBtn].forEach((btn) => {{
+        [rotateLeftBtn, rotateRightBtn, modalGraphBtn, modalNeighborBtn].forEach((btn) => {{
             setModalButtonPriority(btn, 'muted');
         }});
-
-        if (clearSelectionBtn && !clearSelectionBtn.hidden) {{
-            setModalButtonPriority(clearSelectionBtn, 'danger');
-        }}
-        if (typeClearBtn && !typeClearBtn.hidden) {{
-            setModalButtonPriority(typeClearBtn, 'muted');
-        }}
-
-        if (exitSubviewBtn && !exitSubviewBtn.hidden) {{
-            setModalButtonPriority(exitSubviewBtn, 'primary');
-        }} else if (modalAnnotationModeActive) {{
-            setModalButtonPriority(annotateBtn, 'primary');
-            [selectBtn, splitBtn, pickTypeBtn].forEach((btn) => setModalButtonPriority(btn, 'muted'));
-            setModalButtonPriority(fitBtn, 'muted');
-        }} else if (modalMagicWandActive) {{
-            setModalButtonPriority(selectBtn, 'primary');
-            [annotateBtn, splitBtn, pickTypeBtn].forEach((btn) => setModalButtonPriority(btn, 'muted'));
-            setModalButtonPriority(fitBtn, 'muted');
-        }} else if (modalTypeSelectEnabled && !typeSelectionDisabled) {{
-            setModalButtonPriority(pickTypeBtn, 'primary');
-            setModalButtonPriority(splitBtn, 'muted');
-        }} else if (blendActive) {{
-            setModalButtonPriority(splitBtn, 'primary');
-            setModalButtonPriority(fitBtn, 'muted');
-            setModalButtonPriority(pickTypeBtn, 'muted');
-        }} else {{
-            setModalButtonPriority(fitBtn, 'primary');
-            setModalButtonPriority(splitBtn, 'muted');
-        }}
 
         if (modalSection) {{
             layoutModalControls();
@@ -6227,8 +7580,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const cloneCanvas = clones[idx];
             if (!cloneCanvas || !cloneCanvas.parentNode) return;
             const img = document.createElement('img');
-            img.src = canvas.toDataURL('image/png');
             const rect = canvas.getBoundingClientRect();
+            if (!canvas.width || !canvas.height || rect.width <= 0 || rect.height <= 0) {{
+                cloneCanvas.remove();
+                return;
+            }}
+            try {{
+                img.src = canvas.toDataURL('image/png');
+            }} catch (error) {{
+                const placeholder = document.createElement('div');
+                placeholder.style.width = `${{rect.width}}px`;
+                placeholder.style.height = `${{rect.height}}px`;
+                placeholder.style.background = getPanelBg();
+                cloneCanvas.parentNode.replaceChild(placeholder, cloneCanvas);
+                return;
+            }}
             img.style.width = `${{rect.width}}px`;
             img.style.height = `${{rect.height}}px`;
             img.style.display = 'block';
@@ -6241,6 +7607,100 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function getScreenshotResolution() {{
         const el = document.getElementById('screenshot-res');
         return Math.max(1, parseInt(el?.value || '2', 10));
+    }}
+
+    const SCREENSHOT_COLOR_PROPS = [
+        'color',
+        'backgroundColor',
+        'borderTopColor',
+        'borderRightColor',
+        'borderBottomColor',
+        'borderLeftColor',
+        'outlineColor',
+        'textDecorationColor',
+        'fill',
+        'stroke',
+    ];
+
+    function normalizeScreenshotColor(value, fallback = 'transparent') {{
+        const text = String(value || '').trim();
+        if (!text || text === 'currentColor') return fallback;
+        if (!/color\\(|color-mix\\(/i.test(text)) return text;
+        const canvas = normalizeScreenshotColor.canvas || (normalizeScreenshotColor.canvas = document.createElement('canvas'));
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return fallback;
+        const marker = 'rgba(1, 2, 3, 0.5)';
+        try {{
+            ctx.fillStyle = marker;
+            ctx.fillStyle = text;
+            return ctx.fillStyle === marker ? fallback : ctx.fillStyle;
+        }} catch (error) {{
+            return fallback;
+        }}
+    }}
+
+    function fallbackScreenshotStyleValue(prop, style) {{
+        const name = String(prop || '').toLowerCase();
+        if (name.includes('background-image') || name.includes('image') || name.includes('shadow')) return 'none';
+        if (name.includes('background')) return 'transparent';
+        if (name.includes('border') || name.includes('outline') || name.includes('text-decoration') || name.includes('caret')) {{
+            return normalizeScreenshotColor(style.color || '#222', '#222');
+        }}
+        if (name === 'fill' || name === 'stroke' || name.includes('color')) {{
+            return normalizeScreenshotColor(style.color || '#222', '#222');
+        }}
+        return '';
+    }}
+
+    function hasUnsupportedScreenshotCssFunction(value) {{
+        return /(?:color-mix|color|oklab|oklch|lab|lch)\\(/i.test(String(value || ''));
+    }}
+
+    function sanitizeScreenshotStyleSheets(clonedDoc) {{
+        const unsafeFn = /(?:color-mix|color|oklab|oklch|lab|lch)\\(/i;
+        clonedDoc.querySelectorAll('style').forEach((styleEl) => {{
+            const text = styleEl.textContent || '';
+            if (!unsafeFn.test(text)) return;
+            styleEl.textContent = text.replace(
+                /([a-zA-Z-]+)\\s*:\\s*[^;{{}}]*(?:color-mix|color|oklab|oklch|lab|lch)\\([^;{{}}]+\\)[^;{{}}]*;/gi,
+                (match, prop) => {{
+                    const name = String(prop || '').toLowerCase();
+                    if (name.includes('background')) return `${{prop}}: transparent;`;
+                    if (name.includes('border') || name.includes('outline')) return `${{prop}}: transparent;`;
+                    if (name.includes('shadow')) return `${{prop}}: none;`;
+                    if (name === 'fill' || name === 'stroke' || name.includes('color')) return `${{prop}}: #222222;`;
+                    return `${{prop}}: initial;`;
+                }}
+            );
+        }});
+    }}
+
+    function sanitizeScreenScreenshotClone(clonedDoc) {{
+        sanitizeScreenshotStyleSheets(clonedDoc);
+        replaceCanvasesWithImages(clonedDoc);
+        const originalNodes = [document.documentElement, document.body, ...document.body.querySelectorAll('*')];
+        const clonedNodes = [clonedDoc.documentElement, clonedDoc.body, ...clonedDoc.body.querySelectorAll('*')];
+        clonedNodes.forEach((clone, idx) => {{
+            const original = originalNodes[idx];
+            if (!clone || !original || !(clone instanceof clonedDoc.defaultView.Element)) return;
+            if (hasUnsupportedScreenshotCssFunction(clone.getAttribute('style') || '')) clone.removeAttribute('style');
+            const style = getComputedStyle(original);
+            for (const prop of style) {{
+                const value = style.getPropertyValue(prop);
+                if (hasUnsupportedScreenshotCssFunction(value)) {{
+                    const fallback = fallbackScreenshotStyleValue(prop, style);
+                    if (fallback) clone.style.setProperty(prop, fallback, 'important');
+                    else clone.style.removeProperty(prop);
+                }}
+            }}
+            SCREENSHOT_COLOR_PROPS.forEach((prop) => {{
+                const fallback = prop === 'backgroundColor' ? 'transparent' : normalizeScreenshotColor(style.color || '#222', '#222');
+                clone.style[prop] = normalizeScreenshotColor(style[prop], fallback);
+            }});
+            if (hasUnsupportedScreenshotCssFunction(style.backgroundImage || '')) clone.style.backgroundImage = 'none';
+            clone.style.boxShadow = 'none';
+            clone.style.textShadow = 'none';
+        }});
     }}
 
     // Re-render just one section's grid panel (cheap) so H&E tweaks made in the
@@ -6336,6 +7796,189 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         downloadCanvasImage(composite, name);
     }}
 
+    function copyFormStateForScreenshot(sourceRoot, cloneRoot) {{
+        const sourceFields = sourceRoot.querySelectorAll('input, textarea, select');
+        const cloneFields = cloneRoot.querySelectorAll('input, textarea, select');
+        sourceFields.forEach((source, idx) => {{
+            const clone = cloneFields[idx];
+            if (!clone) return;
+            if (source instanceof HTMLInputElement) {{
+                clone.value = source.value;
+                if (source.type === 'checkbox' || source.type === 'radio') clone.checked = source.checked;
+            }} else if (source instanceof HTMLTextAreaElement || source instanceof HTMLSelectElement) {{
+                clone.value = source.value;
+            }}
+        }});
+    }}
+
+    function inlineSafeComputedStylesForScreenshot(sourceRoot, cloneRoot, clonedDoc) {{
+        const sourceNodes = [sourceRoot, ...sourceRoot.querySelectorAll('*')];
+        const cloneNodes = [cloneRoot, ...cloneRoot.querySelectorAll('*')];
+        sourceNodes.forEach((source, idx) => {{
+            const clone = cloneNodes[idx];
+            if (!source || !clone || !(clone instanceof clonedDoc.defaultView.Element)) return;
+            const style = getComputedStyle(source);
+            clone.removeAttribute('style');
+            for (const prop of style) {{
+                if (String(prop).startsWith('--')) continue;
+                let value = style.getPropertyValue(prop);
+                if (!value) continue;
+                if (hasUnsupportedScreenshotCssFunction(value)) {{
+                    value = fallbackScreenshotStyleValue(prop, style);
+                    if (!value) continue;
+                }}
+                try {{
+                    clone.style.setProperty(prop, value, style.getPropertyPriority(prop));
+                }} catch (error) {{
+                    // Ignore properties that cannot be serialized cross-document.
+                }}
+            }}
+            SCREENSHOT_COLOR_PROPS.forEach((prop) => {{
+                const fallback = prop === 'backgroundColor' ? 'transparent' : normalizeScreenshotColor(style.color || '#222', '#222');
+                clone.style[prop] = normalizeScreenshotColor(style[prop], fallback);
+            }});
+            if (hasUnsupportedScreenshotCssFunction(style.backgroundImage || '')) clone.style.backgroundImage = 'none';
+            clone.style.boxShadow = normalizeScreenshotColor(style.boxShadow || '', 'none');
+            clone.style.textShadow = normalizeScreenshotColor(style.textShadow || '', 'none');
+        }});
+    }}
+
+    async function renderSanitizedPageWithHtml2Canvas(clonedDoc, captureW, captureH, pageBg, multiplier) {{
+        await ensureHtml2CanvasLoaded();
+        sanitizeScreenshotStyleSheets(clonedDoc);
+        clonedDoc.querySelectorAll('[style]').forEach((el) => {{
+            if (!hasUnsupportedScreenshotCssFunction(el.getAttribute('style') || '')) return;
+            el.removeAttribute('style');
+        }});
+        return html2canvas(clonedDoc.body, {{
+            backgroundColor: screenshotTransparentBg ? null : pageBg,
+            scale: multiplier,
+            useCORS: true,
+            logging: false,
+            width: captureW,
+            height: captureH,
+            windowWidth: captureW,
+            windowHeight: captureH,
+            scrollX: 0,
+            scrollY: 0,
+            x: 0,
+            y: 0,
+        }});
+    }}
+
+    async function screenshotScreenView() {{
+        const multiplier = getScreenshotResolution();
+        const name = `spatial-viewer-page-${{getScreenshotTimestamp()}}${{multiplier > 1 ? `-${{multiplier}}x` : ''}}.png`;
+        let frame = null;
+        let svgUrl = null;
+        try {{
+            const docEl = document.documentElement;
+            const captureW = Math.ceil(Math.max(docEl.scrollWidth, document.body.scrollWidth, window.innerWidth));
+            const captureH = Math.ceil(Math.max(docEl.scrollHeight, document.body.scrollHeight, window.innerHeight));
+            const pageBg = screenshotTransparentBg
+                ? 'transparent'
+                : normalizeScreenshotColor(getComputedStyle(document.body).backgroundColor, currentTheme === 'dark' ? '#1a1a1a' : '#ffffff');
+
+            frame = document.createElement('iframe');
+            frame.setAttribute('aria-hidden', 'true');
+            Object.assign(frame.style, {{
+                position: 'fixed',
+                left: '-100000px',
+                top: '0',
+                width: `${{captureW}}px`,
+                height: `${{captureH}}px`,
+                border: '0',
+                pointerEvents: 'none',
+                opacity: '0',
+            }});
+            document.body.appendChild(frame);
+
+            const clonedDoc = frame.contentDocument;
+            clonedDoc.open();
+            clonedDoc.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body></body></html>');
+            clonedDoc.close();
+            clonedDoc.documentElement.className = document.documentElement.className;
+            clonedDoc.documentElement.style.width = `${{captureW}}px`;
+            clonedDoc.documentElement.style.minHeight = `${{captureH}}px`;
+            clonedDoc.documentElement.style.background = pageBg;
+            clonedDoc.body.style.width = `${{captureW}}px`;
+            clonedDoc.body.style.minHeight = `${{captureH}}px`;
+            clonedDoc.body.style.margin = '0';
+            clonedDoc.body.style.background = pageBg;
+
+            const bodyClone = document.body.cloneNode(true);
+            bodyClone.querySelectorAll('script, iframe').forEach((node) => node.remove());
+            clonedDoc.body.replaceWith(bodyClone);
+            clonedDoc.body.style.width = `${{captureW}}px`;
+            clonedDoc.body.style.minHeight = `${{captureH}}px`;
+            clonedDoc.body.style.margin = '0';
+            clonedDoc.body.style.background = pageBg;
+
+            copyFormStateForScreenshot(document.body, clonedDoc.body);
+            replaceCanvasesWithImages(clonedDoc);
+            inlineSafeComputedStylesForScreenshot(document.body, clonedDoc.body, clonedDoc);
+
+            clonedDoc.body.setAttribute('xmlns', 'http://www.w3.org/1999/xhtml');
+            const serializedBody = new XMLSerializer().serializeToString(clonedDoc.body);
+            const svg = [
+                `<svg xmlns="http://www.w3.org/2000/svg" width="${{captureW}}" height="${{captureH}}" viewBox="0 0 ${{captureW}} ${{captureH}}">`,
+                screenshotTransparentBg ? '' : `<rect width="100%" height="100%" fill="${{pageBg}}"/>`,
+                `<foreignObject x="0" y="0" width="${{captureW}}" height="${{captureH}}">${{serializedBody}}</foreignObject>`,
+                '</svg>',
+            ].join('');
+            svgUrl = URL.createObjectURL(new Blob([svg], {{ type: 'image/svg+xml;charset=utf-8' }}));
+
+            const image = new Image();
+            image.decoding = 'sync';
+            const loaded = new Promise((resolve, reject) => {{
+                image.onload = resolve;
+                image.onerror = () => reject(new Error('Could not render the page screenshot image.'));
+            }});
+            image.src = svgUrl;
+            await loaded;
+
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(captureW * multiplier));
+            canvas.height = Math.max(1, Math.round(captureH * multiplier));
+            const ctx = canvas.getContext('2d');
+            if (!ctx) throw new Error('Could not create the page screenshot canvas.');
+            if (!screenshotTransparentBg) {{
+                ctx.fillStyle = pageBg;
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+            }}
+            ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+            try {{
+                downloadCanvasImage(canvas, name);
+            }} catch (taintError) {{
+                const fallbackCanvas = await renderSanitizedPageWithHtml2Canvas(
+                    clonedDoc,
+                    captureW,
+                    captureH,
+                    pageBg,
+                    multiplier
+                );
+                downloadCanvasImage(fallbackCanvas, name);
+            }}
+        }} catch (error) {{
+            alert(`Screenshot failed: ${{error.message || error}}`);
+        }} finally {{
+            if (svgUrl) URL.revokeObjectURL(svgUrl);
+            if (frame) frame.remove();
+        }}
+    }}
+
+    function screenshotSelectedTarget() {{
+        if (screenshotTarget === 'screen') {{
+            screenshotScreenView();
+            return;
+        }}
+        if (modalSection && (modalInlineActive || document.getElementById('modal')?.classList.contains('active'))) {{
+            screenshotModalView();
+            return;
+        }}
+        screenshotFullPage();
+    }}
+
     function sanitizeFilenamePart(value) {{
         if (!value) return 'section';
         const s = String(value).trim().replace(/[^a-zA-Z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
@@ -6358,14 +8001,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         // Always render through the DPR-override path (even at 1x) so the
         // transparent-background toggle is honored for the panel view too.
         const baseDpr = window.devicePixelRatio || 1;
-        screenshotDprOverride = baseDpr * multiplier;
-        renderModalSectionExact();
-        // Overlay the active color legend in the top-right corner.
-        const mctx = canvas.getContext('2d');
-        drawScreenshotLegend(mctx, canvas.width / screenshotDprOverride, canvas.height / screenshotDprOverride, 1);
-        downloadCanvasImage(canvas, name);
-        screenshotDprOverride = null;
-        renderModalSectionExact();
+        try {{
+            screenshotDprOverride = baseDpr * multiplier;
+            renderModalSectionExact();
+            // Overlay the active color legend in the top-right corner.
+            const mctx = canvas.getContext('2d');
+            drawScreenshotLegend(mctx, canvas.width / screenshotDprOverride, canvas.height / screenshotDprOverride, 1);
+            downloadCanvasImage(canvas, name);
+        }} catch (error) {{
+            alert(`Screenshot failed: ${{error.message || error}}`);
+        }} finally {{
+            screenshotDprOverride = null;
+            renderModalSectionExact();
+        }}
     }}
 
     function roundRectPath(ctx, x, y, w, h, r) {{
@@ -6690,6 +8338,83 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         downloadJsonFile(payload, `karospace-colors-${{getScreenshotTimestamp()}}.json`);
     }}
 
+    function readJsonFile(file, onSuccess, errorPrefix = 'Could not read JSON file') {{
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {{
+            try {{
+                onSuccess(JSON.parse(String(reader.result || '')));
+            }} catch (e) {{
+                alert(`${{errorPrefix}}: ${{e.message || e}}`);
+            }}
+        }};
+        reader.onerror = () => alert(`${{errorPrefix}}.`);
+        reader.readAsText(file);
+    }}
+
+    function pickJsonFile(onSuccess) {{
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'application/json,.json';
+        input.style.display = 'none';
+        input.addEventListener('change', () => {{
+            const file = input.files && input.files[0];
+            input.remove();
+            readJsonFile(file, onSuccess);
+        }});
+        document.body.appendChild(input);
+        input.click();
+    }}
+
+    function validateImportedPalettePayload(payload) {{
+        const palettes = payload?.palettes;
+        if (!palettes || typeof palettes !== 'object') {{
+            return {{ ok: false, message: 'This file does not contain a categorical palette export.' }};
+        }}
+        const errors = [];
+        Object.entries(palettes).forEach(([colorCol, paletteState]) => {{
+            const meta = DATA.colors_meta?.[colorCol];
+            if (!meta || meta.is_continuous || !Array.isArray(meta.categories)) {{
+                errors.push(`"${{colorCol}}" is not a categorical color column in this viewer.`);
+                return;
+            }}
+            const importedCategories = Array.isArray(paletteState?.categories) ? paletteState.categories : [];
+            const importedPalette = Array.isArray(paletteState?.palette) ? paletteState.palette : null;
+            if (!importedPalette) {{
+                errors.push(`"${{colorCol}}" has no palette array.`);
+                return;
+            }}
+            if (importedPalette.length !== meta.categories.length) {{
+                errors.push(`"${{colorCol}}" has ${{importedPalette.length}} colors, expected ${{meta.categories.length}}.`);
+            }}
+            if (importedCategories.length && importedCategories.length !== meta.categories.length) {{
+                errors.push(`"${{colorCol}}" has ${{importedCategories.length}} categories, expected ${{meta.categories.length}}.`);
+            }}
+        }});
+        return errors.length ? {{ ok: false, message: errors.join('\\n') }} : {{ ok: true }};
+    }}
+
+    function importColorPalettePayload(payload) {{
+        const validation = validateImportedPalettePayload(payload);
+        if (!validation.ok) {{
+            alert(`Could not import palette:\\n${{validation.message}}`);
+            return false;
+        }}
+        const applied = applySessionPaletteState(payload.palettes);
+        renderLegend('legend');
+        renderLegend('modal-legend');
+        renderAllSections();
+        if (modalSection) renderModalSection();
+        if (umapVisible) renderUMAP();
+        renderActiveInsightsPanel();
+        alert(applied ? `Imported palette for ${{applied}} color column${{applied === 1 ? '' : 's'}}.` : 'Palette import completed; no colors changed.');
+        return true;
+    }}
+
+    function importColorPaletteFromFile() {{
+        pickJsonFile(importColorPalettePayload);
+    }}
+
     function exportClusterAnnotationsAndColors() {{
         const palettes = buildColorPaletteExport().palettes;
         const labelColumns = buildCategoryLabelExport().columns;
@@ -6833,6 +8558,51 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         downloadJsonFile(payload, `karospace-category-labels-${{getScreenshotTimestamp()}}.json`);
     }}
 
+    function validateImportedCategoryLabelPayload(payload) {{
+        const columns = payload?.columns;
+        if (!columns || typeof columns !== 'object') {{
+            return {{ ok: false, message: 'This file does not contain a category-label export.' }};
+        }}
+        const errors = [];
+        Object.entries(columns).forEach(([colorCol, rows]) => {{
+            const meta = ensureColorColumnCategoryState(colorCol);
+            if (!meta) {{
+                errors.push(`"${{colorCol}}" is not a categorical color column in this viewer.`);
+                return;
+            }}
+            if (!Array.isArray(rows)) {{
+                errors.push(`"${{colorCol}}" has no categories array.`);
+                return;
+            }}
+            if (rows.length !== meta.categories.length) {{
+                errors.push(`"${{colorCol}}" has ${{rows.length}} categories, expected ${{meta.categories.length}}.`);
+            }}
+        }});
+        return errors.length ? {{ ok: false, message: errors.join('\\n') }} : {{ ok: true }};
+    }}
+
+    function importCategoryLabelsPayload(payload) {{
+        const validation = validateImportedCategoryLabelPayload(payload);
+        if (!validation.ok) {{
+            alert(`Could not import categories:\\n${{validation.message}}`);
+            return false;
+        }}
+        const applied = applySessionCategoryLabelState(payload.columns);
+        comparisonCountsCache.clear();
+        renderLegend('legend');
+        renderLegend('modal-legend');
+        renderAllSections();
+        if (modalSection) renderModalSection();
+        if (umapVisible) renderUMAP();
+        renderActiveInsightsPanel();
+        alert(applied ? `Imported categories for ${{applied}} color column${{applied === 1 ? '' : 's'}}.` : 'Categories import completed; no labels changed.');
+        return true;
+    }}
+
+    function importCategoryLabelsFromFile() {{
+        pickJsonFile(importCategoryLabelsPayload);
+    }}
+
     function buildSessionCategoryLabelState() {{
         return buildCategoryLabelExport().columns;
     }}
@@ -6938,6 +8708,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return `rgb(${{rgb[0]}}, ${{rgb[1]}}, ${{rgb[2]}})`;
     }}
 
+    function colorToRgbaCss(color, alpha) {{
+        const rgb = cssColorToRgb(color);
+        const a = Math.max(0, Math.min(1, Number(alpha)));
+        return `rgba(${{rgb[0]}}, ${{rgb[1]}}, ${{rgb[2]}}, ${{a}})`;
+    }}
+
     function clamp01(v) {{
         if (!Number.isFinite(v)) return 0;
         return Math.max(0, Math.min(1, v));
@@ -6954,14 +8730,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return value.toFixed(3);
     }}
 
-    function getGeneScaleRange(gene, modality = null) {{
+    function getGeneScaleRange(gene, modality = null, options = {{}}) {{
         const targetModality = modality || CURRENT_MODALITY;
         const isCurrent = targetModality === CURRENT_MODALITY;
         const manifest = isCurrent ? DATA : (MODALITY_GENE_STATE[targetModality] || DATA);
         const base = manifest.genes_meta?.[gene] || {{}};
         
         const autoScale = geneScaleAuto[gene];
-        const overrideScale = geneScaleOverrides[gene];
+        const overrideScale = options.includeOverrides === false ? null : geneScaleOverrides[gene];
         let vmin = Number.isFinite(overrideScale?.vmin) ? overrideScale.vmin
             : (Number.isFinite(autoScale?.vmin) ? autoScale.vmin : base.vmin);
         let vmax = Number.isFinite(overrideScale?.vmax) ? overrideScale.vmax
@@ -8420,8 +10196,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             invalidateGeneDensityCaches();
             hiddenCategories.clear();
             if (geneInput) geneInput.value = '';
-            const modalGeneInputEl = document.getElementById('modal-gene-input');
-            if (modalGeneInputEl) modalGeneInputEl.value = '';
             updateExpressionScaleUI();
             renderLegend('legend');
             renderLegend('modal-legend');
@@ -8445,8 +10219,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         if (geneInput) geneInput.value = token;
-        const modalGeneInputEl = document.getElementById('modal-gene-input');
-        if (modalGeneInputEl) modalGeneInputEl.value = token;
         const ok = await runAsyncUIAction('Gene selection', async () => {{
             if (!(await ensureGeneAvailable(token, {{ showErrors }}))) {{
                 return false;
@@ -8488,28 +10260,110 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
+    function getOverviewSplitGeneTarget(side) {{
+        const spec = overviewBlendSpec?.[side];
+        if (!spec || spec.kind === 'cell') return null;
+        const gene = String(spec.gene || '').trim();
+        if (!gene) return null;
+        const meta = (spec.kind === CURRENT_MODALITY || (spec.kind === 'gene' && CURRENT_MODALITY === 'rna'))
+            ? DATA.genes_meta
+            : (MODALITY_GENE_STATE[spec.kind]?.genes_meta);
+        if (meta && meta[gene]) return {{ gene, modality: spec.kind, side }};
+        return null;
+    }}
+
+    function getOverviewSplitGeneTargets() {{
+        if (!overviewBlendEnabled) return [];
+        return ['a', 'b']
+            .map(side => getOverviewSplitGeneTarget(side))
+            .filter(Boolean);
+    }}
+
+    function getOverviewSplitGeneControlTarget() {{
+        if (!overviewBlendEnabled) return null;
+        return getOverviewSplitGeneTargets()[0] || null;
+    }}
+
+    function getOverviewSplitGeneScaleRange(side) {{
+        const target = getOverviewSplitGeneTarget(side);
+        if (!target) return null;
+        const override = overviewBlendGeneScaleOverrides?.[side];
+        if (
+            override
+            && override.gene === target.gene
+            && override.modality === target.modality
+            && Number.isFinite(override.vmin)
+            && Number.isFinite(override.vmax)
+        ) {{
+            return {{ vmin: override.vmin, vmax: override.vmax }};
+        }}
+        return getGeneScaleRange(target.gene, target.modality, {{ includeOverrides: false }});
+    }}
+
+    function setOverviewSplitGeneScaleOverride(side, vmin, vmax) {{
+        const target = getOverviewSplitGeneTarget(side);
+        if (!target) return false;
+        overviewBlendGeneScaleOverrides[side] = {{
+            gene: target.gene,
+            modality: target.modality,
+            vmin,
+            vmax,
+        }};
+        return true;
+    }}
+
+    function clearOverviewSplitGeneScaleOverride(side) {{
+        overviewBlendGeneScaleOverrides[side] = null;
+    }}
+
+    function getGeneParameterTarget() {{
+        return currentGene ? {{ gene: currentGene, modality: CURRENT_MODALITY, side: null }} : null;
+    }}
+
+    function updateSplitExpressionScaleUI() {{
+        const section = document.getElementById('split-expression-scale-section');
+        if (!section) return;
+        const targets = getOverviewSplitGeneTargets();
+        section.style.display = overviewBlendEnabled && targets.length ? 'flex' : 'none';
+        ['a', 'b'].forEach(side => {{
+            const row = document.getElementById(`split-scale-${{side}}`);
+            const vminInput = document.getElementById(`split-${{side}}-vmin`);
+            const vmaxInput = document.getElementById(`split-${{side}}-vmax`);
+            const target = getOverviewSplitGeneTarget(side);
+            if (!row || !vminInput || !vmaxInput) return;
+            if (!overviewBlendEnabled || !target) {{
+                row.style.display = 'none';
+                vminInput.value = '';
+                vmaxInput.value = '';
+                return;
+            }}
+            row.style.display = 'flex';
+            const scale = getOverviewSplitGeneScaleRange(side);
+            vminInput.value = Number.isFinite(scale?.vmin) ? scale.vmin.toFixed(3) : '';
+            vmaxInput.value = Number.isFinite(scale?.vmax) ? scale.vmax.toFixed(3) : '';
+        }});
+    }}
+
     function updateExpressionScaleUI() {{
         const section = document.getElementById('expression-scale-section');
         const vminInput = document.getElementById('expr-vmin');
         const vmaxInput = document.getElementById('expr-vmax');
-        const hint = document.getElementById('expr-scale-hint');
-        if (!section || !vminInput || !vmaxInput || !hint) return;
+        if (!section || !vminInput || !vmaxInput) return;
         updateOverviewGeneViewState();
-        if (!currentGene) {{
+        updateSplitExpressionScaleUI();
+        if (overviewBlendEnabled) {{
+            section.style.display = 'none';
+            return;
+        }}
+        const target = getGeneParameterTarget();
+        if (!target) {{
             section.style.display = 'none';
             return;
         }}
         section.style.display = 'block';
-        const config = getColorConfig();
-        vminInput.value = Number.isFinite(config.vmin) ? config.vmin.toFixed(3) : '';
-        vmaxInput.value = Number.isFinite(config.vmax) ? config.vmax.toFixed(3) : '';
-        if (geneScaleOverrides[currentGene]) {{
-            hint.textContent = 'Custom scale (manual).';
-        }} else if (geneScaleAuto[currentGene]) {{
-            hint.textContent = `Auto scale: ${{GENE_SCALE_PMIN}}-${{GENE_SCALE_PMAX}} percentile.`;
-        }} else {{
-            hint.textContent = 'Auto scale unavailable; using data range.';
-        }}
+        const scale = getGeneScaleRange(target.gene, target.modality);
+        vminInput.value = Number.isFinite(scale.vmin) ? scale.vmin.toFixed(3) : '';
+        vmaxInput.value = Number.isFinite(scale.vmax) ? scale.vmax.toFixed(3) : '';
     }}
 
     function parseGeneList(text) {{
@@ -8667,10 +10521,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return spec.category ? `${{colLabel}}: ${{formatCategoryLabel(spec.color, spec.category)}}` : colLabel;
     }}
 
-    function getModalSplitLegendEntry(side) {{
-        const spec = modalBlendSpec?.[side];
+    function getSplitLegendEntry(specSet, side, sideLabels = null, scaleResolver = null) {{
+        const spec = specSet?.[side];
         if (!spec) return null;
-        const sideLabel = side === 'a' ? 'A (left)' : 'B (right)';
+        const defaultLabels = {{ a: 'A (left)', b: 'B (right)' }};
+        const sideLabel = sideLabels?.[side] || defaultLabels[side] || side.toUpperCase();
         
         if (spec.kind !== 'cell') {{
             const modName = spec.kind;
@@ -8680,14 +10535,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const featureTypeLabel = isGene ? 'Gene' : modLabel;
             const featureLabel = spec.gene ? `${{featureTypeLabel}}: ${{spec.gene}}` : featureTypeLabel;
             
-            const scale = getGeneScaleRange(spec.gene, modName);
+            const scale = (typeof scaleResolver === 'function' ? scaleResolver(side, spec) : null)
+                || getGeneScaleRange(spec.gene, modName);
             return {{
                 side,
                 sideLabel,
                 label: featureLabel,
-                detail: `Expression (${{formatScaleNumber(scale.vmin)}} to ${{formatScaleNumber(scale.vmax)}})`,
+                detail: '',
+                vmin: scale.vmin,
+                vmax: scale.vmax,
                 swatchClass: 'split-legend-swatch-bar',
-                swatchBackground: `linear-gradient(90deg, ${{magma(0)}}, ${{magma(0.5)}}, ${{magma(1)}})`,
+                swatchBackground: `linear-gradient(0deg, ${{magma(0)}}, ${{magma(0.5)}}, ${{magma(1)}})`,
                 categories: null,
             }};
         }}
@@ -8730,7 +10588,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
     }}
 
-    function getModalBlendRuntime(section, spec) {{
+    function getModalSplitLegendEntry(side) {{
+        return getSplitLegendEntry(modalBlendSpec, side);
+    }}
+
+    function getOverviewSplitLegendEntry(side) {{
+        return getSplitLegendEntry(
+            overviewBlendSpec,
+            side,
+            {{ a: 'A', b: 'B' }},
+            (entrySide) => getOverviewSplitGeneScaleRange(entrySide)
+        );
+    }}
+
+    function getModalBlendRuntime(section, spec, scaleOverride = null) {{
         if (!section || !spec) return null;
         
         if (spec.kind !== 'cell') {{
@@ -8748,7 +10619,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
             const values = getSectionGeneValues(section, gene, modName);
             if (!values) return null;
-            const scale = getGeneScaleRange(gene, modName);
+            const scale = scaleOverride || getGeneScaleRange(gene, modName);
             return {{ kind: 'gene', values, vmin: scale.vmin, vmax: scale.vmax }};
         }}
 
@@ -8785,8 +10656,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function getOverviewBlendRuntimes(section) {{
         if (!overviewBlendEnabled || !section) return null;
-        const a = getModalBlendRuntime(section, overviewBlendSpec.a);
-        const b = getModalBlendRuntime(section, overviewBlendSpec.b);
+        const a = getModalBlendRuntime(section, overviewBlendSpec.a, getOverviewSplitGeneScaleRange('a'));
+        const b = getModalBlendRuntime(section, overviewBlendSpec.b, getOverviewSplitGeneScaleRange('b'));
         if (!a || !b) return null;
         return {{ a, b }};
     }}
@@ -9093,6 +10964,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     // Check if a cell is selected
     function isCellSelected(sectionId, cellIdx) {{
         return selectedCells.has(`${{sectionId}}:${{cellIdx}}`);
+    }}
+
+    function isCellSelectedB(sectionId, cellIdx) {{
+        return selectedCellsB.has(`${{sectionId}}:${{cellIdx}}`);
+    }}
+
+    function isCellSelectedAny(sectionId, cellIdx) {{
+        return isCellSelected(sectionId, cellIdx) || isCellSelectedB(sectionId, cellIdx);
+    }}
+
+    function hasActiveCellSelection() {{
+        return selectedCells.size > 0 || selectedCellsB.size > 0;
+    }}
+
+    function clearRegionBSelection() {{
+        selectedCellsB.clear();
+        selectedLassoPathB = [];
+        selectedCellsBFromGridLasso = false;
+        selectedGridLassoSectionIdB = null;
+        selectedGridLassoPathB = [];
+        selectedCellsBFromModalLasso = false;
+        selectedModalLassoSectionIdB = null;
+        selectedModalLassoPathB = [];
+        selectedAnnotationBId = null;
     }}
 
     // Point-in-polygon test using ray casting algorithm
@@ -10599,7 +12494,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             break;
         }}
 
-        const firstGene = (DATA.available_genes || []).find((gene) => String(gene || '').trim().length > 0) || '';
+        const firstGene = getActiveFeatureList().find((gene) => String(gene || '').trim().length > 0) || '';
         let geneThreshold = 1;
         if (firstGene) {{
             const vmax = Number(DATA.genes_meta?.[firstGene]?.vmax);
@@ -10648,8 +12543,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return getSelectionQueryExamplePresets()[0] || 'cell_type == astrocyte and Gfap > 2';
     }}
 
-    function renderSelectionQueryPanelHtml() {{
-        const expanded = selectionQueryExpanded;
+    function renderSelectionQueryPanelHtml(options = {{}}) {{
+        const expanded = !!options.forceExpanded || selectionQueryExpanded;
+        const showToggle = options.showToggle !== false;
+        const showClose = !!options.showClose;
         const examples = getSelectionQueryExamplePresets();
         const preview = getSelectionQueryPreviewText();
         const summaryHtml = expanded
@@ -10661,10 +12558,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     : 'Find cells by annotation, gene value, or section metadata.';
         return `
             <div class="selection-query">
-                <button class="selection-query-toggle" type="button" data-selection-query-toggle aria-expanded="${{expanded ? 'true' : 'false'}}">
-                    <span class="selection-summary-title">Find cells</span>
-                    <span class="selection-query-toggle-label">${{expanded ? 'Hide' : 'Show'}}</span>
-                </button>
+                ${{showToggle ? `
+                    <button class="selection-query-toggle" type="button" data-selection-query-toggle aria-expanded="${{expanded ? 'true' : 'false'}}">
+                        <span class="selection-summary-title">Find cells</span>
+                        <span class="selection-query-toggle-label">${{expanded ? 'Hide' : 'Show'}}</span>
+                    </button>
+                ` : `
+                    <div class="selection-query-header">
+                        <div class="selection-summary-title">Find cells</div>
+                        ${{showClose ? `
+                            <button class="selection-query-close" type="button" data-selection-query-close title="Close query" aria-label="Close query">
+                                <svg viewBox="0 0 24 24"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                            </button>
+                        ` : ''}}
+                    </div>
+                `}}
                 <div class="selection-summary-meta selection-query-summary">${{summaryHtml}}</div>
                 ${{expanded ? `
                     <div class="selection-query-body">
@@ -10710,7 +12618,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         `;
     }}
 
-    function renderSelectionComparisonHtml(summaryA) {{
+    function renderSelectionComparisonHtml(summaryA, options = {{}}) {{
         const summaryB = computeSelectionSummary(selectedCellsB);
         let html = `<div class="selection-summary-compare-header">
             <span class="selection-summary-compare-label region-a">Region A (${{summaryA.total.toLocaleString()}} cells)</span>
@@ -10719,7 +12627,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         // Cell type breakdown side-by-side
         if (summaryA.typeColumn && (summaryA.types.length || summaryB.types.length)) {{
-            html += `<div class="selection-summary-title">Cell types: A vs B</div>`;
             const allTypes = new Set([
                 ...summaryA.types.map(([t]) => t),
                 ...summaryB.types.map(([t]) => t),
@@ -10732,11 +12639,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const pA = summaryA.total > 0 ? Math.round(100 * cA / summaryA.total) : 0;
                 const pB = summaryB.total > 0 ? Math.round(100 * cB / summaryB.total) : 0;
                 const isActive = linkedSpotlightEnabled && spotlightPinnedCategory === label;
+                const chipColor = getCategoryColorForValue(summaryA.typeColumn, label);
+                const chipFontSize = label.length > 14 ? '8px' : (label.length > 10 ? '9px' : '10px');
                 html += `<div class="selection-summary-compare-row${{isActive ? ' is-active' : ''}}" data-spotlight-cat="${{escapeHtml(label)}}" title="Click to spotlight ${{escapeHtml(label)}} in the viewer">
-                    <span class="selection-summary-compare-type">${{escapeHtml(label)}}</span>
-                    <span class="selection-summary-compare-a">${{cA.toLocaleString()}} (${{pA}}%)</span>
-                    <span class="selection-summary-compare-sep">|</span>
-                    <span class="selection-summary-compare-b">${{cB.toLocaleString()}} (${{pB}}%)</span>
+                    <div class="selection-summary-compare-bar selection-summary-compare-a" title="Region A: ${{cA.toLocaleString()}} cells (${{pA}}%)">
+                        <div class="selection-summary-compare-fill" style="width:${{pA}}%;"></div>
+                        <span>${{cA.toLocaleString()}} (${{pA}}%)</span>
+                    </div>
+                    <span class="selection-summary-compare-type" style="background:${{chipColor}};font-size:${{chipFontSize}};">${{escapeHtml(label)}}</span>
+                    <div class="selection-summary-compare-bar selection-summary-compare-b" title="Region B: ${{cB.toLocaleString()}} cells (${{pB}}%)">
+                        <div class="selection-summary-compare-fill" style="width:${{pB}}%;"></div>
+                        <span>${{cB.toLocaleString()}} (${{pB}}%)</span>
+                    </div>
                 </div>`;
             }}
         }}
@@ -10767,8 +12681,36 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             html += '</div>';
         }}
 
-        html += '<button class="selection-summary-compare-btn" type="button" id="lasso-clear-b-btn">Clear Region B</button>';
-        return html + renderSelectionQueryPanelHtml();
+        return html + (options.hideSelectionQuery ? '' : renderSelectionQueryPanelHtml());
+    }}
+
+    function getSelectionSectionColor(index) {{
+        return PALETTE[index % PALETTE.length] || '#999999';
+    }}
+
+    function renderSelectionSectionSummaryHtml(summary) {{
+        if (!summary?.sections?.length || !summary.total) return '';
+        const visibleLimit = 3;
+        const segments = summary.sections.map(([sid, count], idx) => ({{
+            label: sid,
+            count,
+            color: getSelectionSectionColor(idx),
+        }}));
+        const barHtml = segments.map((segment) => {{
+            const pct = Math.max(0.5, Math.round(1000 * segment.count / summary.total) / 10);
+            return `<span class="selection-section-bar-segment" style="width:${{pct}}%;background:${{segment.color}};" title="${{escapeHtml(segment.label)}}: ${{segment.count.toLocaleString()}} cells"></span>`;
+        }}).join('');
+        const visibleSegments = selectionSectionSummaryExpanded ? segments : segments.slice(0, visibleLimit);
+        let legendHtml = visibleSegments.map((segment) => {{
+            const pct = Math.round(100 * segment.count / summary.total);
+            return `<span class="selection-section-legend-item"><span class="selection-summary-dot" style="background:${{segment.color}};"></span><span>${{escapeHtml(segment.label)}} ${{segment.count.toLocaleString()}} (${{pct}}%)</span></span>`;
+        }}).join('');
+        if (segments.length > visibleLimit) {{
+            legendHtml += selectionSectionSummaryExpanded
+                ? '<button class="selection-summary-toggle" type="button" data-section-summary-toggle>Show fewer categories</button>'
+                : `<button class="selection-summary-toggle" type="button" data-section-summary-toggle>+${{(segments.length - visibleLimit).toLocaleString()}} more categories</button>`;
+        }}
+        return `<div class="selection-section-bar" title="${{summary.total.toLocaleString()}} selected cells across ${{summary.sections.length.toLocaleString()}} sections">${{barHtml}}</div><div class="selection-section-legend">${{legendHtml}}</div>`;
     }}
 
     function renderSelectionSummaryHeaderHtml(summary) {{
@@ -10785,27 +12727,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function renderSelectionSummaryHtml(summary, options = {{}}) {{
+        const queryHtml = options.hideSelectionQuery ? '' : renderSelectionQueryPanelHtml();
         if (!summary || summary.total === 0) {{
-            return '<div class="selection-summary-meta">Draw a region with Magic Wand to inspect selected cells.</div>' + renderSelectionQueryPanelHtml();
+            return '<div class="selection-summary-meta selection-summary-empty">Draw a region with Magic Wand to inspect selected cells.</div>' + queryHtml;
         }}
 
-        const header = renderSelectionSummaryHeaderHtml(summary);
+        const header = options.hideHeader ? '' : renderSelectionSummaryHeaderHtml(summary);
         if (selectionSummaryMinimized) {{
             return header;
         }}
 
         // Comparison mode: two regions drawn
         if (selectedCellsB.size > 0) {{
-            return header + renderSelectionComparisonHtml(summary);
+            return header + renderSelectionComparisonHtml(summary, options);
         }}
 
-        const topSections = summary.sections.slice(0, 3).map(([sid, count]) => `${{sid}} (${{count.toLocaleString()}})`);
-        const extraSections = summary.sections.length > 3 ? ` +${{(summary.sections.length - 3).toLocaleString()}} more` : '';
-
-        let html = '';
-        if (topSections.length) {{
-            html += `<div class="selection-summary-meta">Sections: ${{topSections.join(' • ')}}${{extraSections}}</div>`;
-        }}
+        let html = renderSelectionSectionSummaryHtml(summary);
 
         if (summary.typeColumn && summary.types.length) {{
             const visibleLimit = 8;
@@ -10813,7 +12750,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             html += `<div class="selection-summary-title">Counts by ${{formatMetadataLabel(summary.typeColumn)}}</div>`;
             topTypes.forEach(([label, count]) => {{
                 const isActive = linkedSpotlightEnabled && spotlightPinnedCategory === label;
-                html += `<div class="selection-summary-row${{isActive ? ' is-active' : ''}}" data-spotlight-cat="${{escapeHtml(label)}}" title="Click to spotlight ${{escapeHtml(label)}} in the viewer"><span class="selection-summary-label">${{label}}</span><span class="selection-summary-count">${{count.toLocaleString()}}</span></div>`;
+                const dotColor = getCategoryColorForValue(summary.typeColumn, label);
+                html += `<div class="selection-summary-row${{isActive ? ' is-active' : ''}}" data-spotlight-cat="${{escapeHtml(label)}}" title="Click to spotlight ${{escapeHtml(label)}} in the viewer"><span class="selection-summary-label-wrap"><span class="selection-summary-dot" style="background:${{dotColor}};"></span><span class="selection-summary-label">${{escapeHtml(label)}}</span></span><span class="selection-summary-count">${{count.toLocaleString()}}</span></div>`;
             }});
             if (summary.types.length > visibleLimit) {{
                 if (!selectionSummaryExpanded) {{
@@ -10865,12 +12803,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             );
         }}
 
-        // Compare region button (only when no B yet and lasso mode is available)
-        if (!lassoModeB && !modalSubview) {{
-            actionButtons.push('<button class="selection-summary-compare-btn" type="button" id="lasso-compare-region-btn">Compare region</button>');
-        }} else if (lassoModeB) {{
-            html += '<div class="selection-summary-meta">Draw Region B with Magic Wand…</div>';
-        }}
         if (modalSubview) {{
             html += '<div class="selection-summary-meta">Focused view active. Use Back view to return to the full section.</div>';
         }}
@@ -10878,7 +12810,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             html += `<div class="selection-summary-actions">${{actionButtons.join('')}}</div>`;
         }}
 
-        return header + html + renderSelectionQueryPanelHtml();
+        return header + html + queryHtml;
     }}
 
     function bindSelectionSummaryInteractions(container) {{
@@ -10909,7 +12841,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }});
             container.dataset.scrollBound = '1';
         }}
-        container.querySelectorAll('.selection-summary-toggle').forEach((btn) => {{
+        container.querySelectorAll('[data-section-summary-toggle]').forEach((btn) => {{
+            btn.addEventListener('click', (e) => {{
+                e.preventDefault();
+                e.stopPropagation();
+                selectionSectionSummaryExpanded = !selectionSectionSummaryExpanded;
+                updateSelectionInfo();
+            }});
+        }});
+        container.querySelectorAll('.selection-summary-toggle:not([data-section-summary-toggle])').forEach((btn) => {{
             btn.addEventListener('click', (e) => {{
                 e.preventDefault();
                 e.stopPropagation();
@@ -10935,13 +12875,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 updateSelectionInfo();
             }});
         }}
-        const compareBtn = container.querySelector('#lasso-compare-region-btn');
-        if (compareBtn) {{
-            compareBtn.addEventListener('click', (e) => {{
+        const queryClose = container.querySelector('[data-selection-query-close]');
+        if (queryClose) {{
+            queryClose.addEventListener('click', (e) => {{
                 e.preventDefault();
                 e.stopPropagation();
-                lassoModeB = true;
-                updateSelectionInfo();
+                const queryPanel = document.getElementById('umap-selection-query-panel');
+                const queryToggleBtn = document.getElementById('umap-query-toggle');
+                queryPanel?.classList.remove('visible');
+                queryToggleBtn?.classList.remove('active');
             }});
         }}
         const focusSubviewBtn = container.querySelector('#selection-focus-subview-btn');
@@ -10966,16 +12908,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const selectedIndices = getSelectionIndicesForSection(modalSection.id);
                 if (!selectedIndices || !selectedIndices.length) return;
                 showModalGeneDiscoveryPanel(modalSection.id, selectedIndices);
-                updateSelectionInfo();
-            }});
-        }}
-        const clearBBtn = container.querySelector('#lasso-clear-b-btn');
-        if (clearBBtn) {{
-            clearBBtn.addEventListener('click', (e) => {{
-                e.preventDefault();
-                e.stopPropagation();
-                selectedCellsB.clear();
-                lassoModeB = false;
                 updateSelectionInfo();
             }});
         }}
@@ -11073,18 +13005,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const config = getColorConfig();
         const adjustedSpotSize = Math.max(0.25, umapSpotSize * umapZoom * 0.5);
+        const umapAlpha = Math.max(0.05, Math.min(1, umapCellOpacity));
+        const umapSplitX = width * clamp01(overviewBlendMix);
+        const umapSplitActive = overviewBlendEnabled;
         const activeSpotlight = getLinkedSpotlightCategory(config);
         const hasNeighborFocusUMAP = neighborNetworkFocusCategories && neighborNetworkFocusCategories.size > 0;
         const hasSpotlight = !!activeSpotlight || hasNeighborFocusUMAP;
+        const hasSelectionFocus = hasActiveCellSelection();
         const filteredSections = getFilteredSections();
 
         // Check if any categories are hidden
-        const hasHidden = hiddenCategories.size > 0 && !config.is_continuous;
+        const hasHidden = !umapSplitActive && hiddenCategories.size > 0 && !config.is_continuous;
 
         // First pass: draw hidden categories as grey (if any are hidden)
         if (hasHidden) {{
             ctx.fillStyle = '#888888';
-            ctx.globalAlpha = 0.2;
+            ctx.globalAlpha = 0.2 * umapAlpha;
             filteredSections.forEach(section => {{
                 ensureSectionUMAP(section);
                 if (!section.umap_x || !section.umap_y) return;
@@ -11118,15 +13054,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ensureSectionUMAP(section);
             if (!section.umap_x || !section.umap_y) return;
 
-            const values = getSectionValues(section);
+            const ovBlend = umapSplitActive ? getOverviewBlendRuntimes(section) : null;
+            const values = ovBlend ? null : getSectionValues(section);
 
             for (let i = 0; i < section.umap_x.length; i++) {{
-                const val = values[i];
-                if (isMissingDisplayValue(val)) continue;
+                const val = ovBlend ? null : values[i];
+                if (!ovBlend && isMissingDisplayValue(val)) continue;
 
                 // Skip hidden categories (they were drawn in first pass)
                 let catInfo = null;
-                if (!config.is_continuous) {{
+                if (!ovBlend && !config.is_continuous) {{
                     catInfo = getCategoricalValueInfo(config, val);
                     if (!catInfo || hiddenCategories.has(catInfo.catName)) continue;
                 }}
@@ -11142,7 +13079,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
                 let color;
                 let isSpotlightCategory = false;
-                if (config.is_continuous) {{
+                if (ovBlend) {{
+                    const runtime = x <= umapSplitX ? ovBlend.a : ovBlend.b;
+                    color = rgbToCss(getModalBlendCellRgb(runtime, i));
+                }} else if (config.is_continuous) {{
                     const t = (val - config.vmin) / (config.vmax - config.vmin);
                     color = magma(Math.max(0, Math.min(1, t)));
                 }} else {{
@@ -11151,39 +13091,76 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     color = getCategoryColor(catInfo.catIdx, config.colorCol);
                 }}
 
-                if (hasSpotlight && !isSpotlightCategory) {{
+                const isSelectedCell = isCellSelected(section.id, i);
+                const isSelectedCellB = selectedCellsB.has(`${{section.id}}:${{i}}`);
+                if (hasSelectionFocus && !isSelectedCell && !isSelectedCellB) {{
                     ctx.fillStyle = '#bbbbbb';
-                    ctx.globalAlpha = 0.12;
+                    ctx.globalAlpha = 0.1 * umapAlpha;
+                }} else if (hasSpotlight && !isSpotlightCategory) {{
+                    ctx.fillStyle = '#bbbbbb';
+                    ctx.globalAlpha = 0.12 * umapAlpha;
                 }} else {{
                     ctx.fillStyle = color;
-                    ctx.globalAlpha = 1;
+                    ctx.globalAlpha = umapAlpha;
                 }}
                 ctx.beginPath();
                 ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
                 ctx.fill();
-
-                // Draw selection highlight
-                if (isCellSelected(section.id, i)) {{
-                    ctx.strokeStyle = getSelectionOutlineColor();
-                    ctx.lineWidth = Math.max(0.85, adjustedSpotSize * 0.18);
+                const sectionSelectionStroke = (selectedCellsBFromGridLasso || selectedCellsBFromModalLasso) && isSelectedCellB
+                    ? '#4cc9f0'
+                    : (selectedCellsFromAnnotation && isSelectedCell
+                        ? selectedAnnotationSelectionColor
+                        : ((selectedCellsFromGridLasso || selectedCellsFromModalLasso) && isSelectedCell ? '#4F0433' : ''));
+                if (sectionSelectionStroke) {{
+                    ctx.globalAlpha = 1;
+                    ctx.strokeStyle = sectionSelectionStroke;
+                    ctx.lineWidth = Math.max(1.2, adjustedSpotSize * 0.35);
+                    ctx.beginPath();
+                    ctx.arc(x, y, adjustedSpotSize + Math.max(1, adjustedSpotSize * 0.35), 0, Math.PI * 2);
                     ctx.stroke();
                 }}
+
             }}
         }});
         ctx.globalAlpha = 1;
 
-        // Draw lasso path if currently drawing
-        if (isDrawingLasso && lassoPath.length > 1) {{
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.lineWidth = 2;
-            ctx.setLineDash([5, 5]);
+        if (umapSplitActive) {{
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
             ctx.beginPath();
-            ctx.moveTo(lassoPath[0].x, lassoPath[0].y);
-            for (let i = 1; i < lassoPath.length; i++) {{
-                ctx.lineTo(lassoPath[i].x, lassoPath[i].y);
+            ctx.moveTo(umapSplitX, 0);
+            ctx.lineTo(umapSplitX, height);
+            ctx.stroke();
+            ctx.restore();
+        }}
+
+        const umapDataToScreen = (point) => ({{
+            x: centerX + (point.x - dataCenterX) * scale,
+            y: centerY - (point.y - dataCenterY) * scale,
+        }});
+        function drawUMAPLassoOutline(path, color, options = {{}}) {{
+            if (!path || path.length <= 1) return;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([5, 5]);
+            const first = options.dataSpace ? umapDataToScreen(path[0]) : path[0];
+            ctx.beginPath();
+            ctx.moveTo(first.x, first.y);
+            for (let i = 1; i < path.length; i++) {{
+                const point = options.dataSpace ? umapDataToScreen(path[i]) : path[i];
+                ctx.lineTo(point.x, point.y);
             }}
+            if (options.dataSpace || !isDrawingLasso) ctx.closePath();
             ctx.stroke();
             ctx.setLineDash([]);
+        }}
+        const lassoOutlineColor = '#4F0433';
+        drawUMAPLassoOutline(selectedLassoPath, lassoOutlineColor, {{ dataSpace: true }});
+        drawUMAPLassoOutline(selectedLassoPathB, '#4cc9f0', {{ dataSpace: true }});
+        if (isDrawingLasso && lassoPath.length > 1) {{
+            drawUMAPLassoOutline(lassoPath, lassoModeB ? '#4cc9f0' : lassoOutlineColor);
         }}
     }}
 
@@ -11209,26 +13186,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const centerY = height / 2 + umapPanY;
         const dataCenterX = (bounds.xmin + bounds.xmax) / 2;
         const dataCenterY = (bounds.ymin + bounds.ymax) / 2;
+        const screenToUMAPData = (point) => ({{
+            x: dataCenterX + (point.x - centerX) / scale,
+            y: dataCenterY - (point.y - centerY) / scale,
+        }});
 
         const config = getColorConfig();
+        const umapSplitActive = overviewBlendEnabled;
         const filteredSections = getFilteredSections();
 
         // Collect cells inside the lasso
         const newCells = new Set();
+        const completedLassoPath = lassoPath.map(screenToUMAPData);
 
         // Check all cells in all sections
         filteredSections.forEach(section => {{
             ensureSectionUMAP(section);
             if (!section.umap_x || !section.umap_y) return;
 
-            const values = getSectionValues(section);
+            const values = umapSplitActive ? null : getSectionValues(section);
 
             for (let i = 0; i < section.umap_x.length; i++) {{
-                const val = values[i];
-                if (isMissingDisplayValue(val)) continue;
+                const val = umapSplitActive ? null : values[i];
+                if (!umapSplitActive && isMissingDisplayValue(val)) continue;
 
                 // Skip hidden categories
-                if (!config.is_continuous) {{
+                if (!umapSplitActive && !config.is_continuous) {{
                     const catInfo = getCategoricalValueInfo(config, val);
                     if (!catInfo || hiddenCategories.has(catInfo.catName)) continue;
                 }}
@@ -11246,15 +13229,130 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (lassoModeB) {{
             selectedCellsB = newCells;
-            lassoModeB = false;
+            selectedLassoPathB = completedLassoPath;
+            selectedCellsBFromGridLasso = false;
+            selectedGridLassoSectionIdB = null;
+            selectedGridLassoPathB = [];
+            selectedCellsBFromModalLasso = false;
+            selectedModalLassoSectionIdB = null;
+            selectedModalLassoPathB = [];
+            selectedAnnotationBId = null;
+            lassoModeB = true;
+            magicWandActive = true;
+            umapPanActive = false;
+            isDrawingLasso = false;
+            lassoPath = [];
+            setUMAPCompareHintVisible(false);
+            updateUMAPCursor();
+            updateUMAPLassoButtonState();
         }} else {{
             selectedCells = newCells;
-            selectedCellsB.clear();
+            clearRegionBSelection();
+            selectedLassoPath = completedLassoPath;
+            selectedCellsFromGridLasso = false;
+            selectedGridLassoSectionId = null;
+            selectedGridLassoPath = [];
+            selectedCellsFromModalLasso = false;
+            selectedModalLassoSectionId = null;
+            selectedModalLassoPath = [];
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
             hideModalGeneDiscoveryPanel();
         }}
 
         selectionSummaryExpanded = false;
+        selectionSectionSummaryExpanded = false;
         updateSelectionInfo();
+        renderUMAP();
+        renderAllSections();
+        if (modalSection) renderModalSection();
+    }}
+
+    function getGridLassoCanvas() {{
+        if (!gridLassoSectionId) return null;
+        const panel = Array.from(document.querySelectorAll('.section-panel'))
+            .find((candidate) => candidate.dataset.sectionId === gridLassoSectionId);
+        return panel?.querySelector('canvas') || null;
+    }}
+
+    function updateGridPanelLassoCursor() {{
+        document.querySelectorAll('.section-panel').forEach((panel) => {{
+            panel.classList.toggle('grid-lasso-active', magicWandActive && !modalInlineActive);
+        }});
+    }}
+
+    function performGridPanelLassoSelection() {{
+        if (!gridLassoSectionId || gridLassoPath.length < 3) return;
+        const section = sectionById.get(gridLassoSectionId);
+        const canvas = getGridLassoCanvas();
+        if (!section || !canvas) return;
+        ensureSectionXY(section);
+
+        const rect = canvas.getBoundingClientRect();
+        const transform = createSectionViewTransform(section, {{
+            width: rect.width,
+            height: rect.height,
+            padding: 8,
+            isModal: false,
+        }});
+        if (!transform) return;
+
+        const config = getColorConfig();
+        const values = overviewBlendEnabled ? null : getSectionValues(section);
+        const newCells = new Set();
+        const completedGridLassoPath = gridLassoPath.map((point) => transform.screenToData(point.x, point.y));
+
+        for (let i = 0; i < section.x.length; i++) {{
+            if (!overviewBlendEnabled) {{
+                const val = values[i];
+                if (isMissingDisplayValue(val)) continue;
+
+                if (!config.is_continuous) {{
+                    const catInfo = getCategoricalValueInfo(config, val);
+                    if (!catInfo || hiddenCategories.has(catInfo.catName)) continue;
+                }}
+            }}
+
+            const point = transform.dataToScreen(section.x[i], section.y[i]);
+            if (!transform.isPointVisible(point.x, point.y, spotSize)) continue;
+            if (pointInPolygon(point.x, point.y, gridLassoPath)) {{
+                newCells.add(`${{section.id}}:${{i}}`);
+            }}
+        }}
+
+        if (lassoModeB) {{
+            selectedCellsB = newCells;
+            selectedLassoPathB = [];
+            selectedCellsBFromGridLasso = true;
+            selectedGridLassoSectionIdB = section.id;
+            selectedGridLassoPathB = completedGridLassoPath;
+            selectedCellsBFromModalLasso = false;
+            selectedModalLassoSectionIdB = null;
+            selectedModalLassoPathB = [];
+            selectedAnnotationBId = null;
+            lassoModeB = true;
+            magicWandActive = true;
+            umapPanActive = false;
+            setUMAPCompareHintVisible(false);
+        }} else {{
+            selectedCells = newCells;
+            clearRegionBSelection();
+            selectedLassoPath = [];
+            selectedCellsFromGridLasso = true;
+            selectedGridLassoSectionId = section.id;
+            selectedGridLassoPath = completedGridLassoPath;
+            selectedCellsFromModalLasso = false;
+            selectedModalLassoSectionId = null;
+            selectedModalLassoPath = [];
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
+            hideModalGeneDiscoveryPanel();
+        }}
+
+        selectionSummaryExpanded = false;
+        selectionSectionSummaryExpanded = false;
+        updateSelectionInfo();
+        updateUMAPCursor();
         renderUMAP();
         renderAllSections();
         if (modalSection) renderModalSection();
@@ -11816,9 +13914,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
 
             selectedCells = nextSelection;
-            selectedCellsB.clear();
+            clearRegionBSelection();
             lassoModeB = false;
+            selectedLassoPath = [];
+            selectedCellsFromGridLasso = false;
+            selectedGridLassoSectionId = null;
+            selectedGridLassoPath = [];
+            selectedCellsFromModalLasso = false;
+            selectedModalLassoSectionId = null;
+            selectedModalLassoPath = [];
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
             selectionSummaryExpanded = false;
+            selectionSectionSummaryExpanded = false;
             hideModalGeneDiscoveryPanel();
 
             if (matchedCount === 0) {{
@@ -12358,6 +14466,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return MODAL_ANNOTATION_COLORS[index % MODAL_ANNOTATION_COLORS.length];
     }}
 
+    function getNextModalAnnotationId() {{
+        const used = new Set(modalAnnotations.map(annotation => Number(annotation.id)).filter(Number.isFinite));
+        let id = 1;
+        while (used.has(id)) id++;
+        modalNextAnnotationId = id;
+        return id;
+    }}
+
     function getSectionAnnotations(sectionId) {{
         return modalAnnotations.filter(annotation => annotation.sectionId === sectionId);
     }}
@@ -12403,7 +14519,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const polygonData = modalAnnotationPath.map((point) => screenPointToModalData(point.x, point.y, transform));
         const cells = computeCellsInsideDataPolygon(modalSection, polygonData);
-        const annotationId = modalNextAnnotationId++;
+        const annotationId = getNextModalAnnotationId();
+        modalNextAnnotationId = annotationId + 1;
         const annotation = {{
             id: annotationId,
             sectionId: modalSection.id,
@@ -12416,25 +14533,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
         modalAnnotations.push(annotation);
         renderModalAnnotationPanel();
+        setModalAnnotationPanelOpen(true);
         updateAnnotationComparisonTabVisibility();
-        updateOverviewAnnotationsToggle();
-        if (showOverviewAnnotations) renderAllSections();
+        renderAllSections();
         if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
         return true;
-    }}
-
-    function updateOverviewAnnotationsToggle() {{
-        const btn = document.getElementById('annotations-overview-toggle');
-        if (!btn) return;
-        const n = modalAnnotations.length;
-        btn.style.display = n > 0 ? '' : 'none';
-        btn.textContent = `Annotations (${{n}})`;
-        btn.classList.toggle('active', showOverviewAnnotations);
-        const exportBtn = document.getElementById('annotations-overview-export');
-        if (exportBtn) exportBtn.style.display = n > 0 ? '' : 'none';
-        if (n === 0 && showOverviewAnnotations) {{
-            showOverviewAnnotations = false;
-        }}
     }}
 
     function removeModalAnnotation(annotationId) {{
@@ -12442,21 +14545,56 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!Number.isFinite(target)) return;
         invalidateAnnotationDEState();
         modalAnnotations = modalAnnotations.filter(annotation => annotation.id !== target);
+        if (selectedCellsFromAnnotation && selectedAnnotationId === target) {{
+            selectedCells.clear();
+            clearRegionBSelection();
+            lassoModeB = false;
+            setUMAPCompareHintVisible(false);
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
+            updateSelectionInfo();
+        }}
+        if (selectedAnnotationBId === target) {{
+            clearRegionBSelection();
+            lassoModeB = false;
+            setUMAPCompareHintVisible(false);
+            updateSelectionInfo();
+        }}
+        getNextModalAnnotationId();
         renderModalAnnotationPanel();
         updateAnnotationComparisonTabVisibility();
-        updateOverviewAnnotationsToggle();
-        if (showOverviewAnnotations) renderAllSections();
+        renderAllSections();
         if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
         if (modalSection) renderModalSection();
     }}
 
     function clearModalAnnotationsForSection(sectionId) {{
         invalidateAnnotationDEState();
+        const removedSelectedAnnotation = selectedCellsFromAnnotation &&
+            modalAnnotations.some(annotation => annotation.sectionId === sectionId && annotation.id === selectedAnnotationId);
+        const removedComparedAnnotation = modalAnnotations.some(
+            annotation => annotation.sectionId === sectionId && annotation.id === selectedAnnotationBId
+        );
         modalAnnotations = modalAnnotations.filter(annotation => annotation.sectionId !== sectionId);
+        if (removedSelectedAnnotation) {{
+            selectedCells.clear();
+            clearRegionBSelection();
+            lassoModeB = false;
+            setUMAPCompareHintVisible(false);
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
+            updateSelectionInfo();
+        }}
+        if (!removedSelectedAnnotation && removedComparedAnnotation) {{
+            clearRegionBSelection();
+            lassoModeB = false;
+            setUMAPCompareHintVisible(false);
+            updateSelectionInfo();
+        }}
+        getNextModalAnnotationId();
         renderModalAnnotationPanel();
         updateAnnotationComparisonTabVisibility();
-        updateOverviewAnnotationsToggle();
-        if (showOverviewAnnotations) renderAllSections();
+        renderAllSections();
         if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
         if (modalSection) renderModalSection();
     }}
@@ -12464,10 +14602,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function clearAllModalAnnotations() {{
         invalidateAnnotationDEState();
         modalAnnotations = [];
+        modalNextAnnotationId = 1;
+        if (selectedCellsFromAnnotation) {{
+            selectedCells.clear();
+            clearRegionBSelection();
+            lassoModeB = false;
+            setUMAPCompareHintVisible(false);
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
+            updateSelectionInfo();
+        }}
         renderModalAnnotationPanel();
         updateAnnotationComparisonTabVisibility();
-        updateOverviewAnnotationsToggle();
-        if (showOverviewAnnotations) renderAllSections();
+        renderAllSections();
         if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
         if (modalSection) renderModalSection();
     }}
@@ -12481,12 +14628,61 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 selectedCells.add(`${{annotation.sectionId}}:${{cellIdx}}`);
             }}
         }});
+        clearRegionBSelection();
+        lassoModeB = false;
+        selectedLassoPath = [];
+        selectedCellsFromGridLasso = false;
+        selectedGridLassoSectionId = null;
+        selectedGridLassoPath = [];
+        selectedCellsFromModalLasso = false;
+        selectedModalLassoSectionId = null;
+        selectedModalLassoPath = [];
+        selectedCellsFromAnnotation = true;
+        selectedAnnotationId = annotation.id;
+        selectedAnnotationSelectionColor = '#4F0433';
         selectionSummaryExpanded = false;
+        selectionSectionSummaryExpanded = false;
         hideModalGeneDiscoveryPanel();
         updateSelectionInfo();
         renderAllSections();
         if (umapVisible) renderUMAP();
         if (modalSection) renderModalSection();
+        renderModalAnnotationPanel();
+        openInsightsMode('selection');
+    }}
+
+    function selectCellsFromAnnotationAsRegionB(annotationId) {{
+        const annotation = getModalAnnotationById(annotationId);
+        if (!annotation || !selectedCellsFromAnnotation || selectedAnnotationId === annotation.id || selectedCells.size === 0) return;
+        selectedCellsB.clear();
+        (annotation.localCellIndices || []).forEach((cellIdx) => {{
+            if (Number.isInteger(cellIdx) && cellIdx >= 0) {{
+                selectedCellsB.add(`${{annotation.sectionId}}:${{cellIdx}}`);
+            }}
+        }});
+        selectedLassoPathB = [];
+        selectedCellsBFromGridLasso = false;
+        selectedGridLassoSectionIdB = null;
+        selectedGridLassoPathB = [];
+        selectedCellsBFromModalLasso = false;
+        selectedModalLassoSectionIdB = null;
+        selectedModalLassoPathB = [];
+        selectedAnnotationBId = annotation.id;
+        lassoModeB = false;
+        magicWandActive = false;
+        umapPanActive = true;
+        setUMAPCompareHintVisible(false);
+        syncModalLassoFromGlobal();
+        updateUMAPCursor();
+        updateUMAPLassoButtonState();
+        selectionSummaryExpanded = false;
+        selectionSectionSummaryExpanded = false;
+        updateSelectionInfo();
+        renderAllSections();
+        if (umapVisible) renderUMAP();
+        if (modalSection) renderModalSection();
+        renderModalAnnotationPanel();
+        openInsightsMode('selection');
     }}
 
     function buildModalAnnotationExport() {{
@@ -12637,7 +14833,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }});
             restored++;
         }});
-        modalNextAnnotationId = Math.max(modalNextAnnotationId, maxId + 1);
+        getNextModalAnnotationId();
         return {{ restored, skipped }};
     }}
 
@@ -12685,7 +14881,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             hiddenCategories.clear();
         }}
 
-        linkedSpotlightEnabled = !!state.linked_spotlight_enabled;
+        linkedSpotlightEnabled = Object.prototype.hasOwnProperty.call(state, 'linked_spotlight_enabled')
+            ? !!state.linked_spotlight_enabled
+            : linkedSpotlightEnabled;
         spotlightPinnedCategory = state.spotlight_pinned_category || null;
         spotlightHoverCategory = null;
 
@@ -12702,7 +14900,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const finalize = () => {{
             renderModalAnnotationPanel();
             updateAnnotationComparisonTabVisibility();
-            updateOverviewAnnotationsToggle();
             renderLegend('legend');
             renderLegend('modal-legend');
             renderAllSections();
@@ -13249,33 +15446,56 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function renderModalAnnotationPanel() {{
         const listEl = document.getElementById('modal-annotation-list');
+        const sectionEl = document.getElementById('modal-annotation-section');
         if (!listEl) return;
-        if (!modalSection) {{
-            listEl.innerHTML = '<div class="modal-annotation-empty">Open a section to annotate.</div>';
+        const visibleAnnotations = modalAnnotations
+            .slice()
+            .sort((a, b) => {{
+                const labelA = String(a.label || `Annotation ${{a.id}}`).toLocaleLowerCase();
+                const labelB = String(b.label || `Annotation ${{b.id}}`).toLocaleLowerCase();
+                const byLabel = labelA.localeCompare(labelB, undefined, {{ numeric: true, sensitivity: 'base' }});
+                return byLabel || Number(a.id || 0) - Number(b.id || 0);
+            }});
+        if (!visibleAnnotations.length) {{
+            if (sectionEl) sectionEl.classList.remove('annotation-has-items');
+            listEl.innerHTML = '<div class="modal-annotation-empty">Draw a region with Annote polygon to annotation cells.</div>';
             layoutModalAnnotationPanel();
             return;
         }}
+        if (sectionEl) sectionEl.classList.add('annotation-has-items');
 
-        const sectionAnnotations = getSectionAnnotations(modalSection.id);
-        if (!sectionAnnotations.length) {{
-            listEl.innerHTML = '<div class="modal-annotation-empty">Enable Annotate and draw a region to create polygon annotations.</div>';
-            layoutModalAnnotationPanel();
-            return;
-        }}
-
-        listEl.innerHTML = sectionAnnotations.map((annotation) => {{
+        listEl.innerHTML = visibleAnnotations.map((annotation) => {{
             const count = Number(annotation.localCellIndices?.length || 0).toLocaleString();
             const label = escapeHtml(annotation.label || `Annotation ${{annotation.id}}`);
+            const annotationColor = annotation.color || getAnnotationColorById(annotation.id);
+            const isSelectedAnnotation = selectedCellsFromAnnotation && selectedAnnotationId === annotation.id;
+            const isComparedAnnotation = selectedAnnotationBId === annotation.id;
+            const hasComparedRegion = selectedCellsB.size > 0;
+            const hasActiveRegionA = selectedCells.size > 0;
+            const canShowCompareAction = selectedCellsFromAnnotation && selectedAnnotationId !== annotation.id && hasActiveRegionA;
+            const selectDisabled = isSelectedAnnotation || (hasActiveRegionA && hasComparedRegion);
+            const compareDisabled = hasComparedRegion;
+            const rowClasses = [
+                'modal-annotation-row',
+                isSelectedAnnotation ? 'annotation-selected' : '',
+                isComparedAnnotation ? 'annotation-compared' : '',
+            ].filter(Boolean).join(' ');
+            const primaryAction = canShowCompareAction
+                ? `<button class="annotation-compare" type="button" data-annotation-compare="${{annotation.id}}" title="Use as compared region" aria-label="Use annotation as compared region"${{compareDisabled ? ' disabled' : ''}}>${{UMAP_COMPARE_ICON}}</button>`
+                : `<button type="button" data-annotation-select="${{annotation.id}}" title="Select cells" aria-label="Select annotation cells"${{selectDisabled ? ' disabled' : ''}}>
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="22" x2="18" y1="12" y2="12"></line><line x1="6" x2="2" y1="12" y2="12"></line><line x1="12" x2="12" y1="6" y2="2"></line><line x1="12" x2="12" y1="22" y2="18"></line></svg>
+                            </button>`;
             return `
-                <div class="modal-annotation-row" data-annotation-id="${{annotation.id}}">
+                <div class="${{rowClasses}}" data-annotation-id="${{annotation.id}}">
                     <div class="modal-annotation-row-main">
-                        <span class="modal-annotation-color" style="background: ${{annotation.color || getAnnotationColorById(annotation.id)}}"></span>
-                        <input class="modal-annotation-label" type="text" value="${{label}}" data-annotation-label="${{annotation.id}}">
-                        <span class="modal-annotation-count">${{count}} cells</span>
-                    </div>
-                    <div class="modal-annotation-row-actions">
-                        <button type="button" data-annotation-select="${{annotation.id}}">Select cells</button>
-                        <button type="button" data-annotation-delete="${{annotation.id}}">Delete</button>
+                        <input class="modal-annotation-label" type="text" value="${{label}}" data-annotation-label="${{annotation.id}}" style="border-color: ${{annotationColor}}">
+                        <div class="modal-annotation-row-actions">
+                            ${{primaryAction}}
+                            <button type="button" data-annotation-delete="${{annotation.id}}" title="Delete annotation" aria-label="Delete annotation">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                            </button>
+                        </div>
+                        <span class="modal-annotation-count" style="background: ${{annotationColor}}">${{count}} cells</span>
                     </div>
                 </div>
             `;
@@ -13296,6 +15516,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         listEl.querySelectorAll('[data-annotation-select]').forEach((btn) => {{
             btn.addEventListener('click', () => {{
                 selectCellsFromAnnotation(btn.dataset.annotationSelect);
+            }});
+        }});
+        listEl.querySelectorAll('[data-annotation-compare]').forEach((btn) => {{
+            btn.addEventListener('click', () => {{
+                selectCellsFromAnnotationAsRegionB(btn.dataset.annotationCompare);
             }});
         }});
         listEl.querySelectorAll('[data-annotation-delete]').forEach((btn) => {{
@@ -13325,7 +15550,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             modalSection,
             polygonBounds ? querySectionSpatialIndex(modalSection, polygonBounds) : null,
         );
-        selectedCells.clear();
+        const newCells = new Set();
 
         const nCandidates = candidateIndices ? candidateIndices.length : modalSection.x.length;
         for (let k = 0; k < nCandidates; k++) {{
@@ -13341,16 +15566,129 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const x = modalSection.x[i];
             const y = modalSection.y[i];
             if (pointInPolygon(x, y, polygonData)) {{
-                selectedCells.add(`${{modalSection.id}}:${{i}}`);
+                newCells.add(`${{modalSection.id}}:${{i}}`);
             }}
         }}
 
+        if (lassoModeB) {{
+            selectedCellsB = newCells;
+            selectedLassoPathB = [];
+            selectedCellsBFromGridLasso = false;
+            selectedGridLassoSectionIdB = null;
+            selectedGridLassoPathB = [];
+            selectedCellsBFromModalLasso = true;
+            selectedModalLassoSectionIdB = modalSection.id;
+            selectedModalLassoPathB = polygonData;
+            selectedAnnotationBId = null;
+            lassoModeB = true;
+            magicWandActive = true;
+            umapPanActive = false;
+            setUMAPCompareHintVisible(false);
+        }} else {{
+            selectedCells = newCells;
+            clearRegionBSelection();
+            selectedLassoPath = [];
+            selectedCellsFromGridLasso = false;
+            selectedGridLassoSectionId = null;
+            selectedGridLassoPath = [];
+            selectedCellsFromModalLasso = true;
+            selectedModalLassoSectionId = modalSection.id;
+            selectedModalLassoPath = polygonData;
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
+        }}
+
         selectionSummaryExpanded = false;
+        selectionSectionSummaryExpanded = false;
         hideModalGeneDiscoveryPanel();
         updateSelectionInfo();
         renderAllSections();
         if (umapVisible) renderUMAP();
         if (modalSection) renderModalSection();
+    }}
+
+    function updateUMAPLassoButtonState() {{
+        const btn = document.getElementById('umap-lasso-btn');
+        const panBtn = document.getElementById('umap-pan-btn');
+        updateGridPanelLassoCursor();
+        if (!btn) return;
+        const hasSelection = selectedCells.size > 0 || selectedCellsB.size > 0;
+        panBtn?.classList.toggle('active', umapPanActive && !magicWandActive);
+        if (hasSelection) {{
+            btn.innerHTML = UMAP_CLEAR_ICON;
+            btn.title = 'Clear selected cells';
+            btn.setAttribute('aria-label', 'Clear selected cells');
+            btn.classList.add('active');
+        }} else {{
+            btn.innerHTML = UMAP_LASSO_ICON;
+            btn.title = magicWandActive ? 'Selection tool active on UMAP and sections' : 'Draw to select cells on UMAP or sections';
+            btn.setAttribute('aria-label', btn.title);
+            btn.classList.toggle('active', magicWandActive);
+        }}
+        updateUMAPCompareButtonState();
+    }}
+
+    function syncModalLassoFromGlobal() {{
+        if (!modalSection) return;
+        if (magicWandActive) {{
+            resetFocusedModalTools('lasso');
+            modalMagicWandActive = true;
+        }} else {{
+            modalMagicWandActive = false;
+            isDrawingModalLasso = false;
+            modalLassoPath = [];
+        }}
+        updateModalToolbarState();
+        if (typeof updateModalCanvasCursor === 'function') updateModalCanvasCursor();
+        renderModalSection();
+    }}
+
+    function updateUMAPCompareButtonState() {{
+        const btn = document.getElementById('umap-compare-toggle');
+        if (!btn) return;
+        const hasRegionA = selectedCells.size > 0;
+        const hasRegionB = selectedCellsB.size > 0;
+        const active = lassoModeB || hasRegionB;
+        btn.disabled = !hasRegionA;
+        btn.classList.toggle('active', active);
+        btn.classList.toggle('compare-complete', hasRegionB);
+        const regionAFromLasso = selectedLassoPath.length > 0 || selectedGridLassoPath.length > 0 || selectedModalLassoPath.length > 0;
+        btn.classList.toggle('lasso-ready', hasRegionA && regionAFromLasso && !hasRegionB);
+        btn.innerHTML = hasRegionB ? UMAP_CLEAR_ICON : UMAP_COMPARE_ICON;
+        if (!hasRegionA) {{
+            btn.title = 'Select Region A before comparing';
+            btn.setAttribute('aria-label', 'Select Region A before comparing');
+        }} else if (hasRegionB) {{
+            btn.title = 'Clear comparison region';
+            btn.setAttribute('aria-label', 'Clear comparison region');
+        }} else if (lassoModeB) {{
+            btn.title = 'Cancel comparison region';
+            btn.setAttribute('aria-label', 'Cancel comparison region');
+        }} else {{
+            btn.title = 'Compare with a second region';
+            btn.setAttribute('aria-label', 'Compare with a second region');
+        }}
+    }}
+
+    function setUMAPCompareHintVisible(visible) {{
+        const hint = document.getElementById('umap-compare-hint');
+        if (umapCompareHintTimeout) {{
+            window.clearTimeout(umapCompareHintTimeout);
+            umapCompareHintTimeout = null;
+        }}
+        hint?.classList.toggle('visible', !!visible);
+        if (visible && hint) {{
+            umapCompareHintTimeout = window.setTimeout(() => {{
+                hint.classList.remove('visible');
+                umapCompareHintTimeout = null;
+            }}, 1000);
+        }}
+    }}
+
+    function updateUMAPCursor() {{
+        const canvas = document.getElementById('umap-canvas');
+        if (canvas) canvas.style.cursor = magicWandActive ? 'crosshair' : (umapPanActive ? 'grab' : 'default');
+        updateGridPanelLassoCursor();
     }}
 
     // Update selection info display
@@ -13373,44 +15711,62 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             : `${{selectedCells.size.toLocaleString()}} cells selected`;
 
         const umapInfo = document.getElementById('umap-selection-info');
+        const umapInfoText = document.getElementById('umap-selection-info-text');
         if (umapInfo) {{
-            umapInfo.textContent = countText;
-            umapInfo.style.display = selectedCells.size > 0 ? '' : 'none';
+            const hasSelectionState = selectedCells.size > 0 || selectedCellsB.size > 0 || selectedCellsFromAnnotation || selectedCellsFromGridLasso || selectedCellsFromModalLasso || selectedLassoPath.length > 0 || selectedGridLassoPath.length > 0 || selectedModalLassoPath.length > 0;
+            if (umapInfoText) umapInfoText.textContent = countText;
+            umapInfo.classList.toggle('visible', hasSelectionState);
+            umapInfo.style.display = hasSelectionState ? '' : 'none';
         }}
-        const modalInfo = document.getElementById('modal-selection-info');
-        if (modalInfo) modalInfo.textContent = countText;
-
         const summary = computeSelectionSummary();
-        const umapSummary = document.getElementById('umap-selection-summary');
+        const umapSummary = document.getElementById('insights-selection-panel');
         if (umapSummary) {{
             const hasSelection = selectedCells.size > 0;
-            umapSummary.style.display = hasSelection ? '' : 'none';
-            if (hasSelection) {{
-                umapSummary.classList.toggle('expanded', selectionSummaryExpanded);
-                umapSummary.classList.toggle('minimized', selectionSummaryMinimized);
-                umapSummary.innerHTML = renderSelectionSummaryHtml(summary);
-                bindSelectionSummaryInteractions(umapSummary);
-            }}
+            umapSummary.classList.toggle('expanded', selectionSummaryExpanded);
+            umapSummary.classList.toggle('minimized', selectionSummaryMinimized && hasSelection);
+            umapSummary.innerHTML = renderSelectionSummaryHtml(summary, {{
+                hideHeader: true,
+                hideSelectionQuery: true,
+                hideCompareRegion: true,
+            }});
+            bindSelectionSummaryInteractions(umapSummary);
         }}
-        const modalSummary = document.getElementById('modal-selection-summary');
-        if (modalSummary) {{
-            modalSummary.classList.toggle('expanded', selectionSummaryExpanded);
-            modalSummary.classList.toggle('minimized', selectionSummaryMinimized && selectedCells.size > 0);
-            modalSummary.innerHTML = renderSelectionSummaryHtml(summary, {{ allowFocusSubview: true, allowGenePanel: true }});
-            bindSelectionSummaryInteractions(modalSummary);
-        }}
+        renderUMAPSelectionQueryPanel();
+        updateUMAPSelectionSummaryPanelSize();
         updateModalToolbarState();
+        updateUMAPLassoButtonState();
     }}
 
     // Clear selection
     function clearSelection() {{
         selectedCells.clear();
-        selectedCellsB.clear();
+        clearRegionBSelection();
         lassoModeB = false;
+        magicWandActive = false;
+        umapPanActive = true;
+        modalMagicWandActive = false;
+        isDrawingModalLasso = false;
+        modalLassoPath = [];
+        isDrawingLasso = false;
+        lassoPath = [];
+        isDrawingGridLasso = false;
+        gridLassoPath = [];
+        gridLassoSectionId = null;
+        selectedLassoPath = [];
+        selectedCellsFromGridLasso = false;
+        selectedGridLassoSectionId = null;
+        selectedGridLassoPath = [];
+        selectedCellsFromModalLasso = false;
+        selectedModalLassoSectionId = null;
+        selectedModalLassoPath = [];
+        selectedCellsFromAnnotation = false;
+        selectedAnnotationId = null;
         selectionSummaryExpanded = false;
+        selectionSectionSummaryExpanded = false;
         selectionSummaryMinimized = false;
         hideModalGeneDiscoveryPanel();
         updateSelectionInfo();
+        updateUMAPCursor();
         renderUMAP();
         renderAllSections();
         if (modalSection) renderModalSection();
@@ -13445,6 +15801,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         contentColumn.style.setProperty('--umap-reserve-right', `${{reserveRight}}px`);
     }}
 
+    function updateStickyOffsets() {{
+        const header = document.querySelector('.header');
+        const visualBar = document.getElementById('visual-params-bar');
+        const filterBar = document.getElementById('filter-bar');
+        const headerH = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+        const visualH = visualBar ? Math.ceil(visualBar.getBoundingClientRect().height) : 0;
+        const filterVisible = filterBar && getComputedStyle(filterBar).display !== 'none';
+        const filterH = filterVisible ? Math.ceil(filterBar.getBoundingClientRect().height) : 0;
+        document.body.style.setProperty('--sticky-header-height', `${{headerH}}px`);
+        document.body.style.setProperty('--sticky-visual-height', `${{visualH}}px`);
+        document.body.style.setProperty('--sticky-filter-height', `${{filterH}}px`);
+        document.body.style.setProperty('--sticky-stack-height', `${{headerH + visualH + filterH}}px`);
+    }}
+
     function loadUMAPPanelState() {{
         try {{
             const saved = VIEWER_STORAGE.getItem(UMAP_PANEL_STORAGE_KEY);
@@ -13457,6 +15827,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }} catch (err) {{
             // Ignore malformed localStorage values.
         }}
+    }}
+
+    function renderUMAPSelectionQueryPanel() {{
+        const panel = document.getElementById('umap-selection-query-panel');
+        if (!panel) return;
+        panel.innerHTML = renderSelectionQueryPanelHtml({{ forceExpanded: true, showToggle: false, showClose: true }});
+        bindSelectionSummaryInteractions(panel);
     }}
 
     function saveUMAPPanelState() {{
@@ -13477,16 +15854,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         panel.classList.remove('dock-top-right', 'dock-top-left', 'dock-bottom-right', 'dock-bottom-left');
         panel.classList.add(`dock-${{umapPanelDock}}`);
         panel.style.width = `${{umapPanelSize}}px`;
+        updateUMAPSelectionSummaryPanelSize();
         updateUMAPGridReserve();
         const dockBtn = document.getElementById('umap-dock-btn');
         if (dockBtn) dockBtn.textContent = getUMAPDockLabel(umapPanelDock);
         saveUMAPPanelState();
     }}
 
+    function updateUMAPSelectionSummaryPanelSize() {{
+        const panel = document.getElementById('umap-panel');
+        if (!panel) return;
+        panel.classList.remove('has-selection-summary');
+        panel.style.height = '';
+    }}
+
+    function refreshModalAfterLayoutChange() {{
+        if (!modalSection) return;
+        renderModalSection();
+        layoutModalControls();
+        layoutModalAnnotationPanel();
+    }}
+
     function adjustUMAPPanelSize(delta) {{
         umapPanelSize = clampUMAPPanelSize(umapPanelSize + delta);
         applyUMAPPanelState();
         if (umapVisible) renderUMAP();
+        refreshModalAfterLayoutChange();
     }}
 
     // Toggle UMAP panel
@@ -13501,6 +15894,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         requestAnimationFrame(() => {{
             renderAllSections();
             if (umapVisible) renderUMAP();
+            refreshModalAfterLayoutChange();
         }});
     }}
 
@@ -13529,23 +15923,135 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         document.getElementById('umap-panel-larger')?.addEventListener('click', () => {{
             adjustUMAPPanelSize(UMAP_PANEL_SIZE_STEP);
         }});
-
-        // Magic wand button
-        document.getElementById('magic-wand-btn').addEventListener('click', () => {{
-            magicWandActive = !magicWandActive;
-            const btn = document.getElementById('magic-wand-btn');
-            btn.classList.toggle('active', magicWandActive);
-            const canvas = document.getElementById('umap-canvas');
-            canvas.style.cursor = magicWandActive ? 'crosshair' : 'grab';
+        document.getElementById('umap-pan-btn')?.addEventListener('click', () => {{
+            if (umapPanActive && !magicWandActive) {{
+                umapPanActive = false;
+                magicWandActive = true;
+            }} else {{
+                umapPanActive = true;
+                magicWandActive = false;
+            }}
+            syncModalLassoFromGlobal();
+            updateUMAPCursor();
+            updateUMAPLassoButtonState();
         }});
 
-        // Clear selection button
-        document.getElementById('clear-selection-btn').addEventListener('click', clearSelection);
+        // Lasso button: select when idle, clear when a selection exists.
+        document.getElementById('umap-lasso-btn').addEventListener('click', () => {{
+            if (selectedCells.size > 0 || selectedCellsB.size > 0) {{
+                clearSelection();
+                return;
+            }}
+            magicWandActive = !magicWandActive;
+            if (magicWandActive) umapPanActive = false;
+            else umapPanActive = true;
+            if (magicWandActive) {{
+                const colorPanel = document.getElementById('color-panel');
+                const colorToggle = document.getElementById('color-toggle');
+                colorPanel?.classList.remove('collapsed');
+                colorToggle?.classList.add('active');
+                setInsightsMode('selection');
+            }}
+            syncModalLassoFromGlobal();
+            updateUMAPCursor();
+            updateUMAPLassoButtonState();
+        }});
+
+        document.getElementById('umap-compare-toggle')?.addEventListener('click', () => {{
+            if (selectedCells.size === 0) return;
+            if (selectedCellsB.size > 0) {{
+                clearRegionBSelection();
+                lassoModeB = false;
+                magicWandActive = false;
+                umapPanActive = true;
+                isDrawingLasso = false;
+                lassoPath = [];
+                setUMAPCompareHintVisible(false);
+                syncModalLassoFromGlobal();
+                updateUMAPCursor();
+                updateUMAPLassoButtonState();
+                updateSelectionInfo();
+                renderUMAP();
+                renderAllSections();
+                if (modalSection) renderModalSection();
+                return;
+            }}
+            if (selectedCellsFromAnnotation) {{
+                lassoModeB = false;
+                magicWandActive = false;
+                umapPanActive = true;
+                isDrawingLasso = false;
+                lassoPath = [];
+                setUMAPCompareHintVisible(false);
+                syncModalLassoFromGlobal();
+                updateUMAPCursor();
+                updateUMAPLassoButtonState();
+                renderModalAnnotationPanel();
+                openInsightsMode('annotate');
+                return;
+            }}
+            lassoModeB = !lassoModeB;
+            magicWandActive = lassoModeB;
+            umapPanActive = !lassoModeB;
+            setUMAPCompareHintVisible(lassoModeB);
+            syncModalLassoFromGlobal();
+            updateUMAPCursor();
+            updateUMAPLassoButtonState();
+            updateSelectionInfo();
+        }});
+
+        const umapParamsToggle = document.getElementById('umap-params-toggle');
+        const umapParamsPanel = document.getElementById('umap-params-panel');
+        const umapQueryToggle = document.getElementById('umap-query-toggle');
+        const umapQueryPanel = document.getElementById('umap-selection-query-panel');
+        umapQueryToggle?.addEventListener('click', (event) => {{
+            event.stopPropagation();
+            const open = !umapQueryPanel?.classList.contains('visible');
+            if (open) {{
+                renderUMAPSelectionQueryPanel();
+                umapParamsPanel?.classList.remove('visible');
+                umapParamsToggle?.classList.remove('active');
+            }}
+            umapQueryPanel?.classList.toggle('visible', open);
+            umapQueryToggle.classList.toggle('active', open);
+        }});
+        umapParamsToggle?.addEventListener('click', (event) => {{
+            event.stopPropagation();
+            const open = !umapParamsPanel?.classList.contains('visible');
+            if (open) {{
+                umapQueryPanel?.classList.remove('visible');
+                umapQueryToggle?.classList.remove('active');
+            }}
+            umapParamsPanel?.classList.toggle('visible', open);
+            umapParamsToggle.classList.toggle('active', open);
+        }});
+        document.addEventListener('mousedown', (event) => {{
+            const wrap = document.getElementById('umap-params-wrap');
+            if (!wrap || wrap.contains(event.target)) return;
+            umapParamsPanel?.classList.remove('visible');
+            umapParamsToggle?.classList.remove('active');
+        }});
+        document.addEventListener('mousedown', (event) => {{
+            const wrap = document.getElementById('umap-query-wrap');
+            if (!wrap || wrap.contains(event.target)) return;
+            umapQueryPanel?.classList.remove('visible');
+            umapQueryToggle?.classList.remove('active');
+        }});
+        document.addEventListener('mousedown', (event) => {{
+            const wrap = document.getElementById('umap-compare-wrap');
+            if (!wrap || wrap.contains(event.target)) return;
+            setUMAPCompareHintVisible(false);
+        }});
 
         // UMAP spot size slider
         document.getElementById('umap-spot-size').addEventListener('input', (e) => {{
             umapSpotSize = parseFloat(e.target.value);
             document.getElementById('umap-spot-size-label').textContent = umapSpotSize.toFixed(2);
+            renderUMAP();
+        }});
+        document.getElementById('umap-cell-opacity')?.addEventListener('input', (e) => {{
+            umapCellOpacity = parseInt(e.target.value, 10) / 100;
+            document.getElementById('umap-cell-opacity-label').textContent = `${{Math.round(umapCellOpacity * 100)}}%`;
             renderUMAP();
         }});
 
@@ -13562,7 +16068,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 // Start lasso drawing
                 isDrawingLasso = true;
                 lassoPath = [{{ x, y }}];
-            }} else {{
+            }} else if (umapPanActive) {{
                 // Start panning
                 isUmapDragging = true;
                 umapDragStartX = e.clientX;
@@ -13596,7 +16102,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
             if (isUmapDragging) {{
                 isUmapDragging = false;
-                canvas.style.cursor = magicWandActive ? 'crosshair' : 'grab';
+                updateUMAPCursor();
             }}
         }});
 
@@ -13634,7 +16140,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderUMAP();
         }});
 
-        canvas.style.cursor = 'grab';
+        updateUMAPCursor();
     }}
 
     // Rendering
@@ -13719,11 +16225,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const config = getColorConfig();
         const values = getSectionValues(section);
+        const hasSelectionFocus = hasActiveCellSelection();
 
         // Overview split rendering path
         const ovBlend = getOverviewBlendRuntimes(section);
         if (ovBlend) {{
             const splitX = width * overviewBlendMix;
+            const splitGeneDensity = overviewGeneRenderMode === 'density' || overviewGeneRenderMode === 'both';
+            const splitGeneCells = overviewGeneRenderMode !== 'density';
             // Pre-compute CSS color cache for categorical runtimes to avoid per-cell rgbToCss
             const colorCacheA = ovBlend.a.kind === 'cell-all' && ovBlend.a.paletteRgb
                 ? ovBlend.a.paletteRgb.map(rgb => rgbToCss(rgb)) : null;
@@ -13750,6 +16259,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 return magma(t);
             }}
 
+            if (splitGeneDensity) {{
+                const candidatesA = ovBlend.a.kind === 'gene' ? [] : null;
+                const candidatesB = ovBlend.b.kind === 'gene' ? [] : null;
+                if (candidatesA || candidatesB) {{
+                    for (let i = 0; i < section.x.length; i++) {{
+                        const point = transform.dataToScreen(section.x[i], section.y[i]);
+                        if (!transform.isPointVisible(point.x, point.y, spotSize)) continue;
+                        if (point.x <= splitX) {{
+                            if (candidatesA) candidatesA.push(i);
+                        }} else if (candidatesB) {{
+                            candidatesB.push(i);
+                        }}
+                    }}
+                }}
+                if (candidatesA) {{
+                    const cache = ensureOverviewSplitGeneDensityCache(section, transform, width, height, ovBlend.a, 'a', candidatesA);
+                    drawGeneDensityLayer(ctx, width, height, cache, {{ x: 0, y: 0, width: splitX, height }});
+                }}
+                if (candidatesB) {{
+                    const cache = ensureOverviewSplitGeneDensityCache(section, transform, width, height, ovBlend.b, 'b', candidatesB);
+                    drawGeneDensityLayer(ctx, width, height, cache, {{ x: splitX, y: 0, width: Math.max(0, width - splitX), height }});
+                }}
+            }}
+
             const drawOrder = getSortedCellDrawOrder(section, values, config);
             let lastFill = '';
             ctx.globalAlpha = cellOpacity;
@@ -13758,10 +16291,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const point = transform.dataToScreen(section.x[i], section.y[i]);
                 if (!transform.isPointVisible(point.x, point.y, spotSize)) continue;
                 const isA = point.x <= splitX;
+                if (!splitGeneCells && (isA ? ovBlend.a.kind === 'gene' : ovBlend.b.kind === 'gene')) continue;
                 const color = isA
                     ? fastBlendColor(ovBlend.a, i, colorCacheA, cellCssA, cellInactiveCssA)
                     : fastBlendColor(ovBlend.b, i, colorCacheB, cellCssB, cellInactiveCssB);
-                if (color !== lastFill) {{ ctx.fillStyle = color; lastFill = color; }}
+                const isSelectedCell = isCellSelectedAny(section.id, i);
+                const drawColor = hasSelectionFocus && !isSelectedCell ? '#bbbbbb' : color;
+                if (drawColor !== lastFill) {{ ctx.fillStyle = drawColor; lastFill = drawColor; }}
+                ctx.globalAlpha = hasSelectionFocus && !isSelectedCell ? 0.12 * cellOpacity : cellOpacity;
                 ctx.beginPath();
                 ctx.arc(point.x, point.y, spotSize, 0, Math.PI * 2);
                 ctx.fill();
@@ -13875,11 +16412,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const off = i * k;
                         // Reject rows that are all-zero/NaN (already encoded as missing val above).
                         const point = transform.dataToScreen(section.x[i], section.y[i]);
-                        ctx.globalAlpha = cellOpacity;
-                        drawProportionsPie(
-                            ctx, point.x, point.y, spotSize,
-                            matrix.subarray(off, off + k), k, hiddenMask, paletteCss,
-                        );
+                        const isSelectedCell = isCellSelectedAny(section.id, i);
+                        if (hasSelectionFocus && !isSelectedCell) {{
+                            ctx.fillStyle = '#bbbbbb';
+                            ctx.globalAlpha = 0.12 * cellOpacity;
+                            ctx.beginPath();
+                            ctx.arc(point.x, point.y, spotSize, 0, Math.PI * 2);
+                            ctx.fill();
+                        }} else {{
+                            ctx.globalAlpha = cellOpacity;
+                            drawProportionsPie(
+                                ctx, point.x, point.y, spotSize,
+                                matrix.subarray(off, off + k), k, hiddenMask, paletteCss,
+                            );
+                        }}
                     }}
                 }} else {{
                     // Solid fallback by dominant component when pies would be sub-pixel.
@@ -13890,8 +16436,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const catInfo = getCategoricalValueInfo(config, val);
                         if (!catInfo || hiddenCategories.has(catInfo.catName)) continue;
                         const point = transform.dataToScreen(section.x[i], section.y[i]);
-                        ctx.fillStyle = paletteCss[catInfo.catIdx];
-                        ctx.globalAlpha = cellOpacity;
+                        const isSelectedCell = isCellSelectedAny(section.id, i);
+                        ctx.fillStyle = hasSelectionFocus && !isSelectedCell ? '#bbbbbb' : paletteCss[catInfo.catIdx];
+                        ctx.globalAlpha = hasSelectionFocus && !isSelectedCell ? 0.12 * cellOpacity : cellOpacity;
                         ctx.beginPath();
                         ctx.arc(point.x, point.y, spotSize, 0, Math.PI * 2);
                         ctx.fill();
@@ -13918,7 +16465,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }}
 
                 const point = transform.dataToScreen(section.x[i], section.y[i]);
-                if (hasTypeFocus && !isSelectedCat) {{
+                const isSelectedCell = isCellSelectedAny(section.id, i);
+                if (hasSelectionFocus && !isSelectedCell) {{
+                    ctx.fillStyle = '#bbbbbb';
+                    ctx.globalAlpha = 0.12 * cellOpacity;
+                }} else if (hasTypeFocus && !isSelectedCat) {{
                     ctx.fillStyle = '#bbbbbb';
                     ctx.globalAlpha = 0.15 * cellOpacity;
                 }} else {{
@@ -13933,11 +16484,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         ctx.globalAlpha = 1;
 
         // Third pass: draw selection highlights
-        if (selectedCells.size > 0) {{
-            ctx.strokeStyle = getSelectionOutlineColor();
+        function drawSectionSelectionOutlines(selectionSet, strokeColor) {{
+            if (!selectionSet || selectionSet.size === 0) return;
+            ctx.strokeStyle = strokeColor;
             ctx.lineWidth = 1.25;
             for (let i = 0; i < section.x.length; i++) {{
-                if (!isCellSelected(section.id, i)) continue;
+                if (!selectionSet.has(`${{section.id}}:${{i}}`)) continue;
 
                 const val = values[i];
                 if (isMissingDisplayValue(val)) continue;
@@ -13956,32 +16508,72 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 ctx.stroke();
             }}
         }}
+        if (!selectedCellsFromGridLasso && !selectedCellsFromModalLasso) drawSectionSelectionOutlines(selectedCells, '#4F0433');
+        if (!selectedCellsBFromGridLasso && !selectedCellsBFromModalLasso) drawSectionSelectionOutlines(selectedCellsB, '#4cc9f0');
+
+        function drawStoredSectionLassoPath(sectionId, path, strokeColor) {{
+            if (sectionId !== section.id || !path || path.length <= 1) return;
+            ctx.save();
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            const first = transform.dataToScreen(path[0].x, path[0].y);
+            ctx.beginPath();
+            ctx.moveTo(first.x, first.y);
+            for (let i = 1; i < path.length; i++) {{
+                const point = transform.dataToScreen(path[i].x, path[i].y);
+                ctx.lineTo(point.x, point.y);
+            }}
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }}
+        drawStoredSectionLassoPath(selectedGridLassoSectionId, selectedGridLassoPath, '#4F0433');
+        drawStoredSectionLassoPath(selectedGridLassoSectionIdB, selectedGridLassoPathB, '#4cc9f0');
+        drawStoredSectionLassoPath(selectedModalLassoSectionId, selectedModalLassoPath, '#4F0433');
+        drawStoredSectionLassoPath(selectedModalLassoSectionIdB, selectedModalLassoPathB, '#4cc9f0');
+
+        function drawGridPanelLassoPath() {{
+            if (!isDrawingGridLasso || gridLassoSectionId !== section.id || gridLassoPath.length <= 1) return;
+            ctx.save();
+            ctx.strokeStyle = lassoModeB ? '#4cc9f0' : '#4F0433';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]);
+            ctx.beginPath();
+            ctx.moveTo(gridLassoPath[0].x, gridLassoPath[0].y);
+            for (let i = 1; i < gridLassoPath.length; i++) {{
+                ctx.lineTo(gridLassoPath[i].x, gridLassoPath[i].y);
+            }}
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }}
+        drawGridPanelLassoPath();
 
         // Draw polygon annotations in overview
-        if (showOverviewAnnotations) {{
-            const sectionAnnotations = getSectionAnnotations(section.id);
-            sectionAnnotations.forEach((annotation) => {{
-                const vertices = annotation.vertices || [];
-                if (vertices.length < 2) return;
-                ctx.save();
-                ctx.lineWidth = 1.5;
-                ctx.strokeStyle = annotation.color || getAnnotationColorById(annotation.id);
-                ctx.fillStyle = annotation.color || getAnnotationColorById(annotation.id);
-                ctx.globalAlpha = 0.12;
-                const first = transform.dataToScreen(vertices[0].x, vertices[0].y);
-                ctx.beginPath();
-                ctx.moveTo(first.x, first.y);
-                for (let i = 1; i < vertices.length; i++) {{
-                    const point = transform.dataToScreen(vertices[i].x, vertices[i].y);
-                    ctx.lineTo(point.x, point.y);
-                }}
-                ctx.closePath();
-                ctx.fill();
-                ctx.globalAlpha = 0.8;
-                ctx.stroke();
-                ctx.restore();
-            }});
-        }}
+        const sectionAnnotations = getSectionAnnotations(section.id);
+        sectionAnnotations.forEach((annotation) => {{
+            const vertices = annotation.vertices || [];
+            if (vertices.length < 2) return;
+            ctx.save();
+            ctx.lineWidth = 1.5;
+            ctx.strokeStyle = annotation.color || getAnnotationColorById(annotation.id);
+            ctx.fillStyle = annotation.color || getAnnotationColorById(annotation.id);
+            ctx.globalAlpha = 0.12;
+            const first = transform.dataToScreen(vertices[0].x, vertices[0].y);
+            ctx.beginPath();
+            ctx.moveTo(first.x, first.y);
+            for (let i = 1; i < vertices.length; i++) {{
+                const point = transform.dataToScreen(vertices[i].x, vertices[i].y);
+                ctx.lineTo(point.x, point.y);
+            }}
+            ctx.closePath();
+            ctx.fill();
+            ctx.globalAlpha = 0.8;
+            ctx.stroke();
+            ctx.restore();
+        }});
 
         drawScalebar(ctx, transform, {{ darkBg: currentTheme === 'dark' }});
     }}
@@ -14024,14 +16616,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         // Update stats
-        const colorLabel = currentGene || currentColor;
+        const loadedGenes = Number(DATA.loaded_genes ?? Object.keys(DATA.genes_meta || {{}}).length);
+        const genesStatsText = Number.isFinite(loadedGenes) && loadedGenes > 0
+            ? ` | ${{loadedGenes.toLocaleString()}} genes`
+            : '';
         document.getElementById('stats-text').textContent =
-            `${{visibleCount}}/${{DATA.n_sections}} sections | ${{totalCells.toLocaleString()}} cells | ${{colorLabel}}`;
+            `${{visibleCount}}/${{DATA.n_sections}} sections | ${{totalCells.toLocaleString()}} cells${{genesStatsText}}`;
 
         // When filters collapse to a single visible sample, avoid full-width stretching.
         if (grid) {{
             const useSingleVisibleFilterLayout = visibleCount === 1 && (DATA.n_sections || 0) > 1;
-            grid.classList.toggle('single-visible-filter-layout', useSingleVisibleFilterLayout);
+            if (modalInlineActive) {{
+                grid.classList.remove('single-section-layout', 'single-visible-filter-layout');
+            }} else {{
+                grid.classList.toggle('single-visible-filter-layout', useSingleVisibleFilterLayout);
+            }}
         }}
 
         // Show no results message
@@ -14331,12 +16930,35 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function updateOverviewGeneViewState() {{
         const block = document.getElementById('overview-gene-view-block');
         const select = document.getElementById('overview-gene-view-mode');
-        const show = !!currentGene;
+        const colorSection = document.getElementById('expression-color-section');
+        const splitHasGene = hasOverviewSplitGeneSelection();
+        const show = overviewBlendEnabled
+            ? splitHasGene
+            : !!currentGene;
+        const showColor = overviewBlendEnabled
+            ? splitHasGene
+            : !!currentGene;
         if (block) block.style.display = show ? 'flex' : 'none';
+        if (colorSection) colorSection.style.display = showColor ? 'flex' : 'none';
         if (select) {{
             select.disabled = !show;
             select.value = overviewGeneRenderMode;
         }}
+        updateGeneParamsButtonState();
+    }}
+
+    function hasOverviewSplitGeneSelection() {{
+        if (!overviewBlendEnabled) return false;
+        return ['a', 'b'].some(side => {{
+            const spec = overviewBlendSpec?.[side];
+            if (!spec || spec.kind === 'cell') return false;
+            const gene = String(spec.gene || '').trim();
+            if (!gene) return false;
+            const meta = (spec.kind === CURRENT_MODALITY || (spec.kind === 'gene' && CURRENT_MODALITY === 'rna'))
+                ? DATA.genes_meta
+                : (MODALITY_GENE_STATE[spec.kind]?.genes_meta);
+            return !!(meta && meta[gene]);
+        }});
     }}
 
     function getGeneDensityCacheKey(section, transform, width, height, gene, vmin, vmax, cacheToken = '') {{
@@ -14387,9 +17009,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return target;
     }}
 
-    function buildGeneDensityCache(section, transform, width, height, values, cacheKey, candidateIndices = null) {{
-        if (!section || !transform || !currentGene || !values) return null;
-        const {{ vmin, vmax }} = getGeneScaleRange(currentGene);
+    function buildGeneDensityCache(section, transform, width, height, values, cacheKey, candidateIndices = null, scaleRange = null) {{
+        if (!section || !transform || !values) return null;
+        const {{ vmin, vmax }} = scaleRange || getGeneScaleRange(currentGene);
         const scaleDenom = Math.max(1e-9, vmax - vmin);
         const {{ gridW, gridH }} = getGeneDensityGridSize(width, height);
         const accum = new Float32Array(gridW * gridH);
@@ -14487,6 +17109,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             values,
             cacheKey,
             candidateIndices,
+            {{ vmin, vmax }},
         );
         return section._geneDensityCache;
     }}
@@ -14515,13 +17138,49 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             values,
             cacheKey,
             candidateIndices,
+            {{ vmin, vmax }},
         );
         return modalGeneDensityCache;
     }}
 
-    function drawGeneDensityLayer(ctx, width, height, cache) {{
+    function ensureOverviewSplitGeneDensityCache(section, transform, width, height, runtime, side, candidateIndices = null) {{
+        const target = getOverviewSplitGeneTarget(side);
+        if (!section || !transform || !runtime || runtime.kind !== 'gene' || !target) return null;
+        const cacheKey = getGeneDensityCacheKey(
+            section,
+            transform,
+            width,
+            height,
+            target.gene,
+            runtime.vmin,
+            runtime.vmax,
+            `overview-split::${{side}}`,
+        );
+        if (!section._overviewSplitGeneDensityCache) section._overviewSplitGeneDensityCache = {{}};
+        if (section._overviewSplitGeneDensityCache[side]?.key === cacheKey) {{
+            return section._overviewSplitGeneDensityCache[side];
+        }}
+        section._overviewSplitGeneDensityCache[side] = buildGeneDensityCache(
+            section,
+            transform,
+            width,
+            height,
+            runtime.values,
+            cacheKey,
+            candidateIndices,
+            {{ vmin: runtime.vmin, vmax: runtime.vmax }},
+        );
+        return section._overviewSplitGeneDensityCache[side];
+    }}
+
+    function drawGeneDensityLayer(ctx, width, height, cache, clipRect = null) {{
         if (!ctx || !cache?.canvas) return false;
         ctx.save();
+        if (clipRect) {{
+            ctx.beginPath();
+            ctx.rect(clipRect.x, clipRect.y, clipRect.width, clipRect.height);
+            ctx.clip();
+        }}
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(cache.canvas, 0, 0, width, height);
@@ -14939,6 +17598,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             : null;
         const nCandidates = candidateIndices ? candidateIndices.length : modalSection.x.length;
         const focusedSubviewActive = !!getModalActiveCellIndexSet(modalSection.id);
+        const hasSelectionFocus = hasActiveCellSelection();
 
         if (showGeneDensity) {{
             const densityCache = ensureModalGeneDensityCache(
@@ -15031,8 +17691,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const y = point.y;
                 if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
                 const runtime = x <= splitX ? blendRuntimes.a : blendRuntimes.b;
-                ctx.fillStyle = rgbToCss(getModalBlendCellRgb(runtime, i));
-                ctx.globalAlpha = cellOpacity;
+                const isSelectedCell = isCellSelectedAny(modalSection.id, i);
+                if (hasSelectionFocus && !isSelectedCell) {{
+                    ctx.fillStyle = '#bbbbbb';
+                    ctx.globalAlpha = 0.12 * cellOpacity;
+                }} else {{
+                    ctx.fillStyle = rgbToCss(getModalBlendCellRgb(runtime, i));
+                    ctx.globalAlpha = cellOpacity;
+                }}
                 ctx.beginPath();
                 ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
                 ctx.fill();
@@ -15064,11 +17730,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const y = point.y;
                         if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
                         const off = i * k;
-                        ctx.globalAlpha = cellOpacity;
-                        drawProportionsPie(
-                            ctx, x, y, adjustedSpotSize,
-                            matrix.subarray(off, off + k), k, hiddenMask, paletteCss,
-                        );
+                        const isSelectedCell = isCellSelectedAny(modalSection.id, i);
+                        if (hasSelectionFocus && !isSelectedCell) {{
+                            ctx.fillStyle = '#bbbbbb';
+                            ctx.globalAlpha = 0.12 * cellOpacity;
+                            ctx.beginPath();
+                            ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
+                            ctx.fill();
+                        }} else {{
+                            ctx.globalAlpha = cellOpacity;
+                            drawProportionsPie(
+                                ctx, x, y, adjustedSpotSize,
+                                matrix.subarray(off, off + k), k, hiddenMask, paletteCss,
+                            );
+                        }}
                     }}
                 }} else {{
                     for (let kc = 0; kc < nCandidates; kc++) {{
@@ -15081,8 +17756,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const x = point.x;
                         const y = point.y;
                         if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
-                        ctx.fillStyle = paletteCss[catInfo.catIdx];
-                        ctx.globalAlpha = cellOpacity;
+                        const isSelectedCell = isCellSelectedAny(modalSection.id, i);
+                        if (hasSelectionFocus && !isSelectedCell) {{
+                            ctx.fillStyle = '#bbbbbb';
+                            ctx.globalAlpha = 0.12 * cellOpacity;
+                        }} else {{
+                            ctx.fillStyle = paletteCss[catInfo.catIdx];
+                            ctx.globalAlpha = cellOpacity;
+                        }}
                         ctx.beginPath();
                         ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
                         ctx.fill();
@@ -15117,7 +17798,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const y = point.y;
                 if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
 
-                if (hasTypeFocus && !isSelectedCat) {{
+                const isSelectedCell = isCellSelectedAny(modalSection.id, i);
+                if (hasSelectionFocus && !isSelectedCell) {{
+                    ctx.fillStyle = '#bbbbbb';
+                    ctx.globalAlpha = 0.12 * cellOpacity;
+                }} else if (hasTypeFocus && !isSelectedCat) {{
                     ctx.fillStyle = '#bbbbbb';
                     ctx.globalAlpha = 0.15 * cellOpacity;
                 }} else {{
@@ -15131,13 +17816,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         ctx.globalAlpha = 1;
 
-        // Third pass: draw selection highlights
-        if (selectedCells.size > 0 && !focusedSubviewActive) {{
-            ctx.strokeStyle = getSelectionOutlineColor();
+        // Third pass: draw selection highlights. Lasso selections made in a section keep
+        // the dashed region outline instead of per-cell borders.
+        function drawModalSelectionOutlines(selectionSet, strokeColor) {{
+            if (!selectionSet || selectionSet.size === 0 || focusedSubviewActive) return;
+            ctx.strokeStyle = strokeColor;
             ctx.lineWidth = Math.max(1, Math.min(1.75, adjustedSpotSize * 0.24));
             for (let k = 0; k < nCandidates; k++) {{
                 const i = candidateIndices ? candidateIndices[k] : k;
-                if (!isCellSelected(modalSection.id, i)) continue;
+                if (!selectionSet.has(`${{modalSection.id}}:${{i}}`)) continue;
 
                 const val = values[i];
                 if (!blendActive && isMissingDisplayValue(val)) continue;
@@ -15159,13 +17846,47 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }}
 
+        const regionAUsesSectionLasso =
+            (selectedCellsFromGridLasso && selectedGridLassoSectionId === modalSection.id) ||
+            (selectedCellsFromModalLasso && selectedModalLassoSectionId === modalSection.id);
+        const regionBUsesSectionLasso =
+            (selectedCellsBFromGridLasso && selectedGridLassoSectionIdB === modalSection.id) ||
+            (selectedCellsBFromModalLasso && selectedModalLassoSectionIdB === modalSection.id);
+        const regionAOutlineColor = (selectedLassoPath.length > 0 || selectedCellsFromAnnotation) ? '#4F0433' : getSelectionOutlineColor();
+        const regionBOutlineColor = selectedLassoPathB.length > 0 ? '#4cc9f0' : getSelectionOutlineColor();
+        if (!regionAUsesSectionLasso) drawModalSelectionOutlines(selectedCells, regionAOutlineColor);
+        if (!regionBUsesSectionLasso) drawModalSelectionOutlines(selectedCellsB, regionBOutlineColor);
+
+        function drawStoredModalLassoPath(sectionId, path, strokeColor) {{
+            if (sectionId !== modalSection.id || !path || path.length <= 1) return;
+            ctx.save();
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([6, 4]);
+            const first = transform.dataToScreen(path[0].x, path[0].y);
+            ctx.beginPath();
+            ctx.moveTo(first.x, first.y);
+            for (let i = 1; i < path.length; i++) {{
+                const point = transform.dataToScreen(path[i].x, path[i].y);
+                ctx.lineTo(point.x, point.y);
+            }}
+            ctx.closePath();
+            ctx.stroke();
+            ctx.setLineDash([]);
+            ctx.restore();
+        }}
+        drawStoredModalLassoPath(selectedGridLassoSectionId, selectedGridLassoPath, '#4F0433');
+        drawStoredModalLassoPath(selectedGridLassoSectionIdB, selectedGridLassoPathB, '#4cc9f0');
+        drawStoredModalLassoPath(selectedModalLassoSectionId, selectedModalLassoPath, '#4F0433');
+        drawStoredModalLassoPath(selectedModalLassoSectionIdB, selectedModalLassoPathB, '#4cc9f0');
+
         // No extra highlight needed: non-selected categories are greyed out above
 
         drawNeighborHighlights(ctx, modalSection, transform, adjustedSpotSize);
         drawModalAnnotations(ctx, transform);
 
         if (isDrawingModalLasso && modalLassoPath.length > 1) {{
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.strokeStyle = lassoModeB ? '#4cc9f0' : '#4F0433';
             ctx.lineWidth = 2;
             ctx.setLineDash([6, 4]);
             ctx.beginPath();
@@ -15178,16 +17899,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         if (isDrawingModalAnnotation && modalAnnotationPath.length > 1) {{
-            ctx.strokeStyle = 'rgba(255, 127, 80, 0.95)';
+            ctx.save();
+            const nextAnnotationColor = getAnnotationColorById(getNextModalAnnotationId());
+            ctx.strokeStyle = nextAnnotationColor;
+            ctx.fillStyle = colorToRgbaCss(nextAnnotationColor, 0.14);
             ctx.lineWidth = 2;
-            ctx.setLineDash([4, 3]);
             ctx.beginPath();
             ctx.moveTo(modalAnnotationPath[0].x, modalAnnotationPath[0].y);
             for (let i = 1; i < modalAnnotationPath.length; i++) {{
                 ctx.lineTo(modalAnnotationPath[i].x, modalAnnotationPath[i].y);
             }}
+            if (modalAnnotationPath.length > 2) {{
+                ctx.closePath();
+                ctx.fill();
+            }}
             ctx.stroke();
-            ctx.setLineDash([]);
+            ctx.restore();
         }}
 
         drawScalebar(ctx, transform, {{ isModal: true, darkBg: currentTheme === 'dark' }});
@@ -15201,23 +17928,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         renderModalSectionExact();
     }}
 
+    const LEGEND_EYE_ICON = '<svg viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+    const LEGEND_EYE_OFF_ICON = '<svg viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path><path d="m2 2 20 20"></path></svg>';
+    const LEGEND_SPOTLIGHT_ICON = '<svg viewBox="0 0 24 24"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M12 2v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="M2 12h2"></path><path d="m19.07 4.93-1.41 1.41"></path><path d="M20 12h2"></path><path d="M15 14a5 5 0 1 0-6 0l1 4h4z"></path></svg>';
+    const LEGEND_EXPORT_ICON = '<svg viewBox="0 0 24 24"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>';
+    const LEGEND_IMPORT_ICON = '<svg viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="m17 8-5-5-5 5"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path></svg>';
+
+    function closeLegendExportMenus(except = null) {{
+        document.querySelectorAll('.legend-export-menu.open').forEach((menu) => {{
+            if (menu === except) return;
+            menu.classList.remove('open');
+            menu.setAttribute('aria-hidden', 'true');
+            const btn = document.querySelector(`[aria-controls="${{menu.id}}"]`);
+            btn?.classList.remove('active');
+            btn?.setAttribute('aria-expanded', 'false');
+        }});
+    }}
+
     // Legend
     function renderLegend(targetId = 'legend') {{
         const legend = document.getElementById(targetId);
         if (!legend) return;
         const config = getColorConfig();
         const colorLabel = currentGene || currentColor;
-        const splitLegendActive = targetId === 'modal-legend' && !!getModalBlendRuntimes(modalSection);
+        const splitLegendActive = (
+            (targetId === 'modal-legend' && !!getModalBlendRuntimes(modalSection))
+            || (targetId === 'legend' && overviewBlendEnabled)
+        );
         if (targetId === 'modal-legend') {{
             legend.classList.toggle('split-expanded', splitLegendActive);
         }}
 
         if (splitLegendActive) {{
             const splitEntries = ['a', 'b']
-                .map(side => getModalSplitLegendEntry(side))
+                .map(side => targetId === 'legend'
+                    ? getOverviewSplitLegendEntry(side)
+                    : getModalSplitLegendEntry(side))
                 .filter(Boolean);
             let html = `
-                <div class="legend-title">Split legend</div>
                 <div class="split-legend-list">
             `;
             splitEntries.forEach((entry) => {{
@@ -15229,15 +17977,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                     `).join('')}}</div>`
                     : '';
+                const scaleLabelsHtml = Number.isFinite(entry.vmin) && Number.isFinite(entry.vmax)
+                    ? `<div class="split-legend-scale-labels"><span>${{formatScaleNumber(entry.vmax)}}</span><span>${{formatScaleNumber(entry.vmin)}}</span></div>`
+                    : '';
+                const keyClass = scaleLabelsHtml ? 'split-legend-key gene-scale' : 'split-legend-key';
                 html += `
                     <div class="split-legend-item">
                         <div class="split-legend-row">
                             <span class="split-legend-side split-legend-side-${{entry.side}}">${{entry.sideLabel}}</span>
-                            <div class="split-legend-label">${{entry.label}}</div>
                         </div>
-                        <div class="split-legend-key">
+                        <div class="${{keyClass}}">
                             <span class="split-legend-swatch ${{entry.swatchClass}}" style="background: ${{entry.swatchBackground}};"></span>
-                            <span>${{entry.detail}}</span>
+                            ${{scaleLabelsHtml}}
                         </div>
                         ${{categoriesHtml}}
                     </div>
@@ -15250,7 +18001,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (config.is_continuous) {{
             legend.innerHTML = `
-                <div class="legend-title">${{colorLabel}}</div>
                 <div class="colorbar-container">
                     <canvas class="colorbar" id="${{targetId}}-colorbar"></canvas>
                     <div class="colorbar-labels">
@@ -15275,15 +18025,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const proportionsBadge = config.is_proportions
                 ? `<div class="legend-subtitle" style="font-size:11px;opacity:0.7;margin-top:-4px;margin-bottom:6px;">Cell-type proportions (pie per spot)</div>`
                 : '';
+            const legendCategories = config.categories || [];
+            const hasHiddenLegendCategories = legendCategories.some(cat => hiddenCategories.has(cat));
+            const visibilityTitle = hasHiddenLegendCategories ? 'Show all categories' : 'Hide all categories';
             let html = `
-                <div class="legend-title">${{colorLabel}}</div>
                 ${{proportionsBadge}}
                 <div class="legend-actions">
-                    <button class="legend-btn" id="${{targetId}}-show-all">Show All</button>
-                    <button class="legend-btn" id="${{targetId}}-hide-all">Hide All</button>
-                    <button class="legend-btn ${{linkedSpotlightEnabled ? 'active' : ''}}" id="${{targetId}}-spotlight-toggle" title="Hover or click a category to spotlight">Spotlight</button>
-                    ${{targetId === 'legend' ? `<button class="legend-btn" id="${{targetId}}-export-colors" title="Export current categorical palettes as JSON">Export Colors</button>` : ''}}
-                    ${{targetId === 'legend' ? `<button class="legend-btn" id="${{targetId}}-export-labels" title="Export original and renamed category labels as JSON">Export Labels</button>` : ''}}
+                    <button class="legend-btn icon-only" id="${{targetId}}-visibility-toggle" title="${{visibilityTitle}}" aria-label="${{visibilityTitle}}">${{hasHiddenLegendCategories ? LEGEND_EYE_OFF_ICON : LEGEND_EYE_ICON}}</button>
+                    <button class="legend-btn icon-only ${{linkedSpotlightEnabled ? 'active' : ''}}" id="${{targetId}}-spotlight-toggle" title="Hover or click a category to spotlight" aria-label="Spotlight categories">${{LEGEND_SPOTLIGHT_ICON}}</button>
+                    ${{targetId === 'legend' ? `
+                        <div class="legend-export-wrap">
+                            <button class="legend-btn icon-only" id="${{targetId}}-export-toggle" title="Export legend data" aria-label="Export legend data" aria-expanded="false" aria-controls="${{targetId}}-export-menu">${{LEGEND_EXPORT_ICON}}</button>
+                            <div class="legend-export-menu" id="${{targetId}}-export-menu" aria-hidden="true">
+                                <button class="legend-export-option" id="${{targetId}}-export-colors" type="button">Export palette</button>
+                                <button class="legend-export-option" id="${{targetId}}-export-labels" type="button">Export categories</button>
+                            </div>
+                        </div>
+                        <div class="legend-export-wrap">
+                            <button class="legend-btn icon-only" id="${{targetId}}-import-toggle" title="Import legend data" aria-label="Import legend data" aria-expanded="false" aria-controls="${{targetId}}-import-menu">${{LEGEND_IMPORT_ICON}}</button>
+                            <div class="legend-export-menu" id="${{targetId}}-import-menu" aria-hidden="true">
+                                <button class="legend-export-option" id="${{targetId}}-import-colors" type="button">Import palette</button>
+                                <button class="legend-export-option" id="${{targetId}}-import-labels" type="button">Import categories</button>
+                            </div>
+                        </div>
+                    ` : ''}}
                 </div>
                 <div class="legend-list">
             `;
@@ -15306,23 +18071,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             html += '</div>';
             legend.innerHTML = html;
 
-            document.getElementById(`${{targetId}}-show-all`)?.addEventListener('click', () => {{
-                hiddenCategories.clear();
-                if (modalSelectedCategory && config.categories?.includes(modalSelectedCategory)) {{
-                    // Keep selected category visible; focus is handled by rendering
-                    hiddenCategories.delete(modalSelectedCategory);
-                }}
-                renderLegend('legend');
-                renderLegend('modal-legend');
-                renderAllSections();
-                if (modalSection) renderModalSection();
-                if (umapVisible) renderUMAP();
-            }});
-
-            document.getElementById(`${{targetId}}-hide-all`)?.addEventListener('click', () => {{
-                (config.categories || []).forEach(cat => hiddenCategories.add(cat));
-                if (modalSelectedCategory && config.categories?.includes(modalSelectedCategory)) {{
-                    hiddenCategories.delete(modalSelectedCategory);
+            document.getElementById(`${{targetId}}-visibility-toggle`)?.addEventListener('click', () => {{
+                if ((config.categories || []).some(cat => hiddenCategories.has(cat))) {{
+                    hiddenCategories.clear();
+                }} else {{
+                    (config.categories || []).forEach(cat => hiddenCategories.add(cat));
+                    if (modalSelectedCategory && config.categories?.includes(modalSelectedCategory)) {{
+                        hiddenCategories.delete(modalSelectedCategory);
+                    }}
                 }}
                 renderLegend('legend');
                 renderLegend('modal-legend');
@@ -15342,11 +18098,54 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 rerenderForSpotlightChange();
             }});
 
+            const exportToggle = document.getElementById(`${{targetId}}-export-toggle`);
+            const exportMenu = document.getElementById(`${{targetId}}-export-menu`);
+            const importToggle = document.getElementById(`${{targetId}}-import-toggle`);
+            const importMenu = document.getElementById(`${{targetId}}-import-menu`);
+            exportToggle?.addEventListener('click', (event) => {{
+                event.stopPropagation();
+                const open = !exportMenu?.classList.contains('open');
+                closeLegendExportMenus(open ? exportMenu : null);
+                exportMenu?.classList.toggle('open', open);
+                exportMenu?.setAttribute('aria-hidden', open ? 'false' : 'true');
+                exportToggle.classList.toggle('active', open);
+                exportToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }});
+            exportMenu?.addEventListener('click', (event) => event.stopPropagation());
+            importToggle?.addEventListener('click', (event) => {{
+                event.stopPropagation();
+                const open = !importMenu?.classList.contains('open');
+                closeLegendExportMenus(open ? importMenu : null);
+                importMenu?.classList.toggle('open', open);
+                importMenu?.setAttribute('aria-hidden', open ? 'false' : 'true');
+                importToggle.classList.toggle('active', open);
+                importToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }});
+            importMenu?.addEventListener('click', (event) => event.stopPropagation());
+
             document.getElementById(`${{targetId}}-export-colors`)?.addEventListener('click', () => {{
+                exportMenu?.classList.remove('open');
+                exportToggle?.classList.remove('active');
+                exportToggle?.setAttribute('aria-expanded', 'false');
                 exportColorPalette();
             }});
             document.getElementById(`${{targetId}}-export-labels`)?.addEventListener('click', () => {{
+                exportMenu?.classList.remove('open');
+                exportToggle?.classList.remove('active');
+                exportToggle?.setAttribute('aria-expanded', 'false');
                 exportCategoryLabels();
+            }});
+            document.getElementById(`${{targetId}}-import-colors`)?.addEventListener('click', () => {{
+                importMenu?.classList.remove('open');
+                importToggle?.classList.remove('active');
+                importToggle?.setAttribute('aria-expanded', 'false');
+                importColorPaletteFromFile();
+            }});
+            document.getElementById(`${{targetId}}-import-labels`)?.addEventListener('click', () => {{
+                importMenu?.classList.remove('open');
+                importToggle?.classList.remove('active');
+                importToggle?.setAttribute('aria-expanded', 'false');
+                importCategoryLabelsFromFile();
             }});
 
             legend.querySelectorAll('[data-category-color]').forEach((input) => {{
@@ -15500,8 +18299,40 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
+    function syncInsightsModeClasses() {{
+        const mode = ['selection', 'annotate', 'exploration'].includes(insightsMode) ? insightsMode : 'exploration';
+        document.querySelectorAll('[data-insights-mode]').forEach((btn) => {{
+            btn.classList.toggle('active', btn.getAttribute('data-insights-mode') === mode);
+            if (btn.id === 'insights-annotate-toggle') btn.setAttribute('aria-expanded', mode === 'annotate' ? 'true' : 'false');
+        }});
+        document.getElementById('insights-selection-panel')?.classList.toggle('active', mode === 'selection');
+        document.getElementById('modal-annotation-section')?.classList.toggle('active', mode === 'annotate');
+        document.getElementById('insights-exploration-panel')?.classList.toggle('active', mode === 'exploration');
+    }}
+
+    function setInsightsMode(mode) {{
+        insightsMode = ['selection', 'annotate', 'exploration'].includes(mode) ? mode : 'exploration';
+        syncInsightsModeClasses();
+        if (insightsMode === 'selection') {{
+            updateSelectionInfo();
+        }} else if (insightsMode === 'annotate') {{
+            renderModalAnnotationPanel();
+        }} else {{
+            renderActiveInsightsPanel();
+        }}
+    }}
+
     function renderActiveInsightsPanel() {{
         normalizeInsightsTabsState();
+        syncInsightsModeClasses();
+        if (insightsMode === 'selection') {{
+            updateSelectionInfo();
+            return;
+        }}
+        if (insightsMode === 'annotate') {{
+            renderModalAnnotationPanel();
+            return;
+        }}
         syncInsightsTabClasses();
 
         if (insightsTopLevelTab === 'overview') {{
@@ -15600,6 +18431,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <div style="display: flex; justify-content: flex-end;">
                     <button class="legend-btn" id="annotation-de-swap" type="button">Swap A/B</button>
                 </div>
+            </div>
             </div>
         `;
 
@@ -15982,57 +18814,78 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         panel.innerHTML = `
             <div class="color-panel-header">
-                <div class="color-panel-title">Insights</div>
-            </div>
-            <div class="color-panel-section">
-                <label>Search Colors</label>
-                <input class="color-search" id="color-search" type="text" placeholder="Type to filter...">
-            </div>
-            <div class="color-panel-section">
-                <label>Available Colors</label>
-                <div class="color-list" id="color-list"></div>
-            </div>
-            <div class="color-panel-section">
-                <label>Details</label>
-                <div class="color-tabs insights-top-tabs">
-                    <button class="color-tab active" id="color-tab-overview" data-insights-top="overview" type="button">Overview</button>
-                    <button class="color-tab" id="color-tab-genes" data-insights-top="genes" type="button">Genes</button>
-                    <button class="color-tab" id="color-tab-compare" data-insights-top="compare" type="button">Compare</button>
-                    <button class="color-tab" id="color-tab-neighbors" data-insights-top="neighbors" type="button">Neighbors</button>
+                <div class="insights-mode-switch" role="group" aria-label="Insights mode">
+                    <button class="insights-mode-btn" id="insights-mode-selection" data-insights-mode="selection" type="button">Selection</button>
+                    <button class="insights-mode-btn" id="insights-annotate-toggle" data-insights-mode="annotate" type="button" aria-expanded="false" aria-controls="modal-annotation-section">Annotate</button>
+                    <button class="insights-mode-btn" id="insights-mode-exploration" data-insights-mode="exploration" type="button">Exploration</button>
                 </div>
-                <div class="color-tab-content active" id="color-tab-overview-content">
-                    <div class="color-tabs insights-subtabs">
-                        <button class="color-tab active" id="overview-tab-summary" data-insights-parent="overview" data-insights-subtab="summary" type="button">Summary</button>
-                        <button class="color-tab" id="overview-tab-sections" data-insights-parent="overview" data-insights-subtab="sections" type="button">Sections</button>
-                    </div>
-                    <div class="color-tab-content active" id="overview-tab-summary-content">
-                        <div>
-                            <label>Aggregate By</label>
-                            <select id="color-groupby" ${{!hasMetadata ? 'disabled' : ''}}>
-                                ${{options}}
-                            </select>
-                        </div>
-                        <div style="display: flex; justify-content: flex-end;">
-                            <button class="legend-btn" id="color-aggregation-toggle" type="button">Collapse Stats</button>
-                        </div>
-                        <div class="color-aggregation" id="color-aggregation">
-                            <div class="agg-group-meta">${{hasMetadata ? 'Pick a metadata column to summarize.' : 'No metadata columns available for aggregation.'}}</div>
-                        </div>
-                        <div>
-                            <label>Cell Type Trend</label>
-                            <input class="color-search" id="celltype-search" type="text" placeholder="Search Cell Type...">
-                        </div>
-                        <div class="color-aggregation" id="celltype-trend">
-                            <div class="agg-group-meta">${{hasMetadata ? 'Search for a category to see counts across the selected metadata.' : 'No metadata columns available.'}}</div>
-                        </div>
-                    </div>
-                    <div class="color-tab-content" id="overview-tab-sections-content">
-                        <div class="color-aggregation" id="samples-panel">
-                            <div class="agg-group-meta">Open Sections to view per-section composition as stacked bars or a heatmap.</div>
-                        </div>
-                    </div>
+            </div>
+            <div class="modal-annotation-section" id="modal-annotation-section">
+                <div class="modal-annotation-list" id="modal-annotation-list">
+                    <div class="modal-annotation-empty">Draw a region with Annote polygon to annotation cells.</div>
                 </div>
+                <div class="modal-annotation-actions selection-query-actions">
+                    <button class="selection-summary-compare-btn icon-only" id="modal-annotations-export" type="button" title="Export all polygon annotations as JSON" aria-label="Export polygon annotations as JSON">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
+                    </button>
+                    <button class="selection-summary-compare-btn icon-only" id="modal-annotations-clear-all" type="button" title="Delete all annotations" aria-label="Delete all annotations">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+                    </button>
+                </div>
+            </div>
+            <div class="color-panel-mode selection-summary umap-selection-summary" id="insights-selection-panel"></div>
+            <div class="color-panel-mode" id="insights-exploration-panel">
+                <div class="color-panel-section">
+                    <label>Search Colors</label>
+                    <input class="color-search" id="color-search" type="text" placeholder="Type to filter...">
+                </div>
+                <div class="color-panel-section">
+                    <label>Available Colors</label>
+                    <div class="color-list" id="color-list"></div>
+                </div>
+                <div class="color-panel-section">
+                    <label>Details</label>
+                    <div class="color-tabs insights-top-tabs">
+                        <button class="color-tab active" id="color-tab-overview" data-insights-top="overview" type="button">Overview</button>
+                        <button class="color-tab" id="color-tab-genes" data-insights-top="genes" type="button">Genes</button>
+                        <button class="color-tab" id="color-tab-compare" data-insights-top="compare" type="button">Compare</button>
+                        <button class="color-tab" id="color-tab-neighbors" data-insights-top="neighbors" type="button">Neighbors</button>
+                    </div>
+                    <div class="color-tab-content active" id="color-tab-overview-content">
+                        <div class="insights-subtab-label">Overview details</div>
+                        <div class="color-tabs insights-subtabs">
+                            <button class="color-tab active" id="overview-tab-summary" data-insights-parent="overview" data-insights-subtab="summary" type="button">Summary</button>
+                            <button class="color-tab" id="overview-tab-sections" data-insights-parent="overview" data-insights-subtab="sections" type="button">Sections</button>
+                        </div>
+                        <div class="color-tab-content active" id="overview-tab-summary-content">
+                            <div>
+                                <label>Aggregate By</label>
+                                <select id="color-groupby" ${{!hasMetadata ? 'disabled' : ''}}>
+                                    ${{options}}
+                                </select>
+                            </div>
+                            <div style="display: flex; justify-content: flex-end;">
+                                <button class="legend-btn" id="color-aggregation-toggle" type="button">Collapse Stats</button>
+                            </div>
+                            <div class="color-aggregation" id="color-aggregation">
+                                <div class="agg-group-meta">${{hasMetadata ? 'Pick a metadata column to summarize.' : 'No metadata columns available for aggregation.'}}</div>
+                            </div>
+                            <div>
+                                <label>Cell Type Trend</label>
+                                <select id="celltype-select"></select>
+                            </div>
+                            <div class="color-aggregation" id="celltype-trend">
+                                <div class="agg-group-meta">${{hasMetadata ? 'Choose a category to see counts across the selected metadata.' : 'No metadata columns available.'}}</div>
+                            </div>
+                        </div>
+                        <div class="color-tab-content" id="overview-tab-sections-content">
+                            <div class="color-aggregation" id="samples-panel">
+                                <div class="agg-group-meta">Open Sections to view per-section composition as stacked bars or a heatmap.</div>
+                            </div>
+                        </div>
+                    </div>
                 <div class="color-tab-content" id="color-tab-genes-content">
+                    <div class="insights-subtab-label">Genes details</div>
                     <div class="color-tabs insights-subtabs">
                         <button class="color-tab active" id="genes-tab-markers" data-insights-parent="genes" data-insights-subtab="markers" type="button">Markers</button>
                         <button class="color-tab" id="genes-tab-spatial" data-insights-parent="genes" data-insights-subtab="spatial" type="button">Spatial</button>
@@ -16051,6 +18904,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-compare-content">
+                    <div class="insights-subtab-label">Compare details</div>
                     <div class="color-tabs insights-subtabs">
                         <button class="color-tab active" id="compare-tab-groups" data-insights-parent="compare" data-insights-subtab="groups" type="button">Groups</button>
                         <button class="color-tab" id="compare-tab-regions" data-insights-parent="compare" data-insights-subtab="regions" type="button">Regions</button>
@@ -16115,6 +18969,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-neighbors-content">
+                    <div class="insights-subtab-label">Neighbors details</div>
                     <div class="color-tabs insights-subtabs">
                         <button class="color-tab active" id="neighbors-tab-enrichment" data-insights-parent="neighbors" data-insights-subtab="enrichment" type="button">Enrichment</button>
                         <button class="color-tab" id="neighbors-tab-interactions" data-insights-parent="neighbors" data-insights-subtab="interactions" type="button">Interactions</button>
@@ -16165,6 +19020,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         `;
 
+        panel.querySelectorAll('[data-insights-mode]').forEach((btn) => {{
+            btn.addEventListener('click', () => {{
+                setInsightsMode(btn.getAttribute('data-insights-mode') || 'exploration');
+            }});
+        }});
+        syncInsightsModeClasses();
+
         const search = document.getElementById('color-search');
         search.addEventListener('input', () => {{
             renderColorList(search.value);
@@ -16209,8 +19071,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
 
-        const celltypeSearch = document.getElementById('celltype-search');
-        celltypeSearch.addEventListener('input', () => {{
+        const celltypeSelect = document.getElementById('celltype-select');
+        celltypeSelect.addEventListener('change', () => {{
+            celltypeTrendTarget = celltypeSelect.value || null;
             renderCellTypeTrend();
         }});
 
@@ -16331,7 +19194,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         if (exprVmin && exprVmax) {{
             const applyExpressionScale = () => {{
-                if (!currentGene) return;
+                const target = getGeneParameterTarget();
+                if (!target?.gene) return;
                 const vmin = parseFloat(exprVmin.value);
                 const vmax = parseFloat(exprVmax.value);
                 if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return;
@@ -16345,7 +19209,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     adjMin = adjMax;
                     adjMax = tmp;
                 }}
-                geneScaleOverrides[currentGene] = {{ vmin: adjMin, vmax: adjMax }};
+                geneScaleOverrides[target.gene] = {{ vmin: adjMin, vmax: adjMax }};
                 rerenderForExpressionScaleChange();
             }};
             exprVmin.addEventListener('change', applyExpressionScale);
@@ -16353,15 +19217,79 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         if (exprAuto) {{
             exprAuto.addEventListener('click', () => {{
-                if (!currentGene) return;
-                const autoScale = computeGenePercentiles(currentGene);
+                const target = getGeneParameterTarget();
+                if (!target?.gene) return;
+                const autoScale = computeGenePercentiles(target.gene, GENE_SCALE_PMIN, GENE_SCALE_PMAX, target.modality);
                 if (autoScale) {{
-                    geneScaleAuto[currentGene] = autoScale;
-                    delete geneScaleOverrides[currentGene];
+                    geneScaleAuto[target.gene] = autoScale;
+                    delete geneScaleOverrides[target.gene];
                     rerenderForExpressionScaleChange();
                 }}
             }});
         }}
+        ['a', 'b'].forEach((side) => {{
+            const vminInput = document.getElementById(`split-${{side}}-vmin`);
+            const vmaxInput = document.getElementById(`split-${{side}}-vmax`);
+            const autoBtn = document.getElementById(`split-${{side}}-auto`);
+            const propagateBtn = document.getElementById(`split-${{side}}-propagate`);
+            const applySplitScale = () => {{
+                const target = getOverviewSplitGeneTarget(side);
+                if (!target || !vminInput || !vmaxInput) return;
+                const vmin = parseFloat(vminInput.value);
+                const vmax = parseFloat(vmaxInput.value);
+                if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return;
+                let adjMin = vmin;
+                let adjMax = vmax;
+                if (adjMin === adjMax) {{
+                    adjMin -= 1e-6;
+                    adjMax += 1e-6;
+                }} else if (adjMin > adjMax) {{
+                    const tmp = adjMin;
+                    adjMin = adjMax;
+                    adjMax = tmp;
+                }}
+                if (setOverviewSplitGeneScaleOverride(side, adjMin, adjMax)) {{
+                    updateSplitExpressionScaleUI();
+                    rerenderForExpressionScaleChange();
+                }}
+            }};
+            vminInput?.addEventListener('change', applySplitScale);
+            vmaxInput?.addEventListener('change', applySplitScale);
+            autoBtn?.addEventListener('click', () => {{
+                const target = getOverviewSplitGeneTarget(side);
+                if (!target) return;
+                const autoScale = computeGenePercentiles(target.gene, GENE_SCALE_PMIN, GENE_SCALE_PMAX, target.modality);
+                if (autoScale) {{
+                    geneScaleAuto[target.gene] = autoScale;
+                    clearOverviewSplitGeneScaleOverride(side);
+                    updateSplitExpressionScaleUI();
+                    rerenderForExpressionScaleChange();
+                }}
+            }});
+            propagateBtn?.addEventListener('click', () => {{
+                const otherSide = side === 'a' ? 'b' : 'a';
+                const target = getOverviewSplitGeneTarget(side);
+                const otherTarget = getOverviewSplitGeneTarget(otherSide);
+                if (!target || !otherTarget || !vminInput || !vmaxInput) return;
+                const vmin = parseFloat(vminInput.value);
+                const vmax = parseFloat(vmaxInput.value);
+                if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return;
+                let adjMin = vmin;
+                let adjMax = vmax;
+                if (adjMin === adjMax) {{
+                    adjMin -= 1e-6;
+                    adjMax += 1e-6;
+                }} else if (adjMin > adjMax) {{
+                    const tmp = adjMin;
+                    adjMin = adjMax;
+                    adjMax = tmp;
+                }}
+                if (setOverviewSplitGeneScaleOverride(otherSide, adjMin, adjMax)) {{
+                    updateSplitExpressionScaleUI();
+                    rerenderForExpressionScaleChange();
+                }}
+            }});
+        }});
     }}
 
     function renderColorList(query) {{
@@ -16401,12 +19329,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         selectedNeighborFocus = null;
         const colorSelect = document.getElementById('color-select');
         if (colorSelect) colorSelect.value = col;
-        const modalColorSelect = document.getElementById('modal-color-select');
-        if (modalColorSelect) modalColorSelect.value = col;
         const geneInput = document.getElementById('gene-input');
         if (geneInput) geneInput.value = '';
-        const modalGeneInput = document.getElementById('modal-gene-input');
-        if (modalGeneInput) modalGeneInput.value = '';
         (DATA.sections || []).forEach(s => {{ if (s && s._colorCache) s._colorCache = {{}}; }});
         hiddenCategories.clear();
         if (DATA.colors_meta?.[currentColor] && !DATA.colors_meta[currentColor].is_continuous) {{
@@ -18980,42 +21904,59 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderCellTypeTrend() {{
         const container = document.getElementById('celltype-trend');
         const groupBy = document.getElementById('color-groupby');
+        const select = document.getElementById('celltype-select');
         if (!container || !groupBy) return;
         const groupKey = groupBy.value;
         if (!groupKey) {{
+            if (select) {{
+                select.innerHTML = '<option value="">Pick aggregate metadata first</option>';
+                select.disabled = true;
+            }}
             container.innerHTML = '<div class="agg-group-meta">Pick a metadata column to summarize.</div>';
             return;
         }}
 
         if (currentGene) {{
+            if (select) {{
+                select.innerHTML = '<option value="">Clear gene input first</option>';
+                select.disabled = true;
+            }}
             container.innerHTML = '<div class="agg-group-meta">Clear the gene input to view categorical trends.</div>';
             return;
         }}
 
         const config = getColorConfig();
         if (config.is_continuous) {{
+            if (select) {{
+                select.innerHTML = '<option value="">Categorical colors only</option>';
+                select.disabled = true;
+            }}
             container.innerHTML = '<div class="agg-group-meta">Trends are available for categorical colors only.</div>';
             return;
         }}
 
-        const input = document.getElementById('celltype-search');
-        const query = (input?.value || '').trim().toLowerCase();
-        if (!query) {{
-            container.innerHTML = '<div class="agg-group-meta">Search for a category to see counts across metadata groups.</div>';
+        const categories = (config.categories || []).map(cat => String(cat));
+        if (categories.length === 0) {{
+            if (select) {{
+                select.innerHTML = '<option value="">No categories available</option>';
+                select.disabled = true;
+            }}
+            container.innerHTML = '<div class="agg-group-meta">No categories available for this color.</div>';
             return;
         }}
 
-        const categories = config.categories || [];
-        const matches = categories.filter(cat => String(cat).toLowerCase().includes(query));
-        if (matches.length === 0) {{
-            container.innerHTML = '<div class="agg-group-meta">No matching categories.</div>';
-            return;
+        if (!celltypeTrendTarget || !categories.includes(String(celltypeTrendTarget))) {{
+            celltypeTrendTarget = categories[0];
+        }}
+        const target = String(celltypeTrendTarget);
+        if (select) {{
+            select.disabled = false;
+            select.innerHTML = categories.map(cat => {{
+                const selected = cat === target ? ' selected' : '';
+                return `<option value="${{escapeHtml(cat)}}"${{selected}}>${{escapeHtml(formatCategoryLabel(currentColor, cat))}}</option>`;
+            }}).join('');
         }}
 
-        if (!celltypeTrendTarget || !matches.includes(celltypeTrendTarget)) {{
-            celltypeTrendTarget = matches[0];
-        }}
-        const target = celltypeTrendTarget;
         const groups = new Map();
 
         DATA.sections.forEach(section => {{
@@ -19030,7 +21971,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 group.total += 1;
                 const catIdx = Math.round(val);
                 const catName = config.categories?.[catIdx];
-                if (catName === target) group.count += 1;
+                if (String(catName) === target) group.count += 1;
             }});
         }});
 
@@ -19047,15 +21988,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             `;
         }}).join('');
 
-        const matchBadges = matches.length > 1
-            ? `<div class="agg-group-meta" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
-                Matches:
-                ${{matches.map(cat => `<button type="button" class="legend-btn${{cat === target ? ' active' : ''}}" data-trend-target="${{escapeHtml(cat)}}"><span class="agg-dot" style="background: ${{getCategoryColorForValue(currentColor, cat)}}"></span>${{escapeHtml(cat)}}</button>`).join('')}}
-               </div>`
-            : `<div class="agg-group-meta">Showing: <span class="agg-dot" style="background: ${{getCategoryColorForValue(currentColor, target)}}"></span><strong>${{escapeHtml(target)}}</strong></div>`;
-
         container.innerHTML = `
-            ${{matchBadges}}
             <table class="trend-table">
                 <thead>
                     <tr>
@@ -19070,12 +22003,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </tbody>
             </table>
         `;
-        container.querySelectorAll('[data-trend-target]').forEach(btn => {{
-            btn.addEventListener('click', () => {{
-                celltypeTrendTarget = btn.getAttribute('data-trend-target');
-                renderCellTypeTrend();
-            }});
-        }});
     }}
 
     function truncateNeighborStatLabel(text, maxLength = 18) {{
@@ -21285,6 +24212,51 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (typeof updateModalCanvasCursor === 'function') updateModalCanvasCursor();
     }}
 
+    function setModalHeOptionsVisible(visible) {{
+        modalHeOptionsVisible = !!visible;
+        const group = document.querySelector('[data-modal-group="he-overlay"]');
+        if (group) group.hidden = !modalHeOptionsVisible;
+        const btn = document.getElementById('focused-modal-he-toggle');
+        if (btn) btn.classList.toggle('active', modalHeOptionsVisible);
+        if (!modalHeOptionsVisible) setHeAlignPanelOpen(false);
+        if (modalSection) {{
+            layoutModalControls();
+            layoutModalAnnotationPanel();
+        }}
+    }}
+
+    function resetFocusedModalTools(except = null) {{
+        let graphChanged = false;
+        if (except !== 'lasso') {{
+            modalMagicWandActive = false;
+            isDrawingModalLasso = false;
+            modalLassoPath = [];
+        }}
+        if (except !== 'annotation') {{
+            modalAnnotationModeActive = false;
+            isDrawingModalAnnotation = false;
+            modalAnnotationPath = [];
+            setModalAnnotationPanelOpen(false);
+        }}
+        if (except !== 'graph') {{
+            graphChanged = graphChanged || showGraph;
+            showGraph = false;
+            document.getElementById('modal-graph-toggle')?.classList.remove('active');
+        }}
+        if (except !== 'neighbors') {{
+            neighborHoverEnabled = false;
+            hoverNeighbors = null;
+            document.getElementById('modal-neighbor-hover-toggle')?.classList.remove('active');
+        }}
+        if (except !== 'he') {{
+            setModalHeOptionsVisible(false);
+        }}
+        updateModalToolbarState();
+        updateModalCanvasCursor();
+        if (graphChanged) renderAllSections();
+        if (modalSection) renderModalSection();
+    }}
+
     function refreshModalHeControls() {{
         const st = modalSection ? sectionImageStates[modalSection.id] : null;
         const sel = document.getElementById('modal-he-layer-select');
@@ -21329,9 +24301,243 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
-    function openModal(sectionId) {{
+    function createSourcePanelGhost(sourcePanel) {{
+        if (!sourcePanel) return null;
+        const rect = sourcePanel.getBoundingClientRect();
+        if (!rect.width || !rect.height) return null;
+        sourcePanel.__karospaceOpeningGhost?.remove?.();
+        const ghost = sourcePanel.cloneNode(true);
+        ghost.classList.add('section-panel-diffuse-ghost');
+        ghost.classList.remove('dragging', 'drag-over');
+        const sourceCanvases = sourcePanel.querySelectorAll('canvas');
+        const ghostCanvases = ghost.querySelectorAll('canvas');
+        sourceCanvases.forEach((canvas, idx) => {{
+            const ghostCanvas = ghostCanvases[idx];
+            if (!ghostCanvas || !ghostCanvas.parentNode) return;
+            try {{
+                const img = document.createElement('img');
+                img.src = canvas.toDataURL('image/png');
+                img.style.width = `${{canvas.getBoundingClientRect().width}}px`;
+                img.style.height = `${{canvas.getBoundingClientRect().height}}px`;
+                ghostCanvas.parentNode.replaceChild(img, ghostCanvas);
+            }} catch (error) {{
+                // If the canvas cannot be serialized, keep the cloned canvas shell.
+            }}
+        }});
+        Object.assign(ghost.style, {{
+            left: `${{rect.left}}px`,
+            top: `${{rect.top}}px`,
+            width: `${{rect.width}}px`,
+            height: `${{rect.height}}px`,
+            borderRadius: getComputedStyle(sourcePanel).borderRadius,
+        }});
+        document.body.appendChild(ghost);
+        sourcePanel.__karospaceOpeningGhost = ghost;
+        return ghost;
+    }}
+
+    function animateSourcePanelBounce(sourcePanel) {{
+        return new Promise((resolve) => {{
+            if (!sourcePanel || !sourcePanel.animate) {{ resolve(false); return; }}
+            if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {{ resolve(false); return; }}
+            const grid = document.getElementById('grid');
+            const ghost = createSourcePanelGhost(sourcePanel);
+            if (!ghost?.animate) {{ resolve(false); return; }}
+            sourcePanel.getAnimations?.().forEach((animation) => animation.cancel());
+            grid?.classList.add('panel-opening');
+            sourcePanel.classList.add('is-opening');
+            sourcePanel.style.visibility = 'hidden';
+            ghost.getAnimations?.().forEach((animation) => animation.cancel());
+            const animation = ghost.animate(
+                [
+                    {{
+                        transform: 'translate3d(0, 0, 0) scale(1)',
+                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                        filter: 'saturate(1)',
+                    }},
+                    {{
+                        transform: 'translate3d(0, -120px, 0) scale(1.025)',
+                        boxShadow: '0 34px 58px rgba(0, 0, 0, 0.28)',
+                        filter: 'saturate(1.06)',
+                    }},
+                ],
+                {{
+                    duration: 280,
+                    easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+                    fill: 'forwards',
+                }}
+            );
+            let settled = false;
+            const finish = (played) => {{
+                if (settled) return;
+                settled = true;
+                resolve(played);
+            }};
+            animation.addEventListener('finish', () => finish(true), {{ once: true }});
+            animation.addEventListener('cancel', () => finish(false), {{ once: true }});
+        }});
+    }}
+
+    function waitForOpenHandoff(sourcePanel, delayMs = 130) {{
+        if (!sourcePanel || window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) {{
+            return Promise.resolve(false);
+        }}
+        return new Promise((resolve) => window.setTimeout(() => resolve(true), delayMs));
+    }}
+
+    function clearSourcePanelBounce(sourcePanel) {{
+        if (!sourcePanel) return;
+        sourcePanel.getAnimations?.().forEach((animation) => animation.cancel());
+        const ghost = sourcePanel.__karospaceOpeningGhost;
+        if (ghost && !ghost.classList.contains('is-diffusing')) ghost.remove();
+        delete sourcePanel.__karospaceOpeningGhost;
+        sourcePanel.style.visibility = '';
+        sourcePanel.classList.remove('is-opening');
+        document.getElementById('grid')?.classList.remove('panel-opening');
+    }}
+
+    function animateSourcePanelDiffuse(sourcePanel) {{
+        if (!sourcePanel || !sourcePanel.animate) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+        const ghost = sourcePanel.__karospaceOpeningGhost || createSourcePanelGhost(sourcePanel);
+        if (!ghost?.animate) return;
+        delete sourcePanel.__karospaceOpeningGhost;
+        ghost.classList.add('is-diffusing');
+        ghost.getAnimations?.().forEach((animation) => animation.cancel());
+        const rect = ghost.getBoundingClientRect();
+        if (!rect.width || !rect.height) {{ ghost.remove(); return; }}
+        Object.assign(ghost.style, {{
+            left: `${{rect.left}}px`,
+            top: `${{rect.top}}px`,
+            width: `${{rect.width}}px`,
+            height: `${{rect.height}}px`,
+            borderRadius: getComputedStyle(sourcePanel).borderRadius,
+        }});
+        const animation = ghost.animate(
+            [
+                {{
+                    transform: 'translate3d(0, 0, 0) scale(1)',
+                    opacity: 1,
+                    filter: 'blur(0px) saturate(1)',
+                    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+                }},
+                {{
+                    transform: 'translate3d(0, 64px, 0) scale(1.035)',
+                    opacity: 0.72,
+                    filter: 'blur(0px) saturate(1.04)',
+                    boxShadow: '0 18px 34px rgba(0, 0, 0, 0.22)',
+                    offset: 0.38,
+                }},
+                {{
+                    transform: 'translate3d(0, 120px, 0) scale(1.08)',
+                    opacity: 0,
+                    filter: 'blur(10px) saturate(1.12)',
+                    boxShadow: '0 28px 48px rgba(0, 0, 0, 0)',
+                }},
+            ],
+            {{
+                duration: 520,
+                easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+                fill: 'forwards',
+            }}
+        );
+        const removeGhost = () => ghost.remove();
+        animation.addEventListener('finish', removeGhost, {{ once: true }});
+        animation.addEventListener('cancel', removeGhost, {{ once: true }});
+    }}
+
+    function getModalGridTransform(rect, targetRect) {{
+        if (!rect || !targetRect || !targetRect.width || !targetRect.height) return null;
+        return {{
+            transform: `translate3d(${{rect.left - targetRect.left}}px, ${{rect.top - targetRect.top}}px, 0) scale(${{Math.max(0.08, rect.width / targetRect.width)}}, ${{Math.max(0.08, rect.height / targetRect.height)}})`,
+            opacity: 0.78,
+            boxShadow: '0 8px 22px rgba(0, 0, 0, 0.12)',
+            filter: 'saturate(0.94)',
+        }};
+    }}
+
+    function animateModalIntoGrid(content, sourceRect, returnRect = null) {{
+        if (!content || !content.animate) return;
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches) return;
+        const targetRect = content.getBoundingClientRect();
+        if (!targetRect.width || !targetRect.height) return;
+        content.getAnimations?.().forEach((animation) => animation.cancel());
+        content.classList.add('is-expanding');
+        content.style.transformOrigin = 'top left';
+        const fromFrame = getModalGridTransform(sourceRect, targetRect) || {{
+                transform: 'translate3d(0, 8px, 0) scale(0.985)',
+                opacity: 0.88,
+                boxShadow: '0 10px 28px rgba(0, 0, 0, 0.14)',
+                filter: 'saturate(0.97)',
+            }};
+        const returnFrame = getModalGridTransform(returnRect, targetRect);
+        if (returnFrame) {{
+            returnFrame.opacity = 0.9;
+            returnFrame.boxShadow = '0 18px 36px rgba(0, 0, 0, 0.18)';
+            returnFrame.filter = 'saturate(0.98)';
+            returnFrame.offset = 0.32;
+        }}
+        const animation = content.animate(
+            [
+                fromFrame,
+                ...(returnFrame ? [returnFrame] : []),
+                {{
+                    transform: 'translate3d(0, 0, 0) scale(1, 1)',
+                    opacity: 1,
+                    boxShadow: '0 0 0 rgba(0, 0, 0, 0)',
+                    filter: 'saturate(1)',
+                }},
+            ],
+            {{
+                duration: sourceRect ? 920 : 320,
+                easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
+            }}
+        );
+        const cleanup = () => {{
+            content.style.transformOrigin = '';
+            content.classList.remove('is-expanding');
+            requestAnimationFrame(() => {{
+                renderModalSection();
+                layoutModalControls();
+                layoutModalAnnotationPanel();
+            }});
+        }};
+        animation.addEventListener('finish', cleanup, {{ once: true }});
+        animation.addEventListener('cancel', cleanup, {{ once: true }});
+    }}
+
+    function mountModalInGrid(sourceRect = null, returnRect = null) {{
+        const grid = document.getElementById('grid');
+        const modal = document.getElementById('modal');
+        const content = document.querySelector('#modal .modal-content, #grid > .modal-content');
+        if (!grid || !modal || !content) return false;
+        modal.classList.remove('active');
+        grid.classList.add('focused-section-layout');
+        grid.classList.remove('single-section-layout', 'single-visible-filter-layout');
+        if (content.parentElement !== grid) grid.appendChild(content);
+        modalInlineActive = true;
+        const gridToolbar = document.getElementById('grid-side-toolbar');
+        gridToolbar?.classList.add('focused-mode');
+        gridToolbar?.classList.remove('visual-open');
+        document.getElementById('visual-params-toggle')?.setAttribute('aria-expanded', 'false');
+        animateModalIntoGrid(content, sourceRect, returnRect);
+        return true;
+    }}
+
+    function unmountModalFromGrid() {{
+        const grid = document.getElementById('grid');
+        const modal = document.getElementById('modal');
+        const content = document.querySelector('#grid > .modal-content, #modal .modal-content');
+        if (grid) grid.classList.remove('focused-section-layout');
+        if (modal && content && content.parentElement !== modal) modal.appendChild(content);
+        modalInlineActive = false;
+        document.getElementById('grid-side-toolbar')?.classList.remove('focused-mode');
+    }}
+
+    async function openModal(sectionId, sourcePanel = null) {{
         modalSection = DATA.sections.find(s => s.id === sectionId);
         if (!modalSection) return;
+        const sourceRect = sourcePanel?.getBoundingClientRect?.() || null;
         modalSubview = null;
         invalidateModalRenderedView();
         modalZoom = 1; modalPanX = 0; modalPanY = 0;
@@ -21339,14 +24545,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalMagicWandActive = false;
         isDrawingModalLasso = false;
         modalLassoPath = [];
-        document.getElementById('modal-magic-wand-btn')?.classList.remove('active');
         modalAnnotationModeActive = false;
         isDrawingModalAnnotation = false;
         modalAnnotationPath = [];
-        document.getElementById('modal-annotate-btn')?.classList.remove('active');
+        setModalAnnotationPanelOpen(false);
 
         updateModalHeader();
-        document.getElementById('modal').classList.add('active');
+        const liftPromise = sourcePanel ? animateSourcePanelBounce(sourcePanel) : Promise.resolve(false);
+        if (sourcePanel) await waitForOpenHandoff(sourcePanel);
+        const handoffRect = sourcePanel?.__karospaceOpeningGhost?.getBoundingClientRect?.() || sourcePanel?.getBoundingClientRect?.() || sourceRect;
+        animateSourcePanelDiffuse(sourcePanel);
+        mountModalInGrid(handoffRect, sourceRect);
+        clearSourcePanelBounce(sourcePanel);
+        liftPromise.catch(() => {{}});
         updateSelectionInfo();
         updateSectionRotationIndicators(sectionId);
         renderLegend('modal-legend');
@@ -21369,145 +24580,61 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         hideModalGeneDiscoveryPanel();
         modalSpacePanActive = false;
         document.getElementById('modal').classList.remove('active');
+        unmountModalFromGrid();
+        magicWandActive = false;
+        umapPanActive = true;
+        isDrawingLasso = false;
+        lassoPath = [];
+        isDrawingGridLasso = false;
+        gridLassoPath = [];
+        gridLassoSectionId = null;
+        if (lassoModeB && selectedCellsB.size === 0) lassoModeB = false;
+        setUMAPCompareHintVisible(false);
         modalMagicWandActive = false;
         isDrawingModalLasso = false;
         modalLassoPath = [];
         modalAnnotationModeActive = false;
         isDrawingModalAnnotation = false;
         modalAnnotationPath = [];
+        setModalAnnotationPanelOpen(false);
         modalPointerMoved = false;
-        document.getElementById('modal-magic-wand-btn')?.classList.remove('active');
-        document.getElementById('modal-annotate-btn')?.classList.remove('active');
-        document.querySelector('#modal .modal-controls')?.classList.remove('dragging');
+        getModalControlsElement()?.classList.remove('dragging');
         modalSubview = null;
         modalSection = null;
         updateModalHeader();
         updateSectionRotationIndicators();
         renderModalAnnotationPanel();
         hideTooltip();
-    }}
-
-    function getModalAnnotationPanelBounds() {{
-        const container = document.getElementById('modal-canvas-container');
-        const panel = document.getElementById('modal-annotation-panel');
-        if (!container || !panel) return null;
-        const containerRect = container.getBoundingClientRect();
-        if (containerRect.width <= 0 || containerRect.height <= 0) return null;
-
-        const margin = 8;
-        const controls = container.querySelector('.modal-controls');
-        let controlsTop = containerRect.height - margin;
-        if (controls && !controls.classList.contains('hidden')) {{
-            const controlsRect = controls.getBoundingClientRect();
-            controlsTop = Math.max(
-                margin,
-                Math.min(controlsTop, controlsRect.top - containerRect.top - margin)
-            );
-        }}
-
-        const panelWidth = panel.offsetWidth || Math.min(360, Math.max(120, containerRect.width - margin * 2));
-        const panelHeight = panel.offsetHeight || 200;
-        const maxHeight = Math.max(120, controlsTop - margin);
-
-        const minX = margin;
-        const maxX = Math.max(minX, containerRect.width - panelWidth - margin);
-        const minY = margin;
-        const maxY = Math.max(minY, controlsTop - panelHeight - margin);
-
-        return {{ minX, maxX, minY, maxY, maxHeight }};
-    }}
-
-    function clampModalAnnotationPanelPosition(x, y) {{
-        const bounds = getModalAnnotationPanelBounds();
-        if (!bounds) return {{ x, y }};
-        return {{
-            x: Math.min(bounds.maxX, Math.max(bounds.minX, x)),
-            y: Math.min(bounds.maxY, Math.max(bounds.minY, y)),
-        }};
-    }}
-
-    function applyModalAnnotationPanelPosition(position) {{
-        const panel = document.getElementById('modal-annotation-panel');
-        if (!panel) return;
-        if (!position) {{
-            panel.style.left = '';
-            panel.style.top = '';
-            panel.style.right = '8px';
-            panel.style.bottom = '82px';
-            return;
-        }}
-        panel.style.left = `${{position.x}}px`;
-        panel.style.top = `${{position.y}}px`;
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
+        updateUMAPCursor();
+        updateUMAPLassoButtonState();
+        renderAllSections();
     }}
 
     function layoutModalAnnotationPanel(forceReset = false) {{
-        const panel = document.getElementById('modal-annotation-panel');
-        if (!panel) return;
-        if (forceReset) modalAnnotationPanelCustomPosition = null;
-
-        const initialBounds = getModalAnnotationPanelBounds();
-        if (!initialBounds) return;
-        panel.style.maxHeight = `${{Math.floor(initialBounds.maxHeight)}}px`;
-
-        const bounds = getModalAnnotationPanelBounds();
-        if (!bounds) return;
-
-        if (modalAnnotationPanelCustomPosition) {{
-            modalAnnotationPanelCustomPosition = clampModalAnnotationPanelPosition(
-                modalAnnotationPanelCustomPosition.x,
-                modalAnnotationPanelCustomPosition.y
-            );
-            applyModalAnnotationPanelPosition(modalAnnotationPanelCustomPosition);
-            return;
-        }}
-
-        applyModalAnnotationPanelPosition({{ x: bounds.maxX, y: bounds.maxY }});
     }}
 
-    function initModalAnnotationPanelDragging() {{
-        const panel = document.getElementById('modal-annotation-panel');
-        const handle = panel?.querySelector('.modal-annotation-title');
-        const container = document.getElementById('modal-canvas-container');
-        if (!panel || !handle || !container) return;
-
-        const stopDragging = () => {{
-            if (!isDraggingModalAnnotationPanel) return;
-            isDraggingModalAnnotationPanel = false;
-            panel.classList.remove('dragging');
-        }};
-
-        handle.addEventListener('mousedown', (e) => {{
-            if (e.button !== 0) return;
-            const containerRect = container.getBoundingClientRect();
-            const panelRect = panel.getBoundingClientRect();
-            const next = clampModalAnnotationPanelPosition(
-                panelRect.left - containerRect.left,
-                panelRect.top - containerRect.top
-            );
-            modalAnnotationPanelCustomPosition = next;
-            applyModalAnnotationPanelPosition(next);
-            modalAnnotationPanelDragOffsetX = e.clientX - panelRect.left;
-            modalAnnotationPanelDragOffsetY = e.clientY - panelRect.top;
-            isDraggingModalAnnotationPanel = true;
-            panel.classList.add('dragging');
-            e.preventDefault();
-        }});
-
-        document.addEventListener('mousemove', (e) => {{
-            if (!isDraggingModalAnnotationPanel) return;
-            const containerRect = container.getBoundingClientRect();
-            const next = clampModalAnnotationPanelPosition(
-                e.clientX - containerRect.left - modalAnnotationPanelDragOffsetX,
-                e.clientY - containerRect.top - modalAnnotationPanelDragOffsetY
-            );
-            modalAnnotationPanelCustomPosition = next;
-            applyModalAnnotationPanelPosition(next);
-        }});
-
-        document.addEventListener('mouseup', stopDragging);
-        window.addEventListener('blur', stopDragging);
+    function setModalAnnotationPanelOpen(open) {{
+        const section = document.getElementById('modal-annotation-section');
+        const btn = document.getElementById('focused-modal-annotation-toggle');
+        const insightsBtn = document.getElementById('insights-annotate-toggle');
+        if (!section) {{
+            if (open) insightsMode = 'annotate';
+            return;
+        }}
+        if (open) insightsMode = 'annotate';
+        else if (insightsMode === 'annotate') insightsMode = 'selection';
+        section.classList.toggle('active', !!open);
+        btn?.setAttribute('aria-expanded', open ? 'true' : 'false');
+        insightsBtn?.classList.toggle('active', !!open);
+        insightsBtn?.setAttribute('aria-expanded', open ? 'true' : 'false');
+        syncInsightsModeClasses();
+        if (open) {{
+            const colorPanel = document.getElementById('color-panel');
+            const colorToggle = document.getElementById('color-toggle');
+            colorPanel?.classList.remove('collapsed');
+            colorToggle?.classList.add('active');
+            layoutModalAnnotationPanel(true);
+        }}
     }}
 
     // Grid
@@ -21515,6 +24642,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const grid = document.getElementById('grid');
         grid.innerHTML = '';
         grid.classList.toggle('single-section-layout', (DATA.n_sections || 0) === 1);
+        let suppressPanelClick = false;
 
         DATA.sections.forEach(section => {{
             const panel = document.createElement('div');
@@ -21540,24 +24668,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="section-header-actions">
                         <span class="section-rotation-label" data-section-rotation-label>${{rotationLabel}}</span>
                         <div class="section-rotate-group">
-                            <button class="section-rotate-btn" type="button" data-rotate-step="-45" title="Rotate section -45 degrees">-45</button>
-                            <button class="section-rotate-btn" type="button" data-rotate-step="45" title="Rotate section +45 degrees">+45</button>
-                            <button class="section-rotate-btn" type="button" data-rotate-reset title="Reset section rotation">0</button>
+                            <button class="section-rotate-btn" type="button" data-rotate-step="-45" title="Rotate section -45 degrees" aria-label="Rotate section -45 degrees">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                            </button>
+                            <button class="section-rotate-btn" type="button" data-rotate-step="45" title="Rotate section +45 degrees" aria-label="Rotate section +45 degrees">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
+                            </button>
                         </div>
                         <button class="section-hide-btn" type="button" data-hide-section="${{section.id}}" title="Hide this section">&#x2715;</button>
-                        <span class="expand-icon">&#x26F6;</span>
                     </div>
                 </div>
                 <canvas class="section-canvas"></canvas>
             `;
-            panel.querySelectorAll('[data-rotate-step], [data-rotate-reset]').forEach((btn) => {{
+            panel.querySelectorAll('[data-rotate-step]').forEach((btn) => {{
                 btn.addEventListener('click', (event) => {{
                     event.preventDefault();
                     event.stopPropagation();
-                    if (btn.hasAttribute('data-rotate-reset')) {{
-                        resetSectionRotation(section.id);
-                        return;
-                    }}
                     rotateSectionBy(section.id, Number(btn.dataset.rotateStep || 0));
                 }});
                 btn.addEventListener('mousedown', (event) => event.stopPropagation());
@@ -21571,24 +24697,104 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }});
                 hideBtn.addEventListener('mousedown', (event) => event.stopPropagation());
             }}
-            panel.addEventListener('click', () => openModal(section.id));
+            panel.addEventListener('click', () => {{
+                if (suppressPanelClick) {{
+                    suppressPanelClick = false;
+                    return;
+                }}
+                if (magicWandActive || isDrawingGridLasso) return;
+                openModal(section.id, panel);
+            }});
+            const sectionCanvas = panel.querySelector('.section-canvas');
+            if (sectionCanvas) {{
+                sectionCanvas.addEventListener('mousedown', (event) => {{
+                    if (!magicWandActive || modalInlineActive || event.button !== 0) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    suppressPanelClick = true;
+                    isDrawingGridLasso = true;
+                    gridLassoSectionId = section.id;
+                    const rect = sectionCanvas.getBoundingClientRect();
+                    gridLassoPath = [{{ x: event.clientX - rect.left, y: event.clientY - rect.top }}];
+                    renderSection(section, sectionCanvas);
+                }});
+            }}
             grid.appendChild(panel);
         }});
+
+        if (!gridLassoHandlersInitialized) {{
+            document.addEventListener('mousemove', (event) => {{
+                if (!isDrawingGridLasso || !gridLassoSectionId) return;
+                const section = sectionById.get(gridLassoSectionId);
+                const canvas = getGridLassoCanvas();
+                if (!section || !canvas) return;
+                const rect = canvas.getBoundingClientRect();
+                gridLassoPath.push({{ x: event.clientX - rect.left, y: event.clientY - rect.top }});
+                renderSection(section, canvas);
+            }});
+            document.addEventListener('mouseup', () => {{
+                if (!isDrawingGridLasso) return;
+                const section = sectionById.get(gridLassoSectionId);
+                const canvas = getGridLassoCanvas();
+                isDrawingGridLasso = false;
+                performGridPanelLassoSelection();
+                gridLassoPath = [];
+                gridLassoSectionId = null;
+                if (section && canvas) renderSection(section, canvas);
+                window.setTimeout(() => {{ suppressPanelClick = false; }}, 80);
+            }});
+            gridLassoHandlersInitialized = true;
+        }}
 
         // Drag-and-drop reordering
         if ((DATA.n_sections || 0) > 1) {{
             let dragSrcId = null;
-            let dragAllowed = false;
+            let dropReferencePanel = null;
+            const dropPlaceholder = document.createElement('div');
+            dropPlaceholder.className = 'section-drop-placeholder';
+            const getDropReferencePanel = (event) => {{
+                const panels = Array.from(grid.querySelectorAll('.section-panel:not(.dragging):not(.filtered-out)'));
+                for (const candidate of panels) {{
+                    const rect = candidate.getBoundingClientRect();
+                    const isBeforeRow = event.clientY < rect.top + rect.height / 2;
+                    const isBeforeInRow = event.clientY <= rect.bottom && event.clientX < rect.left + rect.width / 2;
+                    if (isBeforeRow || isBeforeInRow) return candidate;
+                }}
+                return null;
+            }};
+            const showDropPlaceholder = (referencePanel) => {{
+                const panels = Array.from(grid.querySelectorAll('.section-panel:not(.dragging):not(.filtered-out)'));
+                const targetPanel = referencePanel || panels[panels.length - 1] || null;
+                if (!targetPanel) {{
+                    dropPlaceholder.style.display = 'none';
+                    return;
+                }}
+                const rect = targetPanel.getBoundingClientRect();
+                const gridStyle = getComputedStyle(grid);
+                const gap = parseFloat(gridStyle.columnGap || gridStyle.gap || '8') || 8;
+                const x = referencePanel ? rect.left - gap / 2 : rect.right + gap / 2;
+                Object.assign(dropPlaceholder.style, {{
+                    left: `${{Math.round(x - 5)}}px`,
+                    top: `${{Math.round(rect.top)}}px`,
+                    height: `${{Math.round(rect.height)}}px`,
+                    display: 'block',
+                }});
+                if (dropPlaceholder.parentElement !== document.body) document.body.appendChild(dropPlaceholder);
+            }};
+            const updateDropPlaceholder = (event) => {{
+                dropReferencePanel = getDropReferencePanel(event);
+                showDropPlaceholder(dropReferencePanel);
+            }};
+            const removeDropPlaceholder = () => {{
+                dropPlaceholder.remove();
+                dropReferencePanel = null;
+            }};
             grid.querySelectorAll('.section-panel').forEach(panel => {{
                 panel.setAttribute('draggable', 'true');
-                // Only allow drag when initiated from the header
-                const header = panel.querySelector('.section-header-main');
-                if (header) {{
-                    header.addEventListener('mousedown', () => {{ dragAllowed = true; }});
-                    header.addEventListener('mouseup', () => {{ dragAllowed = false; }});
-                }}
                 panel.addEventListener('dragstart', (e) => {{
-                    if (!dragAllowed) {{ e.preventDefault(); return; }}
+                    if (magicWandActive || isDrawingGridLasso) {{ e.preventDefault(); return; }}
+                    if (e.target.closest('button, input, select, textarea, a')) {{ e.preventDefault(); return; }}
+                    suppressPanelClick = true;
                     dragSrcId = panel.dataset.sectionId;
                     panel.classList.add('dragging');
                     e.dataTransfer.effectAllowed = 'move';
@@ -21597,37 +24803,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 panel.addEventListener('dragend', () => {{
                     panel.classList.remove('dragging');
                     grid.querySelectorAll('.section-panel').forEach(p => p.classList.remove('drag-over'));
+                    removeDropPlaceholder();
                     dragSrcId = null;
-                    dragAllowed = false;
+                    window.setTimeout(() => {{ suppressPanelClick = false; }}, 160);
                 }});
-                panel.addEventListener('dragover', (e) => {{
-                    e.preventDefault();
-                    e.dataTransfer.dropEffect = 'move';
-                    if (panel.dataset.sectionId !== dragSrcId) {{
-                        panel.classList.add('drag-over');
-                    }}
-                }});
-                panel.addEventListener('dragleave', () => {{
-                    panel.classList.remove('drag-over');
-                }});
-                panel.addEventListener('drop', (e) => {{
-                    e.preventDefault();
-                    e.stopPropagation();
-                    panel.classList.remove('drag-over');
-                    const srcId = e.dataTransfer.getData('text/plain');
-                    const targetId = panel.dataset.sectionId;
-                    if (!srcId || srcId === targetId) return;
-                    const srcPanel = grid.querySelector(`.section-panel[data-section-id="${{srcId}}"]`);
-                    if (!srcPanel) return;
-                    const targetRect = panel.getBoundingClientRect();
-                    const dropY = e.clientY - targetRect.top;
-                    if (dropY < targetRect.height / 2) {{
-                        grid.insertBefore(srcPanel, panel);
-                    }} else {{
-                        grid.insertBefore(srcPanel, panel.nextSibling);
-                    }}
+            }});
+            grid.addEventListener('dragover', (e) => {{
+                if (!dragSrcId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = 'move';
+                updateDropPlaceholder(e);
+            }});
+            grid.addEventListener('dragleave', (e) => {{
+                if (!grid.contains(e.relatedTarget)) removeDropPlaceholder();
+            }});
+            grid.addEventListener('drop', (e) => {{
+                if (!dragSrcId) return;
+                e.preventDefault();
+                e.stopPropagation();
+                const srcId = e.dataTransfer.getData('text/plain') || dragSrcId;
+                const srcPanel = grid.querySelector(`.section-panel[data-section-id="${{srcId}}"]`);
+                if (srcPanel) {{
+                    if (dropReferencePanel) grid.insertBefore(srcPanel, dropReferencePanel);
+                    else grid.appendChild(srcPanel);
                     renderAllSections();
-                }});
+                }}
+                removeDropPlaceholder();
             }});
         }}
 
@@ -21635,10 +24836,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         grid.addEventListener('scroll', () => {{
             requestAnimationFrame(renderAllSections);
         }});
+        updateGridPanelLassoCursor();
     }}
 
     // Controls
     function initControls() {{
+        document.getElementById('umap-selection-clear')?.addEventListener('click', () => {{
+            clearSelection();
+        }});
+
         const colorSelect = document.getElementById('color-select');
         DATA.available_colors.forEach(col => {{
             const opt = document.createElement('option');
@@ -21663,37 +24869,119 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             setViewerColorColumn(e.target.value);
         }});
 
-        const modalColorSelect = document.getElementById('modal-color-select');
-        if (modalColorSelect) {{
-            DATA.available_colors.forEach(col => {{
-                const opt = document.createElement('option');
-                opt.value = col;
-                opt.textContent = formatMetadataLabel(col);
-                opt.selected = col === currentColor;
-                modalColorSelect.appendChild(opt);
-            }});
-            modalColorSelect.addEventListener('change', (e) => {{
-                setViewerColorColumn(e.target.value);
-            }});
-        }}
+        const gridSideToolbar = document.getElementById('grid-side-toolbar');
+        const visualParamsToggle = document.getElementById('visual-params-toggle');
+        const geneParamsToggle = document.getElementById('gene-params-toggle');
+        updateGeneParamsButtonState = () => {{
+            const hasGeneControls = overviewBlendEnabled
+                ? hasOverviewSplitGeneSelection()
+                : !!currentGene;
+            geneParamsToggle?.classList.toggle('hidden', !hasGeneControls);
+            if (!hasGeneControls) {{
+                gridSideToolbar?.classList.remove('gene-open');
+                geneParamsToggle?.setAttribute('aria-expanded', 'false');
+            }}
+        }};
+        visualParamsToggle?.addEventListener('click', () => {{
+            const open = !gridSideToolbar?.classList.contains('visual-open');
+            gridSideToolbar?.classList.toggle('visual-open', open);
+            if (open) gridSideToolbar?.classList.remove('gene-open');
+            visualParamsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            geneParamsToggle?.setAttribute('aria-expanded', 'false');
+        }});
+        geneParamsToggle?.addEventListener('click', () => {{
+            const open = !gridSideToolbar?.classList.contains('gene-open');
+            gridSideToolbar?.classList.toggle('gene-open', open);
+            if (open) gridSideToolbar?.classList.remove('visual-open');
+            geneParamsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+            visualParamsToggle?.setAttribute('aria-expanded', 'false');
+        }});
+        document.addEventListener('mousedown', (event) => {{
+            if (!gridSideToolbar) return;
+            if (gridSideToolbar.contains(event.target)) return;
+            gridSideToolbar.classList.remove('visual-open', 'gene-open');
+            visualParamsToggle?.setAttribute('aria-expanded', 'false');
+            geneParamsToggle?.setAttribute('aria-expanded', 'false');
+        }});
+        document.getElementById('focused-modal-annotation-toggle')?.addEventListener('click', () => {{
+            if (!modalSection) return;
+            const enable = !modalAnnotationModeActive;
+            resetFocusedModalTools(enable ? 'annotation' : null);
+            modalAnnotationModeActive = enable;
+            if (modalAnnotationModeActive) {{
+                modalMagicWandActive = false;
+                isDrawingModalLasso = false;
+                modalLassoPath = [];
+                setModalAnnotationPanelOpen(true);
+            }} else {{
+                isDrawingModalAnnotation = false;
+                modalAnnotationPath = [];
+                setModalAnnotationPanelOpen(false);
+            }}
+            updateModalToolbarState();
+            if (typeof updateModalCanvasCursor === 'function') updateModalCanvasCursor();
+            renderModalSection();
+        }});
+        document.getElementById('focused-modal-neighbor-toggle')?.addEventListener('click', () => {{
+            if (!modalSection || !DATA.has_neighbors) return;
+            const enable = !neighborHoverEnabled;
+            resetFocusedModalTools(enable ? 'neighbors' : null);
+            if (enable) document.getElementById('modal-neighbor-hover-toggle')?.click();
+            else {{
+                updateModalToolbarState();
+                renderModalSection();
+            }}
+        }});
+        document.getElementById('focused-modal-graph-toggle')?.addEventListener('click', () => {{
+            if (!modalSection || !DATA.has_neighbors) return;
+            const enable = !showGraph;
+            resetFocusedModalTools(enable ? 'graph' : null);
+            if (enable) document.getElementById('modal-graph-toggle')?.click();
+            else {{
+                updateModalToolbarState();
+                renderAllSections();
+                renderModalSection();
+            }}
+        }});
+        document.getElementById('focused-modal-he-toggle')?.addEventListener('click', () => {{
+            if (!modalSection) return;
+            const enable = !modalHeOptionsVisible;
+            resetFocusedModalTools(enable ? 'he' : null);
+            setModalHeOptionsVisible(enable);
+            updateModalToolbarState();
+        }});
 
-        const modalGeneInput = document.getElementById('modal-gene-input');
-        const modalGeneClearBtn = document.getElementById('modal-gene-clear');
-        if (modalGeneInput) {{
-            modalGeneInput.addEventListener('keydown', (e) => {{
-                if (e.key === 'Enter') {{
-                    e.preventDefault();
-                    const val = modalGeneInput.value.trim();
-                    if (val) activateViewerGene(val);
-                }}
-            }});
-            modalGeneInput.addEventListener('change', () => {{
-                const val = modalGeneInput.value.trim();
-                if (val) activateViewerGene(val);
-            }});
-        }}
-        modalGeneClearBtn?.addEventListener('click', () => {{
-            activateViewerGene('');
+        const visualDefaultControls = document.getElementById('visual-default-controls');
+        const defaultSourceColorBtn = document.getElementById('default-source-color');
+        const defaultSourceGeneBtn = document.getElementById('default-source-gene');
+        const setDefaultVisualSource = (source) => {{
+            const mode = source === 'gene' ? 'gene' : 'color';
+            visualDefaultControls?.classList.toggle('color-mode', mode === 'color');
+            visualDefaultControls?.classList.toggle('gene-mode', mode === 'gene');
+            defaultSourceColorBtn?.classList.toggle('active', mode === 'color');
+            defaultSourceGeneBtn?.classList.toggle('active', mode === 'gene');
+        }};
+        const applyDefaultVisualSource = async (source) => {{
+            const mode = source === 'gene' ? 'gene' : 'color';
+            setDefaultVisualSource(mode);
+            if (mode === 'color') {{
+                await activateViewerGene('', {{ showErrors: false }});
+                return;
+            }}
+            const geneInput = document.getElementById('gene-input');
+            const requested = resolveCanonicalGeneName(geneInput?.value || '')
+                || currentGene
+                || getActiveFeatureList()[0]
+                || '';
+            if (!requested) return;
+            await activateViewerGene(requested, {{ showErrors: false }});
+        }};
+        setDefaultVisualSource(currentGene ? 'gene' : 'color');
+        defaultSourceColorBtn?.addEventListener('click', () => {{
+            applyDefaultVisualSource('color').catch(error => console.warn(error));
+        }});
+        defaultSourceGeneBtn?.addEventListener('click', () => {{
+            applyDefaultVisualSource('gene').catch(error => console.warn(error));
         }});
 
         const geneList = document.getElementById('gene-list');
@@ -21841,7 +25129,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     return;
                 }}
                 overviewGeneRenderMode = nextMode;
+                invalidateGeneDensityCaches();
                 renderAllSections();
+                if (umapVisible) renderUMAP();
             }});
         }}
         updateOverviewGeneViewState();
@@ -21856,7 +25146,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         // Overview split controls
         {{
-            const ovBlendToggle = document.getElementById('overview-blend-toggle');
+            const visualParamsBar = document.getElementById('visual-params-bar');
+            const ovBlendDefaultBtn = document.getElementById('overview-mode-default');
+            const ovBlendSplitBtn = document.getElementById('overview-mode-split');
             const ovBlendPanel = document.getElementById('overview-blend-panel');
             const ovBlendMixRange = document.getElementById('overview-blend-mix');
             const ovBlendMixLabel = document.getElementById('overview-blend-mix-label');
@@ -21896,9 +25188,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     }}
                     if (entry.kind !== 'cell') {{
                         const modName = entry.kind;
-                        const features = (modName === 'gene' && !modalityNames.includes('gene'))
-                            ? (DATA.available_genes || [])
-                            : (FEATURES_BY_MODALITY[modName] || []);
+                        const features = getLoadedFeaturesForModality(modName);
                         
                         if (!features.length && catCols.length) {{
                             entry.kind = 'cell';
@@ -21909,7 +25199,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             ? DATA.genes_meta
                             : (MODALITY_GENE_STATE[modName]?.genes_meta);
                         
-                        if (!entry.gene || !(meta && meta[entry.gene])) {{
+                        if ((!entry.gene || !(meta && meta[entry.gene])) && !entry.geneCleared) {{
                             entry.gene = features[preferSecond && features.length > 1 ? 1 : 0] || '';
                         }}
                     }}
@@ -21956,9 +25246,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     const listId = `overview-blend-${{side}}-gene-list`;
                     const listEl = document.getElementById(listId);
                     if (listEl) {{
-                        const features = (modName === 'gene' && !MODALITY_DESCRIPTORS.some(m => m.name === 'gene'))
-                            ? (DATA.available_genes || [])
-                            : (FEATURES_BY_MODALITY[modName] || []);
+                        const features = getLoadedFeaturesForModality(modName);
                         const fragment = document.createDocumentFragment();
                         for (const f of features) {{
                             const opt = document.createElement('option');
@@ -21977,7 +25265,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 syncOverviewBlendSide('a');
                 syncOverviewBlendSide('b');
                 if (ovBlendPanel) ovBlendPanel.classList.toggle('visible', overviewBlendEnabled);
-                if (ovBlendToggle) ovBlendToggle.classList.toggle('active', overviewBlendEnabled);
+                if (visualParamsBar) visualParamsBar.classList.toggle('split-mode', overviewBlendEnabled);
+                ovBlendDefaultBtn?.classList.toggle('active', !overviewBlendEnabled);
+                ovBlendSplitBtn?.classList.toggle('active', overviewBlendEnabled);
+                updateExpressionScaleUI();
+                updateGeneParamsButtonState();
+                gridSideToolbar?.classList.remove('gene-open');
+                geneParamsToggle?.setAttribute('aria-expanded', 'false');
+                renderLegend('legend');
                 if (ovBlendMixRange) ovBlendMixRange.value = String(Math.round(overviewBlendMix * 100));
                 const pctA = Math.round(overviewBlendMix * 100);
                 const pctB = 100 - pctA;
@@ -21987,12 +25282,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             function applyOverviewBlendChange() {{
                 syncOverviewBlendUI();
                 renderAllSections();
+                if (umapVisible) renderUMAP();
             }}
 
-            ovBlendToggle?.addEventListener('click', () => {{
-                overviewBlendEnabled = !overviewBlendEnabled;
+            ovBlendDefaultBtn?.addEventListener('click', () => {{
+                overviewBlendEnabled = false;
                 syncOverviewBlendUI();
                 renderAllSections();
+                if (umapVisible) renderUMAP();
+            }});
+            ovBlendSplitBtn?.addEventListener('click', () => {{
+                overviewBlendEnabled = true;
+                syncOverviewBlendUI();
+                renderAllSections();
+                if (umapVisible) renderUMAP();
             }});
             ovBlendMixRange?.addEventListener('input', (e) => {{
                 overviewBlendMix = clamp01(parseFloat(e.target.value) / 100);
@@ -22000,12 +25303,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const pctB = 100 - pctA;
                 if (ovBlendMixLabel) ovBlendMixLabel.textContent = `A left ${{pctA}}% / B right ${{pctB}}%`;
                 renderAllSections();
+                if (umapVisible) renderUMAP();
             }});
             ['a', 'b'].forEach((side) => {{
                 const controls = ovBlendControls[side];
                 if (!controls) return;
                 controls.kind?.addEventListener('change', () => {{
                     overviewBlendSpec[side].kind = controls.kind.value;
+                    overviewBlendSpec[side].geneCleared = false;
                     applyOverviewBlendChange();
                 }});
                 controls.color?.addEventListener('change', () => {{
@@ -22023,7 +25328,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         const modName = overviewBlendSpec[side].kind;
                         if (!gene) {{
                             overviewBlendSpec[side].gene = '';
+                            overviewBlendSpec[side].geneCleared = true;
                             applyOverviewBlendChange();
+                            return;
+                        }}
+                        const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
+                            ? DATA.genes_meta
+                            : (MODALITY_GENE_STATE[modName]?.genes_meta);
+                        if (!(meta && meta[gene])) {{
+                            controls.gene.value = overviewBlendSpec[side].gene || '';
                             return;
                         }}
                         if (!await ensureGeneAvailable(gene, {{ modality: modName }})) {{
@@ -22031,6 +25344,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             return;
                         }}
                         overviewBlendSpec[side].gene = gene;
+                        overviewBlendSpec[side].geneCleared = false;
                         ensureGeneAutoScale(gene, modName);
                         applyOverviewBlendChange();
                     }});
@@ -22052,15 +25366,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (modalSection) renderModalSection();
             }});
         }}
-        document.getElementById('spot-size-dec')?.addEventListener('click', () => stepRange(spotRange, -1));
-        document.getElementById('spot-size-inc')?.addEventListener('click', () => stepRange(spotRange, 1));
 
         const cellOpacityGlobalRange = document.getElementById('cell-opacity');
         cellOpacityGlobalRange?.addEventListener('input', (e) => {{
             setCellOpacity(parseInt(e.target.value, 10) / 100, {{ skip: e.target }});
         }});
-        document.getElementById('cell-opacity-dec')?.addEventListener('click', () => stepRange(cellOpacityGlobalRange, -10));
-        document.getElementById('cell-opacity-inc')?.addEventListener('click', () => stepRange(cellOpacityGlobalRange, 10));
 
         // Global overlay-image switch (DAPI / H&E across all sections).
         populateGlobalOverlaySelect();
@@ -22081,17 +25391,61 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         document.getElementById('show-hidden-sections-btn').addEventListener('click', showAllSections);
 
-        const annotOverviewToggle = document.getElementById('annotations-overview-toggle');
-        annotOverviewToggle.addEventListener('click', () => {{
-            showOverviewAnnotations = !showOverviewAnnotations;
-            annotOverviewToggle.classList.toggle('active', showOverviewAnnotations);
-            renderAllSections();
-        }});
-
-        document.getElementById('annotations-overview-export')?.addEventListener('click', exportModalAnnotations);
         document.getElementById('cluster-annotations-export')?.addEventListener('click', exportClusterAnnotationsAndColors);
 
-        document.getElementById('screenshot-btn').addEventListener('click', screenshotFullPage);
+        const closeToolbarPopovers = (except = null) => {{
+            document.querySelectorAll('.toolbar-popover.open').forEach((panel) => {{
+                if (panel === except) return;
+                panel.classList.remove('open');
+                panel.setAttribute('aria-hidden', 'true');
+                const btn = document.querySelector(`[aria-controls="${{panel.id}}"]`);
+                btn?.classList.remove('active');
+                btn?.setAttribute('aria-expanded', 'false');
+            }});
+        }};
+        const bindToolbarMenu = (buttonId, panelId) => {{
+            const button = document.getElementById(buttonId);
+            const panel = document.getElementById(panelId);
+            if (!button || !panel) return;
+            button.addEventListener('click', (event) => {{
+                event.stopPropagation();
+                const open = !panel.classList.contains('open');
+                closeToolbarPopovers(open ? panel : null);
+                panel.classList.toggle('open', open);
+                panel.setAttribute('aria-hidden', open ? 'false' : 'true');
+                button.classList.toggle('active', open);
+                button.setAttribute('aria-expanded', open ? 'true' : 'false');
+            }});
+            panel.addEventListener('click', (event) => event.stopPropagation());
+        }};
+        bindToolbarMenu('screenshot-btn', 'screenshot-menu');
+        bindToolbarMenu('export-menu-toggle', 'export-menu');
+        document.addEventListener('click', () => {{
+            closeToolbarPopovers();
+            closeLegendExportMenus();
+        }});
+        document.addEventListener('keydown', (event) => {{
+            if (event.key === 'Escape') {{
+                closeToolbarPopovers();
+                closeLegendExportMenus();
+            }}
+        }});
+
+        const syncScreenshotTargetButtons = () => {{
+            document.querySelectorAll('[data-screenshot-target]').forEach((btn) => {{
+                const active = btn.dataset.screenshotTarget === screenshotTarget;
+                btn.classList.toggle('active', active);
+                btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+            }});
+        }};
+        document.querySelectorAll('[data-screenshot-target]').forEach((btn) => {{
+            btn.addEventListener('click', () => {{
+                screenshotTarget = btn.dataset.screenshotTarget === 'screen' ? 'screen' : 'grid';
+                syncScreenshotTargetButtons();
+            }});
+        }});
+        syncScreenshotTargetButtons();
+        document.getElementById('screenshot-download-btn')?.addEventListener('click', screenshotSelectedTarget);
 
         document.getElementById('save-session-btn')?.addEventListener('click', () => {{
             try {{ downloadSessionState(); }}
@@ -22163,7 +25517,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             modalZoom = Math.max(modalZoom / 1.5, 0.1);
             renderModalSection();
         }});
-        document.getElementById('zoom-reset').addEventListener('click', zoomModalToFit);
         document.getElementById('modal-rotate-left')?.addEventListener('click', () => {{
             if (!modalSection) return;
             rotateSectionBy(modalSection.id, -ROTATION_STEP_DEG);
@@ -22172,11 +25525,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!modalSection) return;
             rotateSectionBy(modalSection.id, ROTATION_STEP_DEG);
         }});
-        document.getElementById('modal-rotate-reset')?.addEventListener('click', () => {{
-            if (!modalSection) return;
-            resetSectionRotation(modalSection.id);
+        const modalVisualParamsToggle = document.getElementById('modal-visual-params-toggle');
+        const modalVisualParamsPanel = document.getElementById('modal-visual-params-panel');
+        modalVisualParamsToggle?.addEventListener('click', (event) => {{
+            event.stopPropagation();
+            const open = !modalVisualParamsPanel?.classList.contains('open');
+            modalVisualParamsPanel?.classList.toggle('open', open);
+            modalVisualParamsToggle.classList.toggle('active', open);
+            modalVisualParamsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
         }});
-        document.getElementById('modal-screenshot-btn')?.addEventListener('click', screenshotModalView);
+        modalVisualParamsPanel?.addEventListener('click', (event) => event.stopPropagation());
+        document.addEventListener('click', () => {{
+            modalVisualParamsPanel?.classList.remove('open');
+            modalVisualParamsToggle?.classList.remove('active');
+            modalVisualParamsToggle?.setAttribute('aria-expanded', 'false');
+        }});
 
         // Transparent background screenshot toggle
         document.getElementById('screenshot-transparent-bg')?.addEventListener('change', (e) => {{
@@ -22240,15 +25603,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         document.getElementById('modal-he-scale-inc')?.addEventListener('click', () => stepRange(heScaleRange, 10));
         document.getElementById('modal-he-rotation-dec')?.addEventListener('click', () => stepRange(heRotationRange, -5));
         document.getElementById('modal-he-rotation-inc')?.addEventListener('click', () => stepRange(heRotationRange, 5));
-        document.getElementById('modal-cell-opacity-dec')?.addEventListener('click', () => stepRange(cellOpacityRange, -10));
-        document.getElementById('modal-cell-opacity-inc')?.addEventListener('click', () => stepRange(cellOpacityRange, 10));
-        const cellOpacityNum = document.getElementById('modal-cell-opacity-num');
         cellOpacityRange?.addEventListener('input', (e) => {{
             setCellOpacity(parseInt(e.target.value, 10) / 100, {{ skip: e.target }});
-        }});
-        cellOpacityNum?.addEventListener('input', (e) => {{
-            const v = Math.max(0, Math.min(100, parseFloat(e.target.value) || 0));
-            setCellOpacity(v / 100, {{ skip: e.target }});
         }});
 
         document.getElementById('modal-he-align-btn')?.addEventListener('click', () => {{
@@ -22338,41 +25694,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }};
             downloadJsonFile(alignment, `he-alignment-${{modalSection.id}}.json`);
         }});
-        document.getElementById('modal-exit-subview-btn')?.addEventListener('click', () => {{
-            exitModalSubview();
-        }});
-
         const modalRange = document.getElementById('modal-spot-size');
         if (modalRange) {{
             const min = parseFloat(modalRange.min || '0');
             const max = parseFloat(modalRange.max || '100');
             modalSpotSize = Math.min(max, Math.max(min, modalSpotSize));
             modalRange.value = String(modalSpotSize);
-            document.getElementById('modal-spot-size-label').textContent = modalSpotSize;
             modalRange.addEventListener('input', (e) => {{
                 modalSpotSize = parseFloat(e.target.value);
-                document.getElementById('modal-spot-size-label').textContent = modalSpotSize;
-                renderModalSection();
-            }});
-        }}
-        document.getElementById('modal-spot-size-dec')?.addEventListener('click', () => stepRange(modalRange, -1));
-        document.getElementById('modal-spot-size-inc')?.addEventListener('click', () => stepRange(modalRange, 1));
-        const modalGeneViewModeSelect = document.getElementById('modal-gene-view-mode');
-        if (modalGeneViewModeSelect) {{
-            modalGeneViewModeSelect.value = modalGeneRenderMode;
-            modalGeneViewModeSelect.addEventListener('change', () => {{
-                const nextMode = modalGeneViewModeSelect.value;
-                if (!['cells', 'density', 'both'].includes(nextMode)) {{
-                    modalGeneViewModeSelect.value = modalGeneRenderMode;
-                    return;
-                }}
-                modalGeneRenderMode = nextMode;
-                invalidateModalRenderedView();
                 renderModalSection();
             }});
         }}
 
         const container = document.getElementById('modal-canvas-container');
+        if (window.ResizeObserver && container && !modalResizeObserver) {{
+            modalResizeObserver = new ResizeObserver(() => {{
+                if (!modalSection) return;
+                if (modalResizeRenderFrame !== null) window.cancelAnimationFrame(modalResizeRenderFrame);
+                modalResizeRenderFrame = window.requestAnimationFrame(() => {{
+                    modalResizeRenderFrame = null;
+                    invalidateModalRenderedView();
+                    renderModalSection();
+                    layoutModalControls();
+                    layoutModalAnnotationPanel();
+                }});
+            }});
+            modalResizeObserver.observe(container);
+        }}
         container.addEventListener('wheel', (e) => {{
             if (!modalSection) return;
             e.preventDefault();
@@ -22398,9 +25746,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         const canvas = document.getElementById('modal-canvas');
-        const typeToggleBtn = document.getElementById('modal-type-toggle');
-        const typeClearBtn = document.getElementById('modal-type-clear');
-        const modalBlendToggleBtn = document.getElementById('modal-blend-toggle');
         const modalBlendPanel = document.getElementById('modal-blend-panel');
         const modalBlendMixRange = document.getElementById('modal-blend-mix');
         const modalBlendMixLabel = document.getElementById('modal-blend-mix-label');
@@ -22429,17 +25774,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 scaleAuto: document.getElementById('modal-blend-b-auto'),
             }},
         }};
-        const modalWandBtn = document.getElementById('modal-magic-wand-btn');
-        const modalAnnotateBtn = document.getElementById('modal-annotate-btn');
-        const modalClearSelectionBtn = document.getElementById('modal-clear-selection-btn');
-        const modalAnnotationPanel = document.getElementById('modal-annotation-panel');
         const modalAnnotationExportBtn = document.getElementById('modal-annotations-export');
-        const modalAnnotationClearSectionBtn = document.getElementById('modal-annotations-clear-section');
         const modalAnnotationClearAllBtn = document.getElementById('modal-annotations-clear-all');
-        initModalAnnotationPanelDragging();
         initModalControlsDragging();
 
-        function updateModalCanvasCursor() {{
+        updateModalCanvasCursor = () => {{
             if (!canvas) return;
             if (isSplitDragging) {{
                 canvas.style.cursor = 'ew-resize';
@@ -22456,7 +25795,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }} else {{
                 canvas.style.cursor = 'grab';
             }}
-        }}
+        }};
 
         function ensureModalBlendDefaults() {{
             const catCols = getCategoricalColorColumns();
@@ -22485,9 +25824,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
                 if (entry.kind !== 'cell') {{
                     const modName = entry.kind;
-                    const features = (modName === 'gene' && !modalityNames.includes('gene'))
-                        ? (DATA.available_genes || [])
-                        : (FEATURES_BY_MODALITY[modName] || []);
+                    const features = getLoadedFeaturesForModality(modName);
 
                     if (!features.length && catCols.length) {{
                         entry.kind = 'cell';
@@ -22616,9 +25953,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const listId = `modal-blend-${{side}}-gene-list`;
                 const listEl = document.getElementById(listId);
                 if (listEl) {{
-                    const features = (modName === 'gene' && !MODALITY_DESCRIPTORS.some(m => m.name === 'gene'))
-                        ? (DATA.available_genes || [])
-                        : (FEATURES_BY_MODALITY[modName] || []);
+                    const features = getLoadedFeaturesForModality(modName);
                     const fragment = document.createDocumentFragment();
                     for (const f of features) {{
                         const opt = document.createElement('option');
@@ -22653,7 +25988,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             syncModalBlendSide('a');
             syncModalBlendSide('b');
             if (modalBlendPanel) modalBlendPanel.classList.toggle('visible', modalBlendEnabled);
-            if (modalBlendToggleBtn) modalBlendToggleBtn.classList.toggle('active', modalBlendEnabled);
             if (modalBlendMixRange) modalBlendMixRange.value = String(Math.round(modalBlendMix * 100));
             updateModalBlendLabels();
             updateModalToolbarState();
@@ -22701,12 +26035,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             rerenderForExpressionScaleChange();
         }}
 
-        modalBlendToggleBtn?.addEventListener('click', () => {{
-            modalBlendEnabled = !modalBlendEnabled;
-            syncModalBlendUI();
-            renderLegend('modal-legend');
-            if (modalSection) renderModalSection();
-        }});
         modalBlendMixRange?.addEventListener('input', (e) => {{
             modalBlendMix = clamp01(parseFloat(e.target.value) / 100);
             updateModalBlendLabels();
@@ -22730,15 +26058,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }});
             controls.gene?.addEventListener('change', async () => {{
                 await runAsyncUIAction(`Modal gene selection (${{side.toUpperCase()}})`, async () => {{
-                    const gene = controls.gene.value.trim();
-                    const modName = modalBlendSpec[side].kind;
-                    if (!gene) {{
-                        modalBlendSpec[side].gene = '';
-                        applyModalBlendControlChange();
-                        return;
-                    }}
-                    if (!await ensureGeneAvailable(gene, {{ modality: modName }})) {{
-                        controls.gene.value = modalBlendSpec[side].gene || '';
+                        const gene = controls.gene.value.trim();
+                        const modName = modalBlendSpec[side].kind;
+                        if (!gene) {{
+                            modalBlendSpec[side].gene = '';
+                            applyModalBlendControlChange();
+                            return;
+                        }}
+                        const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
+                            ? DATA.genes_meta
+                            : (MODALITY_GENE_STATE[modName]?.genes_meta);
+                        if (!(meta && meta[gene])) {{
+                            controls.gene.value = modalBlendSpec[side].gene || '';
+                            return;
+                        }}
+                        if (!await ensureGeneAvailable(gene, {{ modality: modName }})) {{
+                            controls.gene.value = modalBlendSpec[side].gene || '';
                         return;
                     }}
                     modalBlendSpec[side].gene = gene;
@@ -22758,8 +26093,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             hideModalGeneDiscoveryPanel();
             updateSelectionInfo();
         }});
-        modalAnnotationPanel?.addEventListener('wheel', (e) => e.stopPropagation());
-        modalAnnotationPanel?.addEventListener('touchmove', (e) => e.stopPropagation());
         syncModalBlendUI();
         renderModalAnnotationPanel();
         layoutModalAnnotationPanel();
@@ -22768,60 +26101,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalAnnotationExportBtn?.addEventListener('click', () => {{
             exportModalAnnotations();
         }});
-        modalAnnotationClearSectionBtn?.addEventListener('click', () => {{
-            if (!modalSection) return;
-            clearModalAnnotationsForSection(modalSection.id);
-        }});
         modalAnnotationClearAllBtn?.addEventListener('click', () => {{
             clearAllModalAnnotations();
         }});
 
-        typeToggleBtn.addEventListener('click', () => {{
-            const config = getColorConfig();
-            if (config.is_continuous) return;
-            modalTypeSelectEnabled = !modalTypeSelectEnabled;
-            updateModalToolbarState();
-        }});
-        typeClearBtn.addEventListener('click', () => {{
-            modalSelectedCategory = null;
-            updateModalToolbarState();
-            renderAllSections();
-            renderModalSection();
-        }});
-        modalWandBtn?.addEventListener('click', () => {{
-            modalMagicWandActive = !modalMagicWandActive;
-            modalWandBtn.classList.toggle('active', modalMagicWandActive);
-            if (modalMagicWandActive) {{
-                modalAnnotationModeActive = false;
-                isDrawingModalAnnotation = false;
-                modalAnnotationPath = [];
-                modalAnnotateBtn?.classList.remove('active');
-            }}
-            if (!modalMagicWandActive) {{
-                isDrawingModalLasso = false;
-                modalLassoPath = [];
-            }}
-            updateModalToolbarState();
-            updateModalCanvasCursor();
-            renderModalSection();
-        }});
-        modalAnnotateBtn?.addEventListener('click', () => {{
-            modalAnnotationModeActive = !modalAnnotationModeActive;
-            modalAnnotateBtn.classList.toggle('active', modalAnnotationModeActive);
-            if (modalAnnotationModeActive) {{
-                modalMagicWandActive = false;
-                isDrawingModalLasso = false;
-                modalLassoPath = [];
-                modalWandBtn?.classList.remove('active');
-            }} else {{
-                isDrawingModalAnnotation = false;
-                modalAnnotationPath = [];
-            }}
-            updateModalToolbarState();
-            updateModalCanvasCursor();
-            renderModalSection();
-        }});
-        modalClearSelectionBtn?.addEventListener('click', clearSelection);
         canvas.addEventListener('mousedown', (e) => {{
             modalPointerMoved = false;
             hideTooltip();
@@ -22900,30 +26183,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             isSplitDragging = false;
             updateModalCanvasCursor();
             e.preventDefault();
-        }});
-        canvas.addEventListener('click', (e) => {{
-            if (!modalSection || isDragging || isDrawingModalLasso || isDrawingModalAnnotation || modalPointerMoved || modalMagicWandActive || modalAnnotationModeActive) return;
-            const config = getColorConfig();
-            if (config.is_continuous || !modalTypeSelectEnabled) return;
-
-            const rect = container.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const mouseY = e.clientY - rect.top;
-            const transform = getModalViewTransform(rect);
-            if (!transform) return;
-
-            const cellIdx = findNearestCell(modalSection, mouseX, mouseY, rect, transform);
-            if (cellIdx >= 0) {{
-                const values = getSectionValues(modalSection);
-                const val = values[cellIdx];
-                const catInfo = getCategoricalValueInfo(config, val);
-                if (catInfo) {{
-                    modalSelectedCategory = catInfo.catName || null;
-                    updateModalToolbarState();
-                    renderAllSections();
-                    renderModalSection();
-                }}
-            }}
         }});
         document.addEventListener('mousemove', (e) => {{
             if (isDrawingModalAnnotation) {{
@@ -23045,7 +26304,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const modalGraphBtn = document.getElementById('modal-graph-toggle');
             modalGraphBtn.classList.toggle('active', showGraph);
             modalGraphBtn.addEventListener('click', () => {{
-                showGraph = !showGraph;
+                const enable = !showGraph;
+                if (enable) resetFocusedModalTools('graph');
+                showGraph = enable;
                 modalGraphBtn.classList.toggle('active', showGraph);
                 updateModalToolbarState();
                 renderAllSections();
@@ -23055,7 +26316,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const modalNeighborBtn = document.getElementById('modal-neighbor-hover-toggle');
             modalNeighborBtn.classList.toggle('active', neighborHoverEnabled);
             modalNeighborBtn.addEventListener('click', () => {{
-                neighborHoverEnabled = !neighborHoverEnabled;
+                const enable = !neighborHoverEnabled;
+                if (enable) resetFocusedModalTools('neighbors');
+                neighborHoverEnabled = enable;
                 modalNeighborBtn.classList.toggle('active', neighborHoverEnabled);
                 updateModalToolbarState();
                 if (!neighborHoverEnabled) {{
@@ -23092,6 +26355,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             initKeyboardShortcuts();
             initHelpTooltips();
             updateSectionRotationIndicators();
+            updateStickyOffsets();
             renderLegend('legend');
             updateSelectionInfo();
             initSucceeded = true;
@@ -23107,6 +26371,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (initSucceeded) requestAnimationFrame(renderAllSections);
     }});
     window.addEventListener('resize', () => {{
+        updateStickyOffsets();
         if (DATA.has_umap) applyUMAPPanelState();
         renderAllSections();
         if (modalSection) {{
@@ -23474,6 +26739,21 @@ def export_to_html(
         deconvolutions=deconvolutions,
     )
     data["scalebar_unit"] = str(scalebar_unit or "μm")
+    original_total_cells = int(dataset.adata.n_obs)
+    exported_total_cells = int(data.get("total_cells") or 0)
+    downsample_configured = downsample is not None
+    downsample_applied = bool(
+        downsample_configured
+        and exported_total_cells < original_total_cells
+    )
+    data["downsample"] = {
+        "applied": downsample_applied,
+        "configured": downsample_configured,
+        "max_cells_per_section": int(downsample) if downsample is not None else None,
+        "original_total_cells": original_total_cells,
+        "exported_total_cells": exported_total_cells,
+        "removed_cells": max(0, original_total_cells - exported_total_cells),
+    }
 
     if section_images:
         _embed_section_images(data, section_images, max_px=section_images_max_px)
@@ -23578,6 +26858,9 @@ def export_to_html(
         spot_size=spot_size,
         min_panel_size=min_panel_size,
     )
+    spot_slider_max = max(0.02, float(resolved_spot_size) * 2.0)
+    modal_spot_size = float(resolved_spot_size) * 2.0
+    modal_spot_slider_max = max(0.04, modal_spot_size * 2.0)
 
     # Theme settings
     theme_icon = "☀️" if theme == "dark" else "🌙"
@@ -23608,6 +26891,24 @@ def export_to_html(
             }
         )
     max_panel_size = int(min_panel_size * 2)
+    downsample_warning_html = ""
+    if downsample_applied:
+        percent_remaining = (
+            (float(exported_total_cells) / float(original_total_cells)) * 100.0
+            if original_total_cells > 0
+            else 0.0
+        )
+        percent_label = f"{percent_remaining:.1f}".rstrip("0").rstrip(".")
+        warning_title = (
+            "This viewer was generated from a downsampled export: "
+            f"{exported_total_cells:,} of {original_total_cells:,} cells are shown "
+            f"({percent_label}% remaining; maximum {int(downsample):,} cells per section)."
+        )
+        downsample_warning_html = (
+            '<div class="downsample-warning" title="'
+            + _escape_html_attr(warning_title)
+            + f'">{_escape_html_attr(percent_label)}% downsampled</div>'
+        )
 
     data_json_safe = json.dumps(
         _json_sanitize_nonfinite(data),
@@ -23620,8 +26921,12 @@ def export_to_html(
         min_panel_size=min_panel_size,
         max_panel_size=max_panel_size,
         spot_size=resolved_spot_size,
+        spot_slider_max=spot_slider_max,
+        modal_spot_size=modal_spot_size,
+        modal_spot_slider_max=modal_spot_slider_max,
         data_json=data_json_safe,
         palette_json=json.dumps(DEFAULT_CATEGORICAL_PALETTE),
+        downsample_warning_html=downsample_warning_html,
         metadata_labels_json=json.dumps(resolved_metadata_labels),
         outline_by_json=json.dumps(outline_by),
         viewer_info_html_json=json.dumps(viewer_info_html),

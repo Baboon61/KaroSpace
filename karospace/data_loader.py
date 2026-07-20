@@ -2238,6 +2238,7 @@ class SpatialDataset:
             "metadata_filters": metadata_filters,
             "n_sections": len(sections_data),
             "total_cells": sum(s["n_cells"] for s in sections_data),
+            "loaded_genes": len(genes_meta),
             "sections": sections_data,
             "available_colors": list(color_data.keys()) + list(decon_data.keys()),
             "available_deconvolutions": list(decon_data.keys()),
