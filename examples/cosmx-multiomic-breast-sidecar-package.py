@@ -64,7 +64,6 @@ common_kwargs = dict(
     min_panel_size=150,
     spot_size="auto",
     downsample=None, # Keep all cells for high-res exploration
-    theme="dark",    # Dark theme often looks better for multi-modal intensity data
     additional_colors=ADDITIONAL_COLORS,
     
     # Feature discovery
@@ -74,7 +73,6 @@ common_kwargs = dict(
     
     # Storage and encoding
     gene_storage="sidecar",
-    gene_sidecar_format="binary-v1",
     gene_encoding="auto",
     gene_value_encoding="uint8", # Quantization for smaller sidecar shards
     gene_aux_path=GENE_AUX_PATH,

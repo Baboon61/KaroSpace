@@ -67,7 +67,6 @@ common_kwargs = dict(
     min_panel_size=150,
     spot_size="auto",
     downsample=None,
-    theme="dark",
     additional_colors=ADDITIONAL_COLORS,
     
     # Feature discovery
@@ -77,7 +76,6 @@ common_kwargs = dict(
     
     # Storage and encoding
     gene_storage="sidecar",
-    gene_sidecar_format="binary-v1",
     gene_encoding="auto",
     gene_value_encoding="uint8",
     gene_aux_path=GENE_AUX_PATH,

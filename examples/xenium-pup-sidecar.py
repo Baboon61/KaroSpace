@@ -57,7 +57,6 @@ export_to_html(
       min_panel_size=120,
       spot_size="auto",
       downsample=10_000_000,
-      theme="light",
       outline_by=None,
       additional_colors=ANALYTICS_COLUMNS[1:],
       genes=[],

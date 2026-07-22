@@ -22,8 +22,8 @@ from scipy.sparse import issparse
 
 COMPANION_ANALYTICS_STORAGE = "json-string-v1"
 COMPANION_ANALYTICS_JSON_FIELDS = {
-    "marker_genes_json": "marker_genes",
     "cluster_de_json": "cluster_de",
+    "pseudobulk_de_json": "pseudobulk_de",
     "neighbor_stats_json": "neighbor_stats",
     "interaction_markers_json": "interaction_markers",
     "gene_correlations_json": "gene_correlations",
@@ -140,6 +140,43 @@ def _resolve_spatial_key(adata, spatial_key: str = "spatial") -> str:
     )
 
 
+def _set_spatial_from_obs_columns(
+    adata,
+    spatial_columns: Tuple[str, str],
+    spatial_key: str = "spatial",
+) -> str:
+    """Create ``adata.obsm[spatial_key]`` from two numeric ``adata.obs`` columns."""
+    if len(spatial_columns) != 2:
+        raise ValueError("spatial_columns must contain exactly two obs column names")
+
+    x_col, y_col = [str(col).strip() for col in spatial_columns]
+    if not x_col or not y_col:
+        raise ValueError("spatial_columns entries must be non-empty obs column names")
+
+    missing = [col for col in (x_col, y_col) if col not in adata.obs.columns]
+    if missing:
+        available = ", ".join(map(str, adata.obs.columns)) or "(none)"
+        raise ValueError(
+            f"Spatial coordinate column(s) not found in adata.obs: {', '.join(missing)}. "
+            f"Available obs columns: {available}."
+        )
+
+    coords = []
+    for col in (x_col, y_col):
+        values = pd.to_numeric(adata.obs[col], errors="coerce").to_numpy(dtype=float)
+        if not np.isfinite(values).all():
+            raise ValueError(
+                f"Spatial coordinate column '{col}' must contain only finite numeric values."
+            )
+        coords.append(values)
+
+    adata.obsm[spatial_key] = np.column_stack(coords)
+    print(
+        f"  Using obs columns '{x_col}' and '{y_col}' as adata.obsm['{spatial_key}'] spatial coordinates."
+    )
+    return spatial_key
+
+
 def _numeric_category_perm(categories: List) -> Optional[List[int]]:
     """Return a permutation ordering ``categories`` numerically, or ``None``.
 
@@ -162,37 +199,6 @@ def _numeric_category_perm(categories: List) -> Optional[List[int]]:
     if order == list(range(len(strs))):
         return None
     return order
-
-
-def _extract_rank_genes_groups_values(
-    obj: Union[pd.DataFrame, np.ndarray, List],
-    group: str,
-    n: int,
-    cast=None,
-) -> List:
-    vals = []
-    if obj is None:
-        return vals
-    if isinstance(obj, pd.DataFrame):
-        if group in obj.columns:
-            vals = obj[group].tolist()
-        elif obj.shape[1] > 0:
-            vals = obj.iloc[:, 0].tolist()
-    elif isinstance(obj, np.ndarray) and obj.dtype.names:
-        g = group if group in obj.dtype.names else obj.dtype.names[0]
-        vals = list(obj[g])
-    else:
-        vals = list(np.asarray(obj).ravel())
-    vals = vals[:n]
-    if cast is None:
-        return vals
-    out = []
-    for v in vals:
-        try:
-            out.append(cast(v))
-        except Exception:
-            out.append(None)
-    return out
 
 
 def _compute_positive_fraction(
@@ -468,8 +474,6 @@ class SpatialDataset:
     def get_color_data(
         self,
         color: str,
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
         modality: Optional[str] = None,
     ) -> Tuple[np.ndarray, bool, Optional[List[str]]]:
         """
@@ -479,8 +483,6 @@ class SpatialDataset:
         ----------
         color : str
             Column in obs or feature name within the active modality
-        vmin, vmax : float, optional
-            Min/max for continuous data
         modality : str, optional
             Modality name to look up the feature in. Defaults to ``default_modality``.
 
@@ -650,9 +652,9 @@ class SpatialDataset:
 
     @staticmethod
     def _validate_gene_value_encoding(gene_value_encoding: str) -> str:
-        normalized = str(gene_value_encoding or "float32").lower()
-        if normalized not in {"float32", "uint16", "uint8"}:
-            raise ValueError("gene_value_encoding must be one of: 'float32', 'uint16', 'uint8'")
+        normalized = str(gene_value_encoding or "uint16").lower()
+        if normalized not in {"uint16", "uint8"}:
+            raise ValueError("gene_value_encoding must be one of: 'uint16', 'uint8'")
         return normalized
 
     @staticmethod
@@ -717,7 +719,7 @@ class SpatialDataset:
         if n_values:
             zero_frac = 1.0 - (float(nonzero_count) / float(n_values))
 
-        # Sidecar payloads compare packed dense float32 buffers against packed
+        # Sidecar payloads compare packed dense quantized buffers against packed
         # sparse index/value buffers. Prefer sparse whenever it is explicitly
         # requested via zero-threshold or whenever it is estimated to be smaller.
         value_bytes = cls._gene_value_encoding_bytes(gene_value_encoding)
@@ -765,7 +767,7 @@ class SpatialDataset:
         downsample: Optional[int] = None,
         export_indices: Optional[Dict[str, np.ndarray]] = None,
         gene_encoding: str = "auto",
-        gene_value_encoding: str = "float32",
+        gene_value_encoding: str = "uint16",
         gene_sparse_zero_threshold: float = 0.8,
         gene_sparse_pack: bool = True,
         gene_sparse_pack_min_nnz: int = 256,
@@ -1021,33 +1023,27 @@ class SpatialDataset:
         self,
         color: str,
         downsample: Optional[int] = None,
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
         additional_colors: Optional[List[str]] = None,
         genes: Optional[List[str]] = None,
         gene_encoding: str = "auto",
         gene_sparse_zero_threshold: float = 0.8,
         gene_sparse_pack: bool = True,
         gene_sparse_pack_min_nnz: int = 256,
-        section_array_pack: bool = True,
-        section_array_pack_min_len: int = 1024,
-        marker_genes_groupby: Optional[List[str]] = None,
-        marker_genes_top_n: int = 30,
-        cluster_de_groupby: Optional[List[str]] = None,
-        cluster_de_top_n: int = 20,
-        cluster_de_method: str = "wilcoxon",
-        cluster_de_layer: Optional[str] = "normalized",
-        cluster_de_min_cells: int = 20,
+        pseudobulk_de_groupby: Optional[List[str]] = None,
+        pseudobulk_counts_layer: Optional[str] = "counts",
+        pseudobulk_min_replicates: int = 2,
+        pseudobulk_min_pct_expressed: float = 0.0,
+        pseudobulk_p_adjust_method: str = "fdr_bh",
+        pseudobulk_padj_cutoff: float = 0.05,
+        pseudobulk_log2fc_cutoff: float = 0.5,
+        pseudobulk_deseq2_fit_type: str = "parametric",
         neighbor_stats_groupby: Optional[List[str]] = None,
         neighbor_stats_permutations: int = 0,
         neighbor_stats_seed: int = 0,
-        interaction_markers_groupby: Optional[List[str]] = None,
         interaction_markers_top_targets: int = 8,
         interaction_markers_top_genes: int = 20,
         interaction_markers_min_cells: int = 30,
         interaction_markers_min_neighbors: int = 1,
-        interaction_markers_method: str = "wilcoxon",
-        interaction_markers_layer: Optional[str] = "normalized",
         section_rotations: Optional[Dict[str, float]] = None,
         deconvolutions: Optional[Dict[str, str]] = None,
     ) -> Dict:
@@ -1060,8 +1056,6 @@ class SpatialDataset:
             Initial color column or gene
         downsample : int, optional
             If set, randomly downsample to this many cells per section
-        vmin, vmax : float, optional
-            Min/max for continuous color scale
         additional_colors : list, optional
             Additional obs columns to include for color switching
         genes : list, optional
@@ -1080,47 +1074,40 @@ class SpatialDataset:
         gene_sparse_pack_min_nnz : int
             Only pack sparse arrays when non-zero entries in a section are >= this value.
             Default: 256.
-        section_array_pack : bool
-            Pack large per-section numeric arrays (coordinates, colors, UMAP) as base64 typed arrays
-            for smaller HTML and faster JSON parse. Default: True.
-        section_array_pack_min_len : int
-            Only pack per-section arrays when section cell count is >= this value. Default: 1024.
-        marker_genes_groupby : list, optional
-            Obs columns to compute marker genes for (categorical only)
-        marker_genes_top_n : int
-            Number of top marker genes to keep per group
-        cluster_de_groupby : list, optional
-            Obs columns to compute pairwise cluster DE for (categorical only)
-        cluster_de_top_n : int
-            Number of top DE genes to keep per cluster pair
-        cluster_de_method : str
-            Differential expression method for scanpy.tl.rank_genes_groups (e.g. "wilcoxon", "t-test").
-        cluster_de_layer : str, optional
-            AnnData layer to use for cluster DE, if available (default: "normalized").
-        cluster_de_min_cells : int
-            Minimum cells required in both clusters to report pairwise DE.
+        pseudobulk_de_groupby : list, optional
+            Internal list of obs columns to compute pairwise pseudobulk DE for.
+            Exporter supplies the initial color and pseudobulk_additional_colors.
+        pseudobulk_counts_layer : str, optional
+            AnnData layer containing raw counts for pseudobulk aggregation.
+            Defaults to "counts" when present, otherwise adata.X.
+        pseudobulk_min_replicates : int
+            Minimum paired replicates required for a group-vs-group contrast.
+        pseudobulk_min_pct_expressed : float
+            Minimum fraction of cells expressing a gene required in both compared
+            groups. Values > 1 are interpreted as percentages.
+        pseudobulk_p_adjust_method : str
+            Multiple-testing correction method for pseudobulk p-values.
+        pseudobulk_padj_cutoff : float
+            Adjusted p-value cutoff used by the viewer volcano/table.
+        pseudobulk_log2fc_cutoff : float
+            Absolute log2 fold-change cutoff used by the viewer volcano/table.
+        pseudobulk_deseq2_fit_type : str
+            PyDESeq2 dispersion trend fit type, "parametric" or "mean".
         neighbor_stats_groupby : list, optional
             Obs columns to compute neighbor composition stats for (categorical only)
         neighbor_stats_permutations : int
             Number of permutations for neighbor enrichment z-scores (0 disables)
         neighbor_stats_seed : int
             Random seed used for neighbor permutations
-        interaction_markers_groupby : list, optional
-            Obs columns to compute contact-conditioned interaction markers for.
-            For each source/target pair: source cells contacting target vs source cells not contacting target.
         interaction_markers_top_targets : int
             Number of target cell types to evaluate per source (ranked by z-score or edge count).
         interaction_markers_top_genes : int
             Number of top genes to keep per source-target interaction.
         interaction_markers_min_cells : int
-            Minimum cells required in both contact+ and contact- groups.
+            Minimum cells required per replicate in both contact+ and contact-
+            pseudobulk samples.
         interaction_markers_min_neighbors : int
             Minimum number of target neighbors for a source cell to be labeled contact+.
-        interaction_markers_method : str
-            Differential expression method for scanpy.tl.rank_genes_groups (e.g. "wilcoxon", "t-test").
-        interaction_markers_layer : str, optional
-            AnnData layer to use for DE, if available (default: "normalized").
-
         Returns
         -------
         dict
@@ -1177,14 +1164,14 @@ class SpatialDataset:
                 neighbor_graph.indices = neighbor_graph.indices.astype(idx_dtype, copy=False)
 
         # Get initial color data
-        values, is_continuous, categories = self.get_color_data(color, vmin, vmax)
+        values, is_continuous, categories = self.get_color_data(color)
 
         # Compute global bounds for initial color
         if is_continuous:
             finite_mask = np.isfinite(values)
             if finite_mask.any():
-                global_vmin = float(np.nanmin(values[finite_mask])) if vmin is None else vmin
-                global_vmax = float(np.nanmax(values[finite_mask])) if vmax is None else vmax
+                global_vmin = float(np.nanmin(values[finite_mask]))
+                global_vmax = float(np.nanmax(values[finite_mask]))
             else:
                 global_vmin, global_vmax = 0.0, 1.0
         else:
@@ -1268,13 +1255,8 @@ class SpatialDataset:
                     "dominant": dominant,
                 }
 
-        # Pre-compute gene expression data
-        gene_data = self._collect_gene_data(genes)
-
         gene_encoding = str(gene_encoding or "auto").lower()
         self._validate_gene_export_options(gene_encoding, gene_sparse_zero_threshold, gene_sparse_pack_min_nnz)
-        if int(section_array_pack_min_len) < 0:
-            raise ValueError("section_array_pack_min_len must be >= 0")
         if int(interaction_markers_top_targets) < 1:
             raise ValueError("interaction_markers_top_targets must be >= 1")
         if int(interaction_markers_top_genes) < 1:
@@ -1283,12 +1265,6 @@ class SpatialDataset:
             raise ValueError("interaction_markers_min_cells must be >= 1")
         if int(interaction_markers_min_neighbors) < 1:
             raise ValueError("interaction_markers_min_neighbors must be >= 1")
-        if int(cluster_de_top_n) < 1:
-            raise ValueError("cluster_de_top_n must be >= 1")
-        if int(cluster_de_min_cells) < 1:
-            raise ValueError("cluster_de_min_cells must be >= 1")
-
-        gene_encodings = self._resolve_gene_encodings(gene_data, gene_encoding, gene_sparse_zero_threshold)
 
         def _b64(arr: np.ndarray) -> str:
             import base64
@@ -1301,13 +1277,12 @@ class SpatialDataset:
         if umap_coords is not None:
             umap_f4 = np.asarray(umap_coords, dtype=np.float32, order="C")
 
-        if bool(section_array_pack):
-            for col, cdata in color_data.items():
-                if cdata.get("is_continuous"):
-                    cdata["_values_f4"] = np.asarray(cdata["values"], dtype=np.float32, order="C")
-                else:
-                    # Categorical codes are already numeric; keep float32 for compatibility (NaN for missing).
-                    cdata["_values_f4"] = np.asarray(cdata["values"], dtype=np.float32, order="C")
+        for col, cdata in color_data.items():
+            if cdata.get("is_continuous"):
+                cdata["_values_f4"] = np.asarray(cdata["values"], dtype=np.float32, order="C")
+            else:
+                # Categorical codes are already numeric; keep float32 for compatibility (NaN for missing).
+                cdata["_values_f4"] = np.asarray(cdata["values"], dtype=np.float32, order="C")
 
         # Get metadata filters
         metadata_filters = self.get_metadata_filters()
@@ -1475,288 +1450,63 @@ class SpatialDataset:
 
             return entry, _build_context(counts, zscore, n_cells, mean_degree)
 
-        # Compute marker genes for requested groupby columns
         marker_genes = {}
-        pending_marker_groupby = list(marker_genes_groupby or [])
-        companion_marker_genes = companion_analytics.get("marker_genes")
-        if pending_marker_groupby and isinstance(companion_marker_genes, dict):
-            reused_marker_groupby = [
+        pseudobulk_de = {}
+        requested_pseudobulk_de_groupby = list(pseudobulk_de_groupby or [])
+        pending_pseudobulk_de_groupby = list(requested_pseudobulk_de_groupby)
+        companion_pseudobulk_de = (
+            companion_analytics.get("pseudobulk_de")
+            or companion_analytics.get("cluster_de")
+        )
+        if pending_pseudobulk_de_groupby and isinstance(companion_pseudobulk_de, dict):
+            reused_pseudobulk_de_groupby = [
                 groupby_name
-                for groupby_name in pending_marker_groupby
-                if groupby_name in companion_marker_genes
+                for groupby_name in pending_pseudobulk_de_groupby
+                if groupby_name in companion_pseudobulk_de
             ]
-            if reused_marker_groupby:
+            if reused_pseudobulk_de_groupby:
                 print(
-                    f"Using KaroSpaceCompanion marker genes for {len(reused_marker_groupby)} "
-                    f"groupby column{'s' if len(reused_marker_groupby) != 1 else ''}..."
+                    f"Using KaroSpaceCompanion pseudobulk DE for {len(reused_pseudobulk_de_groupby)} "
+                    f"groupby column{'s' if len(reused_pseudobulk_de_groupby) != 1 else ''}..."
                 )
-                for groupby_name in reused_marker_groupby:
-                    marker_genes[groupby_name] = companion_marker_genes[groupby_name]
-            pending_marker_groupby = [
+                for groupby_name in reused_pseudobulk_de_groupby:
+                    pseudobulk_de[groupby_name] = companion_pseudobulk_de[groupby_name]
+            pending_pseudobulk_de_groupby = [
                 groupby_name
-                for groupby_name in pending_marker_groupby
-                if groupby_name not in marker_genes
+                for groupby_name in pending_pseudobulk_de_groupby
+                if groupby_name not in pseudobulk_de
             ]
-        if pending_marker_groupby:
+        if pending_pseudobulk_de_groupby:
             print(
-                f"Computing marker genes for {len(pending_marker_groupby)} "
-                f"groupby column{'s' if len(pending_marker_groupby) != 1 else ''}..."
+                f"Computing pseudobulk DE for {len(pending_pseudobulk_de_groupby)} "
+                f"groupby column{'s' if len(pending_pseudobulk_de_groupby) != 1 else ''}..."
             )
-            for groupby_name in pending_marker_groupby:
-                print(f"  - marker genes: {groupby_name}")
-                if groupby_name not in self.adata.obs.columns:
-                    print(f"  Warning: marker_genes groupby '{groupby_name}' not found in obs.")
-                    continue
-                col = self.adata.obs[groupby_name]
-                if not isinstance(col.dtype, CategoricalDtype):
-                    self.adata.obs[groupby_name] = col.astype("category")
-                key_added = f"rank_genes_groups_{groupby_name}"
-                alt_key_added = f"rank_genes_groups__{groupby_name}"
-                existing_key = None
-                if key_added in self.adata.uns:
-                    existing_key = key_added
-                elif alt_key_added in self.adata.uns:
-                    existing_key = alt_key_added
+            pseudobulk_min_cells_n = 20
+            pseudobulk_min_rep_n = int(pseudobulk_min_replicates)
+            pseudobulk_replicate_name = str(self.groupby)
+            pseudobulk_min_pct_n = float(pseudobulk_min_pct_expressed)
+            pseudobulk_padj_cutoff_n = float(pseudobulk_padj_cutoff)
+            pseudobulk_log2fc_cutoff_n = float(pseudobulk_log2fc_cutoff)
 
-                if existing_key is None:
-                    try:
-                        sc.tl.rank_genes_groups(
-                            self.adata,
-                            groupby=groupby_name,
-                            reference="rest",
-                            method="t-test",
-                            pts=False,
-                            key_added=key_added,
-                        )
-                    except Exception as e:
-                        print(f"  Warning: Could not compute marker genes for '{groupby_name}': {e}")
-                        continue
+            from .pseudobulk import compute_pseudobulk_group_de
 
-                rg = self.adata.uns.get(existing_key or key_added)
-                if not rg:
-                    print(f"  Warning: marker genes not found for '{groupby_name}'.")
-                    continue
-
-                names = rg.get("names")
-                if names is None:
-                    print(f"  Warning: marker genes missing names for '{groupby_name}'.")
-                    continue
-
-                if isinstance(names, pd.DataFrame):
-                    marker_genes[groupby_name] = {
-                        col_name: names[col_name].astype(str).tolist()[:marker_genes_top_n]
-                        for col_name in names.columns
-                    }
-                elif isinstance(names, np.ndarray) and names.dtype.names:
-                    marker_genes[groupby_name] = {
-                        group: [str(x) for x in names[group][:marker_genes_top_n]]
-                        for group in names.dtype.names
-                    }
-                else:
-                    print(f"  Warning: Unrecognized marker gene format for '{groupby_name}'.")
-
-        cluster_de = {}
-        pending_cluster_de_groupby = list(cluster_de_groupby or [])
-        companion_cluster_de = companion_analytics.get("cluster_de")
-        if pending_cluster_de_groupby and isinstance(companion_cluster_de, dict):
-            reused_cluster_de_groupby = [
-                groupby_name
-                for groupby_name in pending_cluster_de_groupby
-                if groupby_name in companion_cluster_de
-            ]
-            if reused_cluster_de_groupby:
-                print(
-                    f"Using KaroSpaceCompanion cluster DE for {len(reused_cluster_de_groupby)} "
-                    f"groupby column{'s' if len(reused_cluster_de_groupby) != 1 else ''}..."
+            for groupby_name in pending_pseudobulk_de_groupby:
+                print(f"  - pseudobulk DE: {groupby_name} (replicate={pseudobulk_replicate_name})")
+                groupby_results = compute_pseudobulk_group_de(
+                    self.adata,
+                    groupby_name,
+                    replicate=pseudobulk_replicate_name,
+                    counts_layer=pseudobulk_counts_layer,
+                    min_cells=pseudobulk_min_cells_n,
+                    min_replicates=pseudobulk_min_rep_n,
+                    min_pct_expressed=pseudobulk_min_pct_n,
+                    p_adjust_method=pseudobulk_p_adjust_method,
+                    padj_cutoff=pseudobulk_padj_cutoff_n,
+                    log2fc_cutoff=pseudobulk_log2fc_cutoff_n,
+                    fit_type=pseudobulk_deseq2_fit_type,
                 )
-                for groupby_name in reused_cluster_de_groupby:
-                    cluster_de[groupby_name] = companion_cluster_de[groupby_name]
-            pending_cluster_de_groupby = [
-                groupby_name
-                for groupby_name in pending_cluster_de_groupby
-                if groupby_name not in cluster_de
-            ]
-        if pending_cluster_de_groupby:
-            print(
-                f"Computing cluster DE for {len(pending_cluster_de_groupby)} "
-                f"groupby column{'s' if len(pending_cluster_de_groupby) != 1 else ''}..."
-            )
-            cluster_de_method_name = str(cluster_de_method or "wilcoxon")
-            cluster_de_n = int(cluster_de_top_n)
-            cluster_de_min_n = int(cluster_de_min_cells)
-            cluster_de_layer_name = None
-            if cluster_de_layer:
-                if cluster_de_layer in self.adata.layers:
-                    cluster_de_layer_name = str(cluster_de_layer)
-                else:
-                    print(
-                        f"  Warning: cluster DE layer '{cluster_de_layer}' not found; "
-                        "using adata.X."
-                    )
-
-            for groupby_name in pending_cluster_de_groupby:
-                print(f"  - cluster DE: {groupby_name}")
-                if groupby_name not in self.adata.obs.columns:
-                    print(f"  Warning: cluster DE groupby '{groupby_name}' not found in obs.")
-                    continue
-
-                col = self.adata.obs[groupby_name]
-                if pd.api.types.is_numeric_dtype(col):
-                    print(f"  Warning: cluster DE '{groupby_name}' is numeric; skipping.")
-                    continue
-                if not isinstance(col.dtype, CategoricalDtype):
-                    self.adata.obs[groupby_name] = col.astype("category")
-                    col = self.adata.obs[groupby_name]
-
-                categories = [str(cat) for cat in col.cat.categories]
-                if not categories:
-                    continue
-
-                codes = col.cat.codes.to_numpy()
-                groupby_results = {}
-                for source_idx, source_name in enumerate(categories):
-                    source_mask = codes == source_idx
-                    n_source = int(np.count_nonzero(source_mask))
-                    if n_source <= 0:
-                        continue
-
-                    source_results = {}
-                    for ref_idx, reference_name in enumerate(categories):
-                        if ref_idx == source_idx:
-                            continue
-
-                        reference_mask = codes == ref_idx
-                        n_reference = int(np.count_nonzero(reference_mask))
-                        if n_reference <= 0:
-                            continue
-
-                        if n_source < cluster_de_min_n or n_reference < cluster_de_min_n:
-                            source_results[reference_name] = {
-                                "available": False,
-                                "reason": "insufficient_cells",
-                                "genes": [],
-                                "logfoldchanges": [],
-                                "pvals_adj": [],
-                                "scores": [],
-                                "pct_source": [],
-                                "pct_reference": [],
-                                "n_source": n_source,
-                                "n_reference": n_reference,
-                                "min_cells_required": cluster_de_min_n,
-                            }
-                            continue
-
-                        selected_mask = source_mask | reference_mask
-                        selected_idx = np.flatnonzero(selected_mask)
-                        if selected_idx.size == 0:
-                            continue
-
-                        try:
-                            pair_adata = self.adata[selected_idx].copy()
-                            pair_labels = np.where(source_mask[selected_idx], "source", "reference")
-                            pair_adata.obs["_karospace_cluster_de_group"] = pd.Categorical(
-                                pair_labels,
-                                categories=["source", "reference"],
-                            )
-
-                            rg_kwargs = {
-                                "groupby": "_karospace_cluster_de_group",
-                                "groups": ["source"],
-                                "reference": "reference",
-                                "method": cluster_de_method_name,
-                                "pts": False,
-                                "key_added": "_karospace_cluster_de",
-                                "n_genes": cluster_de_n,
-                            }
-                            if cluster_de_layer_name is not None:
-                                rg_kwargs["layer"] = cluster_de_layer_name
-
-                            sc.tl.rank_genes_groups(pair_adata, **rg_kwargs)
-                            rg = pair_adata.uns.get("_karospace_cluster_de", {})
-
-                            genes = _extract_rank_genes_groups_values(
-                                rg.get("names"),
-                                "source",
-                                cluster_de_n,
-                                cast=str,
-                            )
-                            logfc = _extract_rank_genes_groups_values(
-                                rg.get("logfoldchanges"),
-                                "source",
-                                cluster_de_n,
-                                cast=lambda x: float(x) if np.isfinite(float(x)) else None,
-                            )
-                            pvals_adj = _extract_rank_genes_groups_values(
-                                rg.get("pvals_adj"),
-                                "source",
-                                cluster_de_n,
-                                cast=lambda x: float(x) if np.isfinite(float(x)) else None,
-                            )
-                            scores = _extract_rank_genes_groups_values(
-                                rg.get("scores"),
-                                "source",
-                                cluster_de_n,
-                                cast=lambda x: float(x) if np.isfinite(float(x)) else None,
-                            )
-
-                            gene_positions = []
-                            for gene_name in genes:
-                                if not gene_name:
-                                    gene_positions.append(None)
-                                    continue
-                                position = pair_adata.var_names.get_loc(gene_name)
-                                gene_positions.append(int(position))
-
-                            expr_matrix = (
-                                pair_adata.layers[cluster_de_layer_name]
-                                if cluster_de_layer_name is not None
-                                else pair_adata.X
-                            )
-                            pct_source = _compute_positive_fraction(
-                                expr_matrix,
-                                pair_labels == "source",
-                                gene_positions,
-                            )
-                            pct_reference = _compute_positive_fraction(
-                                expr_matrix,
-                                pair_labels == "reference",
-                                gene_positions,
-                            )
-
-                            source_results[reference_name] = {
-                                "available": True,
-                                "genes": genes,
-                                "logfoldchanges": logfc,
-                                "pvals_adj": pvals_adj,
-                                "scores": scores,
-                                "pct_source": pct_source,
-                                "pct_reference": pct_reference,
-                                "n_source": n_source,
-                                "n_reference": n_reference,
-                            }
-                        except Exception as e:
-                            print(
-                                f"  Warning: Could not compute cluster DE for "
-                                f"'{groupby_name}' ({source_name} vs {reference_name}): {e}"
-                            )
-                            source_results[reference_name] = {
-                                "available": False,
-                                "reason": "de_failed",
-                                "genes": [],
-                                "logfoldchanges": [],
-                                "pvals_adj": [],
-                                "scores": [],
-                                "pct_source": [],
-                                "pct_reference": [],
-                                "n_source": n_source,
-                                "n_reference": n_reference,
-                            }
-
-                    if source_results:
-                        groupby_results[source_name] = source_results
-
                 if groupby_results:
-                    cluster_de[groupby_name] = groupby_results
+                    pseudobulk_de[groupby_name] = groupby_results
 
         # Compute neighbor composition stats
         neighbor_stats = {}
@@ -1799,7 +1549,7 @@ class SpatialDataset:
         # Compute contact-conditioned interaction markers:
         # for source S and target T, compare source cells contacting T vs source cells not contacting T.
         interaction_markers = {}
-        pending_interaction_markers_groupby = list(interaction_markers_groupby or [])
+        pending_interaction_markers_groupby = list(requested_pseudobulk_de_groupby)
         companion_interaction_markers = companion_analytics.get("interaction_markers")
         if pending_interaction_markers_groupby and isinstance(companion_interaction_markers, dict):
             reused_interaction_groupby = [
@@ -1822,26 +1572,22 @@ class SpatialDataset:
             ]
         if neighbor_graph is not None and pending_interaction_markers_groupby:
             print(
-                f"Computing interaction markers for {len(pending_interaction_markers_groupby)} "
+                f"Computing pseudobulk interaction markers for {len(pending_interaction_markers_groupby)} "
                 f"groupby column{'s' if len(pending_interaction_markers_groupby) != 1 else ''}..."
             )
-            method = str(interaction_markers_method or "wilcoxon")
             top_targets = int(interaction_markers_top_targets)
             top_genes = int(interaction_markers_top_genes)
             min_cells = int(interaction_markers_min_cells)
             min_neighbors = int(interaction_markers_min_neighbors)
-            de_layer = None
-            if interaction_markers_layer:
-                if interaction_markers_layer in self.adata.layers:
-                    de_layer = str(interaction_markers_layer)
-                else:
-                    print(
-                        f"  Warning: interaction markers layer '{interaction_markers_layer}' not found; "
-                        "using adata.X."
-                    )
+            interaction_replicate_name = str(self.groupby)
+            interaction_min_rep_n = int(pseudobulk_min_replicates)
+            from .pseudobulk import compute_pseudobulk_interaction_markers
 
             for groupby_name in pending_interaction_markers_groupby:
-                print(f"  - interaction markers: {groupby_name}")
+                print(
+                    f"  - pseudobulk interaction markers: {groupby_name} "
+                    f"(replicate={interaction_replicate_name})"
+                )
                 if groupby_name not in neighbor_stats_context:
                     companion_neighbor_entry = None
                     if isinstance(companion_neighbor_stats, dict):
@@ -1875,166 +1621,168 @@ class SpatialDataset:
                 zscore = ctx.get("zscore")
                 n_cells = np.asarray(ctx["n_cells"], dtype=int)
 
-                if graph.shape[0] != len(labels):
-                    print(
-                        f"  Warning: interaction markers '{groupby_name}' graph/label size mismatch; skipping."
-                    )
-                    continue
-
-                group_interactions = {}
-                for source_idx, source_name in enumerate(categories):
-                    if source_idx >= len(n_cells) or int(n_cells[source_idx]) <= 0:
-                        continue
-                    source_mask = labels == source_idx
-                    if not source_mask.any():
-                        continue
-                    row = counts[source_idx] if source_idx < counts.shape[0] else None
-                    if row is None:
-                        continue
-
-                    candidate_targets = [
-                        t for t in range(len(categories))
-                        if t != source_idx and t < len(row) and float(row[t]) > 0
-                    ]
-                    if not candidate_targets:
-                        continue
-
-                    def _target_sort_key(tidx: int):
-                        zval = None
-                        if isinstance(zscore, np.ndarray):
-                            if source_idx < zscore.shape[0] and tidx < zscore.shape[1]:
-                                zval = zscore[source_idx, tidx]
-                        if zval is not None and np.isfinite(zval):
-                            return (0, -float(zval), -float(row[tidx]), categories[tidx])
-                        return (1, 0.0, -float(row[tidx]), categories[tidx])
-
-                    ranked_targets = sorted(candidate_targets, key=_target_sort_key)[:top_targets]
-                    source_result = {}
-
-                    for target_idx in ranked_targets:
-                        target_name = categories[target_idx]
-                        target_vec = (labels == target_idx).astype(np.float32, copy=False)
-                        target_neighbor_counts = np.asarray(graph.dot(target_vec)).ravel()
-
-                        pos_mask = source_mask & (target_neighbor_counts >= min_neighbors)
-                        neg_mask = source_mask & (target_neighbor_counts == 0)
-                        n_pos = int(np.count_nonzero(pos_mask))
-                        n_neg = int(np.count_nonzero(neg_mask))
-                        if n_pos < min_cells or n_neg < min_cells:
-                            source_result[target_name] = {
-                                "available": False,
-                                "reason": "insufficient_cells",
-                                "genes": [],
-                                "logfoldchanges": [],
-                                "pvals_adj": [],
-                                "n_contact": n_pos,
-                                "n_non_contact": n_neg,
-                                "min_cells_required": min_cells,
-                                "pct_contact": float((100.0 * n_pos) / max(1, n_pos + n_neg)),
-                                "mean_target_neighbors_contact": float(
-                                    np.mean(target_neighbor_counts[pos_mask]) if n_pos > 0 else 0.0
-                                ),
-                                "mean_target_neighbors_non_contact": float(
-                                    np.mean(target_neighbor_counts[neg_mask]) if n_neg > 0 else 0.0
-                                ),
-                                "target_edge_count": float(row[target_idx]),
-                                "target_zscore": (
-                                    float(zscore[source_idx, target_idx])
-                                    if isinstance(zscore, np.ndarray)
-                                    and source_idx < zscore.shape[0]
-                                    and target_idx < zscore.shape[1]
-                                    and np.isfinite(zscore[source_idx, target_idx])
-                                    else None
-                                ),
-                            }
-                            continue
-
-                        selected_mask = pos_mask | neg_mask
-                        selected_idx = np.flatnonzero(selected_mask)
-                        if selected_idx.size == 0:
-                            continue
-
-                        adata_idx = obs_idx[selected_idx]
-                        try:
-                            pair_adata = self.adata[adata_idx].copy()
-                            contact_labels = np.where(
-                                pos_mask[selected_idx],
-                                "contact+",
-                                "contact-",
-                            )
-                            pair_adata.obs["_karospace_contact_group"] = pd.Categorical(
-                                contact_labels,
-                                categories=["contact+", "contact-"],
-                            )
-
-                            rg_kwargs = {
-                                "groupby": "_karospace_contact_group",
-                                "groups": ["contact+"],
-                                "reference": "contact-",
-                                "method": method,
-                                "pts": False,
-                                "key_added": "_karospace_interaction_markers",
-                                "n_genes": top_genes,
-                            }
-                            if de_layer is not None:
-                                rg_kwargs["layer"] = de_layer
-                            sc.tl.rank_genes_groups(pair_adata, **rg_kwargs)
-                            rg = pair_adata.uns.get("_karospace_interaction_markers", {})
-
-                            genes = _extract_rank_genes_groups_values(
-                                rg.get("names"),
-                                "contact+",
-                                top_genes,
-                                cast=str,
-                            )
-                            logfc = _extract_rank_genes_groups_values(
-                                rg.get("logfoldchanges"),
-                                "contact+",
-                                top_genes,
-                                cast=lambda x: float(x) if np.isfinite(float(x)) else None,
-                            )
-                            pvals_adj = _extract_rank_genes_groups_values(
-                                rg.get("pvals_adj"),
-                                "contact+",
-                                top_genes,
-                                cast=lambda x: float(x) if np.isfinite(float(x)) else None,
-                            )
-
-                            source_result[target_name] = {
-                                "available": True,
-                                "genes": genes,
-                                "logfoldchanges": logfc,
-                                "pvals_adj": pvals_adj,
-                                "n_contact": n_pos,
-                                "n_non_contact": n_neg,
-                                "pct_contact": float((100.0 * n_pos) / max(1, n_pos + n_neg)),
-                                "mean_target_neighbors_contact": float(
-                                    np.mean(target_neighbor_counts[pos_mask]) if n_pos > 0 else 0.0
-                                ),
-                                "mean_target_neighbors_non_contact": float(
-                                    np.mean(target_neighbor_counts[neg_mask]) if n_neg > 0 else 0.0
-                                ),
-                                "target_edge_count": float(row[target_idx]),
-                                "target_zscore": (
-                                    float(zscore[source_idx, target_idx])
-                                    if isinstance(zscore, np.ndarray)
-                                    and source_idx < zscore.shape[0]
-                                    and target_idx < zscore.shape[1]
-                                    and np.isfinite(zscore[source_idx, target_idx])
-                                    else None
-                                ),
-                            }
-                        except Exception as e:
-                            print(
-                                f"  Warning: interaction markers failed for '{groupby_name}' "
-                                f"{source_name}->{target_name}: {e}"
-                            )
-
-                    if source_result:
-                        group_interactions[source_name] = source_result
-
+                group_interactions = compute_pseudobulk_interaction_markers(
+                    self.adata,
+                    groupby_name,
+                    replicate=interaction_replicate_name,
+                    graph=graph,
+                    obs_idx=obs_idx,
+                    labels=labels,
+                    categories=categories,
+                    neighbor_counts=counts,
+                    neighbor_zscore=zscore,
+                    neighbor_n_cells=n_cells,
+                    counts_layer=pseudobulk_counts_layer,
+                    top_targets=top_targets,
+                    top_genes=top_genes,
+                    min_cells=min_cells,
+                    min_neighbors=min_neighbors,
+                    min_replicates=interaction_min_rep_n,
+                    min_pct_expressed=pseudobulk_min_pct_expressed,
+                    p_adjust_method=pseudobulk_p_adjust_method,
+                    padj_cutoff=pseudobulk_padj_cutoff,
+                    log2fc_cutoff=pseudobulk_log2fc_cutoff,
+                    fit_type=pseudobulk_deseq2_fit_type,
+                )
                 if group_interactions:
                     interaction_markers[groupby_name] = group_interactions
+
+        def _significant_de_genes(
+            payload: Any,
+            padj_threshold: float,
+            log2fc_threshold: float,
+        ) -> List[str]:
+            found: List[str] = []
+
+            def _walk(node: Any) -> None:
+                if not isinstance(node, dict):
+                    return
+                genes_list = node.get("genes")
+                padj_list = node.get("pvals_adj")
+                log2fc_list = node.get("log2foldchanges")
+                if not isinstance(log2fc_list, list):
+                    log2fc_list = node.get("logfoldchanges")
+                if (
+                    isinstance(genes_list, list)
+                    and isinstance(padj_list, list)
+                    and isinstance(log2fc_list, list)
+                ):
+                    for gene, padj, log2fc in zip(genes_list, padj_list, log2fc_list):
+                        try:
+                            padj_value = float(padj)
+                            log2fc_value = float(log2fc)
+                        except (TypeError, ValueError):
+                            continue
+                        if (
+                            np.isfinite(padj_value)
+                            and np.isfinite(log2fc_value)
+                            and padj_value < padj_threshold
+                            and abs(log2fc_value) >= log2fc_threshold
+                        ):
+                            found.append(str(gene))
+                for value in node.values():
+                    if isinstance(value, dict):
+                        _walk(value)
+
+            _walk(payload)
+            return found
+
+        def _pseudobulk_de_marker_genes(
+            payload: Any,
+            padj_threshold: float,
+            log2fc_threshold: float,
+            limit_per_category: int = 50,
+        ) -> Dict[str, Dict[str, List[str]]]:
+            markers: Dict[str, Dict[str, List[str]]] = {}
+            if not isinstance(payload, dict):
+                return markers
+            for color_name, by_source in payload.items():
+                if not isinstance(by_source, dict):
+                    continue
+                color_markers: Dict[str, List[str]] = {}
+                for source, by_reference in by_source.items():
+                    if str(source).startswith("_") or not isinstance(by_reference, dict):
+                        continue
+                    ranked: Dict[str, Tuple[float, float]] = {}
+                    for reference, result in by_reference.items():
+                        if str(reference).startswith("_") or not isinstance(result, dict):
+                            continue
+                        genes_list = result.get("genes")
+                        padj_list = result.get("pvals_adj")
+                        log2fc_list = result.get("log2foldchanges") or result.get("logfoldchanges")
+                        if (
+                            not isinstance(genes_list, list)
+                            or not isinstance(padj_list, list)
+                            or not isinstance(log2fc_list, list)
+                        ):
+                            continue
+                        for gene, padj, log2fc in zip(genes_list, padj_list, log2fc_list):
+                            try:
+                                padj_value = float(padj)
+                                log2fc_value = float(log2fc)
+                            except (TypeError, ValueError):
+                                continue
+                            if (
+                                np.isfinite(padj_value)
+                                and np.isfinite(log2fc_value)
+                                and padj_value < padj_threshold
+                                and log2fc_value >= log2fc_threshold
+                            ):
+                                key = str(gene)
+                                prev = ranked.get(key)
+                                score = (padj_value, -abs(log2fc_value))
+                                if prev is None or score < prev:
+                                    ranked[key] = score
+                    if ranked:
+                        color_markers[str(source)] = [
+                            gene
+                            for gene, _score in sorted(
+                                ranked.items(),
+                                key=lambda item: (item[1][0], item[1][1], item[0]),
+                            )[: int(limit_per_category)]
+                        ]
+                if color_markers:
+                    markers[str(color_name)] = color_markers
+            return markers
+
+        requested_genes = list(genes or [])
+        de_gene_candidates = []
+        de_gene_candidates.extend(
+            _significant_de_genes(
+                pseudobulk_de,
+                float(pseudobulk_padj_cutoff),
+                float(pseudobulk_log2fc_cutoff),
+            )
+        )
+        de_gene_candidates.extend(
+            _significant_de_genes(
+                interaction_markers,
+                float(pseudobulk_padj_cutoff),
+                float(pseudobulk_log2fc_cutoff),
+            )
+        )
+        export_genes = list(
+            dict.fromkeys(
+                gene
+                for gene in [*requested_genes, *de_gene_candidates]
+                if gene in self.adata.var_names
+            )
+        )
+        if de_gene_candidates:
+            print(
+                f"  - embedding {len(export_genes)} requested/significant DE gene"
+                f"{'s' if len(export_genes) != 1 else ''} in HTML "
+                f"(adjusted p-value < {float(pseudobulk_padj_cutoff):g}, "
+                f"abs(log2FC) >= {float(pseudobulk_log2fc_cutoff):g})"
+            )
+        marker_genes = _pseudobulk_de_marker_genes(
+            pseudobulk_de,
+            float(pseudobulk_padj_cutoff),
+            float(pseudobulk_log2fc_cutoff),
+        )
+
+        gene_data = self._collect_gene_data(export_genes)
+        gene_encodings = self._resolve_gene_encodings(gene_data, gene_encoding, gene_sparse_zero_threshold)
 
         # Build section data with all color layers
         sections_data = []
@@ -2053,15 +1801,8 @@ class SpatialDataset:
             section_colors = {}
             section_colors_b64 = {}
             for col, cdata in color_data.items():
-                if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
-                    section_vals = cdata.get("_values_f4", cdata["values"])[idx]
-                    section_colors_b64[col] = _b64(section_vals.astype("<f4", copy=False))
-                else:
-                    section_vals = cdata["values"][idx]
-                    # Convert numpy types to native Python types for JSON serialization
-                    section_colors[col] = [
-                        float(v) if np.isfinite(v) else None for v in section_vals
-                    ]
+                section_vals = cdata.get("_values_f4", cdata["values"])[idx]
+                section_colors_b64[col] = _b64(section_vals.astype("<f4", copy=False))
 
             # Deconvolution proportions: store per-section as flat row-major float32,
             # plus the dominant-component code array (used for legend/filter pipeline).
@@ -2070,12 +1811,7 @@ class SpatialDataset:
                 sec_matrix = ddata["matrix"][idx]  # (n_section, K)
                 sec_dominant = ddata["dominant"][idx]
                 # Dominant code feeds the existing categorical color pipeline.
-                if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
-                    section_colors_b64[decon_name] = _b64(sec_dominant.astype("<f4", copy=False))
-                else:
-                    section_colors[decon_name] = [
-                        float(v) if np.isfinite(v) else None for v in sec_dominant
-                    ]
+                section_colors_b64[decon_name] = _b64(sec_dominant.astype("<f4", copy=False))
                 section_proportions_b64[decon_name] = {
                     "k": ddata["k"],
                     "b64": _b64(np.ascontiguousarray(sec_matrix, dtype="<f4")),
@@ -2135,28 +1871,12 @@ class SpatialDataset:
                 section_entry["umap_xb64"] = None
                 section_entry["umap_yb64"] = None
 
-            # Coordinates (pack when large)
-            if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
-                section_entry["xb64"] = _b64(section_coords[:, 0].astype("<f4", copy=False))
-                section_entry["yb64"] = _b64(section_coords[:, 1].astype("<f4", copy=False))
-                section_entry["obs_idxb64"] = _b64(np.asarray(idx, dtype="<u4"))
-                if section_umap is not None:
-                    section_entry["umap_xb64"] = _b64(section_umap[:, 0].astype("<f4", copy=False))
-                    section_entry["umap_yb64"] = _b64(section_umap[:, 1].astype("<f4", copy=False))
-            else:
-                section_entry["x"] = section_coords[:, 0].tolist()
-                section_entry["y"] = section_coords[:, 1].tolist()
-                section_entry["obs_idx"] = np.asarray(idx, dtype=int).tolist()
-                if section_umap is not None:
-                    valid_umap_mask = np.isfinite(section_umap).all(axis=1)
-                    section_entry["umap_x"] = [
-                        float(v) if is_valid else None
-                        for v, is_valid in zip(section_umap[:, 0], valid_umap_mask)
-                    ]
-                    section_entry["umap_y"] = [
-                        float(v) if is_valid else None
-                        for v, is_valid in zip(section_umap[:, 1], valid_umap_mask)
-                    ]
+            section_entry["xb64"] = _b64(section_coords[:, 0].astype("<f4", copy=False))
+            section_entry["yb64"] = _b64(section_coords[:, 1].astype("<f4", copy=False))
+            section_entry["obs_idxb64"] = _b64(np.asarray(idx, dtype="<u4"))
+            if section_umap is not None:
+                section_entry["umap_xb64"] = _b64(section_umap[:, 0].astype("<f4", copy=False))
+                section_entry["umap_yb64"] = _b64(section_umap[:, 1].astype("<f4", copy=False))
 
             if neighbor_graph is not None:
                 subgraph = neighbor_graph[idx][:, idx]
@@ -2164,15 +1884,11 @@ class SpatialDataset:
                     upper = sp.triu(subgraph, k=1).tocoo()
                     rows = np.asarray(upper.row, dtype=np.uint32)
                     cols = np.asarray(upper.col, dtype=np.uint32)
-                    if bool(section_array_pack) and int(len(idx)) >= int(section_array_pack_min_len):
-                        pairs = np.empty(rows.size * 2, dtype=np.uint32)
-                        pairs[0::2] = rows
-                        pairs[1::2] = cols
-                        section_entry["edges"] = None
-                        section_entry["edges_b64"] = _b64(pairs.astype("<u4", copy=False))
-                    else:
-                        section_entry["edges"] = list(zip(rows.astype(int).tolist(), cols.astype(int).tolist()))
-                        section_entry["edges_b64"] = None
+                    pairs = np.empty(rows.size * 2, dtype=np.uint32)
+                    pairs[0::2] = rows
+                    pairs[1::2] = cols
+                    section_entry["edges"] = None
+                    section_entry["edges_b64"] = _b64(pairs.astype("<u4", copy=False))
                 else:
                     section_entry["edges"] = []
                     section_entry["edges_b64"] = None
@@ -2244,7 +1960,7 @@ class SpatialDataset:
             "available_deconvolutions": list(decon_data.keys()),
             "available_genes": list(gene_data.keys()),
             "marker_genes": marker_genes,
-            "cluster_de": cluster_de,
+            "pseudobulk_de": pseudobulk_de,
             "has_umap": umap_coords is not None,
             "umap_bounds": umap_bounds,
             "has_neighbors": neighbor_graph is not None,
@@ -2323,6 +2039,7 @@ def load_spatial_data(
     path: str,
     groupby: str = "sample_id",
     spatial_key: str = "spatial",
+    spatial_columns: Optional[Tuple[str, str]] = None,
     group_order: Optional[List[str]] = None,
     metadata_columns: Optional[List[str]] = None,
     metadata_value_order: Optional[Dict[str, List[str]]] = None,
@@ -2339,6 +2056,10 @@ def load_spatial_data(
         Column in obs to group sections by
     spatial_key : str
         Key in obsm containing spatial coordinates
+    spatial_columns : tuple, optional
+        Two obs columns (x, y) used to create ``adata.obsm[spatial_key]`` before
+        loading. Use this when coordinates are stored as separate metadata
+        columns rather than an obsm matrix.
     group_order : list, optional
         Custom order for sections
     metadata_columns : list, optional
@@ -2359,7 +2080,10 @@ def load_spatial_data(
     adata = _read_h5ad_with_fallback(path)
     print(f"  Loaded {adata.n_obs:,} cells, {adata.n_vars:,} genes")
 
-    spatial_key = _resolve_spatial_key(adata, spatial_key)
+    if spatial_columns is not None:
+        spatial_key = _set_spatial_from_obs_columns(adata, spatial_columns, spatial_key)
+    else:
+        spatial_key = _resolve_spatial_key(adata, spatial_key)
 
     if groupby not in adata.obs.columns:
         raise ValueError(f"Groupby column '{groupby}' not found in adata.obs")

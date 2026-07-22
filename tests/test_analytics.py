@@ -18,8 +18,7 @@ from karospace.data_loader import (
     load_spatial_data,
 )
 from karospace.exporter import (
-    _compute_cluster_gene_means,
-    _compute_gene_correlations,
+    _compute_gene_correlations_from_category_means,
     _compute_morans_i,
     _select_top_variable_genes,
 )
@@ -149,6 +148,62 @@ def test_load_spatial_data_uses_fallback_key_end_to_end(tmp_path):
     assert data["sections"]
 
 
+def test_load_spatial_data_builds_spatial_from_obs_columns(tmp_path):
+    obs = pd.DataFrame(
+        {
+            "leiden": pd.Categorical(["0", "1", "0"]),
+            "sample": pd.Categorical(["s1", "s1", "s1"]),
+            "x_centroid": [10.0, 20.5, 30.0],
+            "y_centroid": [1.0, 2.5, 3.0],
+        },
+        index=["c0", "c1", "c2"],
+    )
+    adata = AnnData(
+        X=np.ones((3, 2), dtype=float),
+        obs=obs,
+        var=pd.DataFrame(index=["G1", "G2"]),
+    )
+    path = tmp_path / "centroids.h5ad"
+    adata.write(path)
+
+    dataset = load_spatial_data(
+        str(path),
+        groupby="sample",
+        spatial_columns=("x_centroid", "y_centroid"),
+    )
+
+    expected = np.array([[10.0, 1.0], [20.5, 2.5], [30.0, 3.0]])
+    assert dataset.spatial_key == "spatial"
+    np.testing.assert_allclose(dataset.adata.obsm["spatial"], expected)
+    np.testing.assert_allclose(dataset.sections[0].coordinates, expected)
+
+
+def test_load_spatial_data_rejects_non_numeric_spatial_obs_column(tmp_path):
+    obs = pd.DataFrame(
+        {
+            "leiden": pd.Categorical(["0", "1"]),
+            "sample": pd.Categorical(["s1", "s1"]),
+            "x_centroid": [10.0, 20.0],
+            "y_centroid": ["ok", "bad"],
+        },
+        index=["c0", "c1"],
+    )
+    adata = AnnData(
+        X=np.ones((2, 2), dtype=float),
+        obs=obs,
+        var=pd.DataFrame(index=["G1", "G2"]),
+    )
+    path = tmp_path / "bad-centroids.h5ad"
+    adata.write(path)
+
+    with pytest.raises(ValueError, match="finite numeric"):
+        load_spatial_data(
+            str(path),
+            groupby="sample",
+            spatial_columns=("x_centroid", "y_centroid"),
+        )
+
+
 # --------------------------------------------------------------------------- #
 # _select_top_variable_genes
 # --------------------------------------------------------------------------- #
@@ -167,35 +222,27 @@ def test_select_top_variable_genes_sparse_matches_dense():
 
 
 # --------------------------------------------------------------------------- #
-# _compute_cluster_gene_means
+# _compute_gene_correlations_from_category_means
 # --------------------------------------------------------------------------- #
-def test_cluster_gene_means_values():
-    obs = pd.DataFrame(
-        {"ct": pd.Categorical(["a", "a", "b", "b"])},
-        index=[f"c{i}" for i in range(4)],
+def test_gene_correlations_from_category_means_positive_only():
+    cluster_gene_means = {
+        "genes": ["G1", "G2", "G3"],
+        "columns": {
+            "ct": {
+                "means": {
+                    "a": [1.0, 2.0, 5.0],
+                    "b": [2.0, 4.0, 4.0],
+                    "c": [3.0, 6.0, 3.0],
+                    "d": [4.0, 8.0, 2.0],
+                }
+            }
+        },
+    }
+    res = _compute_gene_correlations_from_category_means(
+        cluster_gene_means,
+        ["G1", "G2", "G3"],
+        top_n=2,
     )
-    X = np.array([[2.0, 0.0], [4.0, 0.0], [10.0, 1.0], [20.0, 1.0]])
-    adata = AnnData(X=X, obs=obs, var=pd.DataFrame(index=["G1", "G2"]))
-    res = _compute_cluster_gene_means(adata, ["G1", "G2"], "ct")
-    assert res["categories"] == ["a", "b"]
-    assert res["means"]["a"] == [3.0, 0.0]
-    assert res["means"]["b"] == [15.0, 1.0]
-    assert res["background"] == [9.0, 0.5]
-
-
-def test_cluster_gene_means_missing_column_returns_none():
-    adata = AnnData(X=np.zeros((2, 2)), var=pd.DataFrame(index=["A", "B"]))
-    assert _compute_cluster_gene_means(adata, ["A"], "nope") is None
-
-
-# --------------------------------------------------------------------------- #
-# _compute_gene_correlations
-# --------------------------------------------------------------------------- #
-def test_gene_correlations_positive_only():
-    base = np.random.RandomState(0).rand(50)
-    X = np.column_stack([base, base * 2 + 1, -base])  # G2 +corr, G3 -corr
-    adata = AnnData(X=X, var=pd.DataFrame(index=["G1", "G2", "G3"]))
-    res = _compute_gene_correlations(adata, ["G1", "G2", "G3"], top_n=2)
     partners = {d["gene"] for d in res["G1"]}
     assert "G2" in partners
     assert "G3" not in partners  # negative correlation excluded
@@ -203,9 +250,12 @@ def test_gene_correlations_positive_only():
     assert g2_r > 0.99
 
 
-def test_gene_correlations_single_gene_returns_empty():
-    adata = AnnData(X=np.zeros((5, 1)), var=pd.DataFrame(index=["G1"]))
-    assert _compute_gene_correlations(adata, ["G1"]) == {"G1": []}
+def test_gene_correlations_from_category_means_single_gene_returns_empty():
+    cluster_gene_means = {
+        "genes": ["G1"],
+        "columns": {"ct": {"means": {"a": [1.0], "b": [2.0]}}},
+    }
+    assert _compute_gene_correlations_from_category_means(cluster_gene_means, ["G1"]) == {"G1": []}
 
 
 # --------------------------------------------------------------------------- #
@@ -276,3 +326,239 @@ def test_cli_accepts_spatial_key(monkeypatch, tmp_path):
 
     assert captured["load"]["spatial_key"] == "X_my_spatial"
 
+
+def test_cli_accepts_spatial_obs_columns(monkeypatch, tmp_path):
+    import karospace.cli as cli_module
+
+    input_path = tmp_path / "input.h5ad"
+    input_path.write_text("placeholder", encoding="utf-8")
+    captured = {}
+
+    def fake_load(
+        path,
+        groupby="sample_id",
+        spatial_key="spatial",
+        spatial_columns=None,
+    ):
+        captured["load"] = {
+            "path": path,
+            "groupby": groupby,
+            "spatial_key": spatial_key,
+            "spatial_columns": spatial_columns,
+        }
+        class MockDataset:
+            metadata_columns = []
+            def to_json_data(self, *args, **kwargs):
+                return {}
+        return MockDataset()
+
+    def fake_export(dataset, **kwargs):
+        captured["export_kwargs"] = kwargs
+        return str(tmp_path / "viewer.html")
+
+    monkeypatch.setattr("karospace.data_loader.load_spatial_data", fake_load)
+    monkeypatch.setattr("karospace.exporter.export_to_html", fake_export)
+    monkeypatch.setattr(
+        cli_module.sys,
+        "argv",
+        [
+            "karospace",
+            str(input_path),
+            "--spatial-x",
+            "x_centroid",
+            "--spatial-y",
+            "y_centroid",
+            "--spatial-key",
+            "centroids",
+        ],
+    )
+
+    cli_module.main()
+
+    assert captured["load"]["spatial_key"] == "centroids"
+    assert captured["load"]["spatial_columns"] == ("x_centroid", "y_centroid")
+
+
+def test_cli_accepts_metadata_columns(monkeypatch, tmp_path):
+    import karospace.cli as cli_module
+
+    input_path = tmp_path / "input.h5ad"
+    input_path.write_text("placeholder", encoding="utf-8")
+    captured = {}
+
+    def fake_load(
+        path,
+        groupby="sample_id",
+        spatial_key="spatial",
+        spatial_columns=None,
+        metadata_columns=None,
+    ):
+        captured["load"] = {
+            "path": path,
+            "groupby": groupby,
+            "spatial_key": spatial_key,
+            "spatial_columns": spatial_columns,
+            "metadata_columns": metadata_columns,
+        }
+        class MockDataset:
+            metadata_columns = []
+            def to_json_data(self, *args, **kwargs):
+                return {}
+        return MockDataset()
+
+    def fake_export(dataset, **kwargs):
+        captured["export_kwargs"] = kwargs
+        return str(tmp_path / "viewer.html")
+
+    monkeypatch.setattr("karospace.data_loader.load_spatial_data", fake_load)
+    monkeypatch.setattr("karospace.exporter.export_to_html", fake_export)
+    monkeypatch.setattr(
+        cli_module.sys,
+        "argv",
+        [
+            "karospace",
+            str(input_path),
+            "--spatial-x",
+            "x_centroid",
+            "--spatial-y",
+            "y_centroid",
+            "--metadata-columns",
+            "strain,region,Batch,Slide",
+        ],
+    )
+
+    cli_module.main()
+
+    assert captured["load"]["spatial_columns"] == ("x_centroid", "y_centroid")
+    assert captured["load"]["metadata_columns"] == ["strain", "region", "Batch", "Slide"]
+
+
+def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
+    import karospace.cli as cli_module
+
+    input_path = tmp_path / "input.h5ad"
+    input_path.write_text("placeholder", encoding="utf-8")
+    captured = {}
+
+    def fake_load(path, **kwargs):
+        captured["load"] = {"path": path, **kwargs}
+        class MockDataset:
+            metadata_columns = ["strain", "region"]
+            def to_json_data(self, *args, **kwargs):
+                return {}
+        return MockDataset()
+
+    def fake_export(dataset, **kwargs):
+        captured["export_kwargs"] = kwargs
+        return str(tmp_path / "viewer.html")
+
+    monkeypatch.setattr("karospace.data_loader.load_spatial_data", fake_load)
+    monkeypatch.setattr("karospace.exporter.export_to_html", fake_export)
+    monkeypatch.setattr(
+        cli_module.sys,
+        "argv",
+        [
+            "karospace",
+            str(input_path),
+            "--group-order",
+            "M2,M1",
+            "--metadata-value-order",
+            '{"strain":["WT","KO"]}',
+            "--metadata-max-columns",
+            "2",
+            "--outline-by",
+            "strain",
+            "--genes",
+            "G1,G2",
+            "--viewer-info-html",
+            "<div>Info</div>",
+            "--gene-value-encoding",
+            "uint16",
+            "--gene-sidecar-shard-size",
+            "17",
+            "--neighbor-stats-seed",
+            "42",
+            "--interaction-markers-top-targets",
+            "3",
+            "--interaction-markers-top-genes",
+            "9",
+            "--interaction-markers-min-cells",
+            "5",
+            "--interaction-markers-min-neighbors",
+            "2",
+            "--deconvolutions",
+            '{"cell2location":"obsm_key"}',
+            "--cluster-means-n-genes",
+            "123",
+            "--section-images",
+            '{"M1":"/tmp/m1.png"}',
+            "--section-images-max-px",
+            "2048",
+        ],
+    )
+
+    cli_module.main()
+
+    assert captured["load"]["group_order"] == ["M2", "M1"]
+    assert captured["load"]["metadata_value_order"] == {"strain": ["WT", "KO"]}
+    assert captured["load"]["metadata_max_columns"] == 2
+    export_kwargs = captured["export_kwargs"]
+    assert export_kwargs["outline_by"] == "strain"
+    assert export_kwargs["genes"] == ["G1", "G2"]
+    assert "vmin" not in export_kwargs
+    assert "vmax" not in export_kwargs
+    assert "theme" not in export_kwargs
+    assert "pack_arrays" not in export_kwargs
+    assert "pack_arrays_min_len" not in export_kwargs
+    assert export_kwargs["viewer_info_html"] == "<div>Info</div>"
+    assert export_kwargs["gene_value_encoding"] == "uint16"
+    assert "gene_sidecar_format" not in export_kwargs
+    assert export_kwargs["gene_sidecar_shard_size"] == 17
+    assert "marker_genes_top_n" not in export_kwargs
+    assert export_kwargs["neighbor_stats_seed"] == 42
+    assert export_kwargs["interaction_markers_top_targets"] == 3
+    assert export_kwargs["interaction_markers_top_genes"] == 9
+    assert export_kwargs["interaction_markers_min_cells"] == 5
+    assert export_kwargs["interaction_markers_min_neighbors"] == 2
+    assert "interaction_markers_method" not in export_kwargs
+    assert "interaction_markers_layer" not in export_kwargs
+    assert export_kwargs["deconvolutions"] == {"cell2location": "obsm_key"}
+    assert export_kwargs["cluster_means_n_genes"] == 123
+    assert export_kwargs["section_images"] == {"M1": "/tmp/m1.png"}
+    assert export_kwargs["section_images_max_px"] == 2048
+
+
+def test_cli_accepts_none_outline_by(monkeypatch, tmp_path):
+    import karospace.cli as cli_module
+
+    input_path = tmp_path / "input.h5ad"
+    input_path.write_text("placeholder", encoding="utf-8")
+    captured = {}
+
+    def fake_load(path, groupby="sample_id", spatial_key="spatial"):
+        class MockDataset:
+            metadata_columns = []
+            def to_json_data(self, *args, **kwargs):
+                return {}
+        return MockDataset()
+
+    def fake_export(dataset, **kwargs):
+        captured["export_kwargs"] = kwargs
+        return str(tmp_path / "viewer.html")
+
+    monkeypatch.setattr("karospace.data_loader.load_spatial_data", fake_load)
+    monkeypatch.setattr("karospace.exporter.export_to_html", fake_export)
+    monkeypatch.setattr(
+        cli_module.sys,
+        "argv",
+        [
+            "karospace",
+            str(input_path),
+            "--outline-by",
+            "None",
+        ],
+    )
+
+    cli_module.main()
+
+    assert captured["export_kwargs"]["outline_by"] is None

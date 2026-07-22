@@ -724,7 +724,15 @@
            packagedGeneManifest.format !== 'karospace-gene-sidecar-manifest-v3' &&
            packagedGeneManifest.format !== 'karospace-gene-sidecar-manifest-v4')
         ) {
-          throw new Error('Packaged gene manifest format is not supported');
+          const actualFormat = packagedGeneManifest && Object.prototype.hasOwnProperty.call(packagedGeneManifest, 'format')
+            ? JSON.stringify(packagedGeneManifest.format)
+            : 'missing';
+          throw new Error(
+            'Packaged gene manifest format is not supported at '
+            + validated.geneManifestPath
+            + ': '
+            + actualFormat
+          );
         }
 
         return {

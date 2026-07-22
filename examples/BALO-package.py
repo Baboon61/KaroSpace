@@ -41,7 +41,6 @@ export_to_html(
     min_panel_size=120,
     spot_size="auto",
     downsample=100000,
-    theme="light",
     outline_by="sample_id",
     additional_colors=[
         "leiden_2",

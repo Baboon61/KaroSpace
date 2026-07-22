@@ -62,7 +62,6 @@ common_kwargs = dict(
     min_panel_size=120,
     spot_size="auto",
     downsample=100000,
-    theme="light",
     outline_by=OUTLINE_BY,
     additional_colors=[
         "anno_L3",
@@ -100,7 +99,6 @@ common_kwargs = dict(
     use_hvgs=USE_HVGS,
     hvg_limit=50,
     gene_storage="sidecar",
-    gene_sidecar_format="binary-v1",
     gene_encoding="auto",
     gene_value_encoding="uint8",
     gene_aux_path=GENE_AUX_PATH,

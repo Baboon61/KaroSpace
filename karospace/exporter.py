@@ -199,8 +199,7 @@ def _embed_section_images(data: dict, section_images: Dict[str, object], max_px:
 GENE_SIDECAR_SHARD_SIZE = 256
 KAROSPACE_PACKAGE_MANIFEST = "karospace-package.json"
 KAROSPACE_PACKAGE_LOADER_FILENAME = "karospace-package-loader.html"
-GENE_SIDECAR_FORMAT_JSON_V2 = "json-v2"
-GENE_SIDECAR_FORMAT_BINARY_V1 = "binary-v1"
+GENE_SIDECAR_FORMAT_BINARY = "binary"
 GENE_SIDECAR_BINARY_MAGIC = b"KSB1"
 GENE_SIDECAR_BINARY_VERSION = 1
 
@@ -242,16 +241,6 @@ def _guess_package_media_type(path: Union[str, Path]) -> str:
     if suffix == ".bin":
         return "application/octet-stream"
     return "application/octet-stream"
-
-
-def _validate_gene_sidecar_format(gene_sidecar_format: str) -> str:
-    normalized = str(gene_sidecar_format or GENE_SIDECAR_FORMAT_JSON_V2).strip().lower()
-    if normalized not in {GENE_SIDECAR_FORMAT_JSON_V2, GENE_SIDECAR_FORMAT_BINARY_V1}:
-        raise ValueError(
-            "gene_sidecar_format must be one of: "
-            f"'{GENE_SIDECAR_FORMAT_JSON_V2}', '{GENE_SIDECAR_FORMAT_BINARY_V1}'"
-        )
-    return normalized
 
 
 def _u32_bytes(values: List[int]) -> bytes:
@@ -316,7 +305,7 @@ def _build_binary_gene_payload(
                 value_bytes = _decode_sidecar_packed_bytes(sparse.get("vq16b64"), dtype="<u2")
                 section_encoding = 4
             else:
-                raise ValueError("binary-v1 requires quantized sparse sidecar values")
+                raise ValueError("binary sidecars require quantized sparse sidecar values")
             nnz = len(index_bytes) // 4
             nan_values = [int(v) for v in (sparse.get("nan") or [])]
             section_data = index_bytes + value_bytes
@@ -328,7 +317,7 @@ def _build_binary_gene_payload(
                 value_bytes = _decode_sidecar_packed_bytes(section_entry.get("dq16b64"), dtype="<u2")
                 section_encoding = 3
             else:
-                raise ValueError("binary-v1 requires quantized dense sidecar values")
+                raise ValueError("binary sidecars require quantized dense sidecar values")
             nan_values = [int(v) for v in (section_entry.get("nan") or [])]
             section_data = value_bytes
 
@@ -512,6 +501,20 @@ def _write_karospace_package_loader(
     return loader_path
 
 
+def _validate_gene_sidecar_manifest_payload(payload: dict, path: Union[str, Path]) -> None:
+    supported_formats = {
+        "karospace-gene-sidecar-manifest-v2",
+        "karospace-gene-sidecar-manifest-v3",
+        "karospace-gene-sidecar-manifest-v4",
+    }
+    manifest_format = payload.get("format") if isinstance(payload, dict) else None
+    if manifest_format not in supported_formats:
+        raise ValueError(
+            f"unsupported gene sidecar manifest format in {path}: "
+            f"{manifest_format!r}; expected one of {sorted(supported_formats)}"
+        )
+
+
 def _extract_embedded_viewer_data(html_text: str) -> dict:
     match = re.search(
         r'<script id="karospace-data" type="application/json">(.*?)</script>',
@@ -584,6 +587,8 @@ def package_sidecar_viewer(
     )
     if not actual_gene_manifest_path.exists():
         raise FileNotFoundError(f"sidecar gene manifest not found: {actual_gene_manifest_path}")
+    actual_gene_manifest = json.loads(actual_gene_manifest_path.read_text(encoding="utf-8"))
+    _validate_gene_sidecar_manifest_payload(actual_gene_manifest, actual_gene_manifest_path)
 
     package_gene_shard_rel = Path(package_gene_manifest_rel).with_suffix("").as_posix()
     actual_gene_shard_dir = (
@@ -681,38 +686,6 @@ def _select_top_variable_genes(adata, n: int) -> List[str]:
     return [adata.var_names[i] for i in top_idx]
 
 
-def _compute_cluster_gene_means(adata, genes: List[str], obs_col: str) -> Optional[dict]:
-    """Compute per-cluster and overall mean expression for each gene."""
-    if obs_col not in adata.obs.columns:
-        return None
-    col = adata.obs[obs_col]
-    if not hasattr(col, "cat"):
-        try:
-            col = col.astype("category")
-        except Exception:
-            return None
-    categories = [str(c) for c in col.cat.categories]
-    if not categories:
-        return None
-
-    X = adata[:, genes].X
-    if hasattr(X, "toarray"):
-        X = X.toarray()
-    X = np.asarray(X, dtype=float)
-
-    means = {}
-    col_vals = col.to_numpy()
-    for cat in categories:
-        mask = col_vals == cat
-        if mask.sum() == 0:
-            means[cat] = [0.0] * len(genes)
-        else:
-            means[cat] = np.round(X[mask].mean(axis=0), 4).tolist()
-
-    background = np.round(X.mean(axis=0), 4).tolist()
-    return {"categories": categories, "means": means, "background": background}
-
-
 def _compute_morans_i(adata, genes: List[str], n_genes: int = 200) -> list:
     """Compute Moran's I spatial autocorrelation for the top variable genes.
 
@@ -781,26 +754,103 @@ def _compute_morans_i(adata, genes: List[str], n_genes: int = 200) -> list:
     return results
 
 
-def _compute_gene_correlations(adata, genes: List[str], top_n: int = 10) -> dict:
-    """For each gene, return the top_n most positively correlated genes."""
-    if not genes or top_n < 1 or len(genes) < 2:
+def _compute_gene_correlations_from_category_means(
+    cluster_gene_means: Optional[dict],
+    genes: List[str],
+    top_n: int = 10,
+) -> dict:
+    """Compute gene correlations across pseudobulk/category mean profiles."""
+    if not genes or int(top_n) < 1:
         return {gene: [] for gene in genes} if genes else {}
-    X = adata[:, genes].X
-    if hasattr(X, "toarray"):
-        X = X.toarray()
-    X = np.asarray(X, dtype=float)
-    corr = np.corrcoef(X.T)  # shape (n_genes, n_genes)
-    result = {}
-    for i, gene in enumerate(genes):
+    if not cluster_gene_means or not isinstance(cluster_gene_means, dict):
+        return {gene: [] for gene in genes}
+    mean_genes = [str(g) for g in (cluster_gene_means.get("genes") or [])]
+    if len(mean_genes) < 2:
+        return {gene: [] for gene in genes}
+    gene_positions = {gene: idx for idx, gene in enumerate(mean_genes)}
+    selected = [str(g) for g in genes if str(g) in gene_positions]
+    if len(selected) < 2:
+        return {gene: [] for gene in genes}
+
+    profiles: List[List[float]] = []
+    for col_data in (cluster_gene_means.get("columns") or {}).values():
+        if not isinstance(col_data, dict):
+            continue
+        means = col_data.get("means") or {}
+        for values in means.values():
+            if isinstance(values, list) and len(values) == len(mean_genes):
+                profiles.append([float(values[gene_positions[g]] or 0.0) for g in selected])
+    if len(profiles) < 2:
+        return {gene: [] for gene in genes}
+
+    X = np.asarray(profiles, dtype=float)
+    X[~np.isfinite(X)] = 0
+    corr = np.corrcoef(X.T)
+    result = {gene: [] for gene in genes}
+    for i, gene in enumerate(selected):
         scores = corr[i].copy()
-        scores[i] = -2.0  # exclude self
-        top_idx = np.argsort(scores)[::-1][:top_n]
+        scores[i] = -2.0
+        top_idx = np.argsort(scores)[::-1][: int(top_n)]
         result[gene] = [
-            {"gene": genes[j], "r": round(float(corr[i, j]), 3)}
+            {"gene": selected[j], "r": round(float(corr[i, j]), 3)}
             for j in top_idx
-            if j != i and corr[i, j] > 0
+            if j != i and np.isfinite(corr[i, j]) and corr[i, j] > 0
         ]
     return result
+
+
+def _cluster_gene_means_from_pseudobulk_de(
+    pseudobulk_de: Optional[dict],
+    genes: List[str],
+    max_genes: int,
+) -> Optional[dict]:
+    """Build viewer category mean payload from pseudobulk DE aggregate summaries."""
+    if not isinstance(pseudobulk_de, dict) or int(max_genes) <= 0:
+        return None
+    requested = [str(g) for g in genes if str(g)]
+    if not requested:
+        return None
+    selected = requested[: int(max_genes)]
+    columns = {}
+    gene_order: List[str] = []
+    for color_col, by_source in pseudobulk_de.items():
+        if not isinstance(by_source, dict):
+            continue
+        summary = by_source.get("_summary") or {}
+        cmeans = summary.get("category_gene_means") or {}
+        src_genes = [str(g) for g in (cmeans.get("genes") or [])]
+        if not src_genes:
+            continue
+        src_pos = {gene: idx for idx, gene in enumerate(src_genes)}
+        keep = [gene for gene in selected if gene in src_pos]
+        if not keep:
+            continue
+        if not gene_order:
+            gene_order = keep
+        else:
+            keep = [gene for gene in gene_order if gene in src_pos]
+        idx = [src_pos[gene] for gene in keep]
+        means = {}
+        for category, values in (cmeans.get("means") or {}).items():
+            if isinstance(values, list) and len(values) == len(src_genes):
+                means[str(category)] = [values[i] for i in idx]
+        background_values = cmeans.get("background") or []
+        background = (
+            [background_values[i] for i in idx]
+            if isinstance(background_values, list) and len(background_values) == len(src_genes)
+            else [0.0 for _ in idx]
+        )
+        if means:
+            columns[str(color_col)] = {
+                "categories": [str(c) for c in (cmeans.get("categories") or means.keys())],
+                "means": means,
+                "background": background,
+                "n_cells": cmeans.get("n_cells") or {},
+                "source": "pseudobulk_de",
+            }
+    if not columns or not gene_order:
+        return None
+    return {"genes": gene_order, "columns": columns, "source": "pseudobulk_de"}
 
 
 def _estimate_auto_spot_size(dataset: SpatialDataset, min_panel_size: int) -> float:
@@ -934,23 +984,6 @@ def _resolve_section_rotations(
             ) from exc
 
     return resolved
-
-
-def _resolve_marker_genes_groupby(
-    dataset: SpatialDataset,
-    color: str,
-    marker_genes_groupby: Optional[List[str]],
-) -> Optional[List[str]]:
-    if not marker_genes_groupby:
-        return marker_genes_groupby
-    resolved = [str(value) for value in marker_genes_groupby if str(value).strip()]
-    if color not in dataset.adata.obs.columns:
-        return resolved or None
-    if color in resolved:
-        return resolved or None
-    if pd.api.types.is_numeric_dtype(dataset.adata.obs[color]):
-        return resolved or None
-    return [str(color), *resolved]
 
 
 # Default color palettes
@@ -2205,7 +2238,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .legend-resizer.hidden {{ display: none; }}
         body.legend-resizing {{ cursor: col-resize; user-select: none; }}
         .color-panel {{
-            width: 300px;
+            width: 430px;
             padding: 12px;
             background: var(--panel-bg);
             border-left: 1px solid var(--border-color);
@@ -3165,7 +3198,38 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-radius: 8px;
             background: var(--input-bg);
             overflow: auto;
-            max-height: 420px;
+            max-height: 720px;
+        }}
+        .cluster-de-plot-grid {{
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 8px;
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }}
+        .cluster-de-plot-grid-title {{
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-color);
+            padding: 2px 2px 0;
+        }}
+        .cluster-de-plot-panel {{
+            position: relative;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--panel-bg);
+            overflow: visible;
+        }}
+        .cluster-de-plot-title {{
+            padding: 6px 8px 2px;
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-color);
+        }}
+        .cluster-de-plot-meta {{
+            padding: 0 8px 4px;
+            font-size: 9px;
+            color: var(--muted-color);
         }}
         .cluster-de-table {{
             width: 100%;
@@ -3212,7 +3276,63 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 8px 8px 4px;
             border-bottom: 1px solid var(--border-color);
         }}
+        .volcano-summary {{
+            display: flex;
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 4px;
+            padding: 4px 0 2px;
+            font-size: 10px;
+            color: var(--muted-color);
+        }}
+        .volcano-summary-item {{
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }}
+        .volcano-summary-chip {{
+            display: inline-flex;
+            align-items: center;
+            max-width: 180px;
+            min-height: 18px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+            font-weight: 600;
+            line-height: 1.2;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .volcano-summary-count {{
+            display: inline-flex;
+            align-items: center;
+            min-height: 18px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            border: 1px solid var(--border-color);
+            background: var(--hover-bg);
+            color: var(--text-color);
+            font-weight: 600;
+            line-height: 1.2;
+            font-variant-numeric: tabular-nums;
+        }}
+        .volcano-summary-swatch {{
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            border: 1px solid var(--border-color);
+        }}
+        .cluster-de-actions {{
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-color);
+        }}
         .volcano-svg {{ display: block; overflow: visible; }}
+        .cluster-de-qc-svg {{ display: block; overflow: visible; }}
         .volcano-dot {{ cursor: pointer; }}
         .volcano-dot:hover {{ stroke: var(--text-color); stroke-width: 1.5px; }}
         .volcano-tooltip {{
@@ -5945,6 +6065,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     DATA.genes_meta = DATA.genes_meta || {{}};
     DATA.gene_encodings = DATA.gene_encodings || {{}};
     DATA.gene_value_encodings = DATA.gene_value_encodings || {{}};
+    DATA.pseudobulk_de = DATA.pseudobulk_de || DATA.cluster_de || {{}};
+    delete DATA.cluster_de;
     const PALETTE = {palette_json};
     const METADATA_LABELS = {metadata_labels_json};
     const OUTLINE_BY = {outline_by_json};
@@ -5969,15 +6091,39 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             : (MODALITY_GENE_STATE[modality]?.genes_meta);
         return Object.keys(meta || {{}}).sort((a, b) => a.localeCompare(b));
     }}
+    function uniqueSortedFeatures(features) {{
+        const seen = new Set();
+        const result = [];
+        (Array.isArray(features) ? features : []).forEach((feature) => {{
+            const token = String(feature || '').trim();
+            if (!token || seen.has(token)) return;
+            seen.add(token);
+            result.push(token);
+        }});
+        return result.sort((a, b) => a.localeCompare(b));
+    }}
+    function getAvailableFeaturesForModality(modality = CURRENT_MODALITY) {{
+        const modalityFeatures = FEATURES_BY_MODALITY?.[modality];
+        if (Array.isArray(modalityFeatures) && modalityFeatures.length) {{
+            return uniqueSortedFeatures(modalityFeatures);
+        }}
+        if (modality === DEFAULT_MODALITY_NAME || modality === 'rna' || modality === 'gene') {{
+            const availableGenes = DATA.available_genes || [];
+            if (Array.isArray(availableGenes) && availableGenes.length) {{
+                return uniqueSortedFeatures(availableGenes);
+            }}
+        }}
+        return getLoadedFeaturesForModality(modality);
+    }}
     function getActiveFeatureList() {{
-        return getLoadedFeaturesForModality(CURRENT_MODALITY);
+        return getAvailableFeaturesForModality(CURRENT_MODALITY);
     }}
     function isActiveModalityIntensity() {{
         const desc = getActiveModalityDescriptor();
         return desc?.value_kind === 'intensity';
     }}
 
-    // Rebuilt on modality switch. UI-facing gene choices are restricted to features loaded into the HTML.
+    // Rebuilt on modality switch. Sidecar RNA viewers use the full available gene catalog.
     let AVAILABLE_GENE_SET = new Set(getActiveFeatureList());
     let GENE_NAME_BY_LOWER = new Map(
         getActiveFeatureList().map(gene => [String(gene).toLowerCase(), gene])
@@ -6106,7 +6252,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (Math.abs(signed - Math.round(signed)) < ROTATION_EPSILON) {{
             return String(Math.round(signed));
         }}
-        return signed.toFixed(2).replace(/\.?0+$/, '');
+        return signed.toFixed(2).replace(/\\.?0+$/, '');
     }}
 
     function formatRotationLabel(value) {{
@@ -6435,7 +6581,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let samplesMetaSortBy = '';
     let insightsTopLevelTab = 'overview';
     let insightsOverviewTab = 'summary';
-    let insightsGenesTab = 'markers';
+    let insightsGenesTab = 'de-genes';
     let insightsCompareTab = 'groups';
     let insightsNeighborsTab = 'enrichment';
     let insightsMode = 'exploration';
@@ -7738,7 +7884,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         // Compute grid layout from CSS
         const gridStyle = getComputedStyle(grid);
-        const colWidths = gridStyle.gridTemplateColumns.split(/\s+/).filter(Boolean);
+        const colWidths = gridStyle.gridTemplateColumns.split(/\\s+/).filter(Boolean);
         const cols = colWidths.length || 1;
         const rows = Math.ceil(panels.length / cols);
         const gap = parseInt(gridStyle.gap || gridStyle.gridGap || '8', 10) || 8;
@@ -8689,7 +8835,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 ];
             }}
         }} else {{
-            const m = value.match(/^rgb\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\)$/i);
+            const m = value.match(/^rgb\\(\\s*([\\d.]+)\\s*,\\s*([\\d.]+)\\s*,\\s*([\\d.]+)\\s*\\)$/i);
             if (m) {{
                 rgb = [
                     Math.max(0, Math.min(255, Math.round(parseFloat(m[1])))),
@@ -9501,7 +9647,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function getGeneAuxSidecarFormat(manifest = null) {{
         const resolved = manifest || geneAuxManifest;
-        return resolved?.gene_sidecar_format || 'json-v2';
+        return resolved?.gene_sidecar_format || 'binary';
+    }}
+
+    function isBinaryGeneSidecarFormat(format) {{
+        return format === 'binary';
     }}
 
     function getPackageSession() {{
@@ -9795,7 +9945,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         setGeneLoadingState(true, 'Loading gene manifest…');
         window.__karospaceShowLoadingWarning?.('Loading gene sidecar manifest…');
-        geneAuxManifestPromise = fetch(DATA.gene_aux_url, {{ credentials: 'same-origin' }})
+        geneAuxManifestPromise = fetch(DATA.gene_aux_url, {{ credentials: 'same-origin', cache: 'no-store' }})
             .then((response) => {{
                 if (!response.ok) {{
                     throw new Error(`HTTP ${{response.status}} while loading gene sidecar manifest`);
@@ -9807,7 +9957,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (!payload || (format !== 'karospace-gene-sidecar-manifest-v2' && format !== 'karospace-gene-sidecar-manifest-v3' && format !== 'karospace-gene-sidecar-manifest-v4')) {{
                     throw new Error('Unsupported gene sidecar manifest format');
                 }}
-                if (getGeneAuxSidecarFormat(payload) === 'binary-v1' && !Array.isArray(payload.section_order)) {{
+                if (isBinaryGeneSidecarFormat(getGeneAuxSidecarFormat(payload)) && !Array.isArray(payload.section_order)) {{
                     throw new Error('Binary gene sidecar manifest is missing section_order');
                 }}
                 geneAuxManifest = payload;
@@ -9835,12 +9985,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         setGeneLoadingState(true, 'Loading gene expression…');
         window.__karospaceShowLoadingWarning?.('Loading requested gene expression…');
-        const promise = fetch(shardUrl, {{ credentials: 'same-origin' }})
-            .then((response) => {{
+        const promise = fetch(shardUrl, {{ credentials: 'same-origin', cache: 'no-store' }})
+            .then(async (response) => {{
                 if (!response.ok) {{
                     throw new Error(`HTTP ${{response.status}} while loading gene shard`);
                 }}
-                return response.json();
+                const text = await response.text();
+                if (!text || !text.trim()) {{
+                    throw new Error(`Empty gene shard response from ${{shardUrl}}`);
+                }}
+                try {{
+                    return JSON.parse(text);
+                }} catch (error) {{
+                    throw new Error(
+                        `Invalid JSON in gene shard ${{shardUrl}} `
+                        + `(HTTP ${{response.status}}, ${{text.length.toLocaleString()}} bytes): `
+                        + `${{error?.message || 'parse failed'}}`
+                    );
+                }}
             }})
             .then((payload) => {{
                 if (!payload || payload.format !== 'karospace-gene-sidecar-shard-v2') {{
@@ -9901,7 +10063,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sectionOrder = modalityEntry?.section_order || manifest.section_order || [];
         const geneMeta = modalityEntry?.genes_meta?.[token] ?? manifest?.genes_meta?.[token] ?? null;
         let hydrated = false;
-        if (getGeneAuxSidecarFormat(manifest) === 'binary-v1') {{
+        if (isBinaryGeneSidecarFormat(getGeneAuxSidecarFormat(manifest))) {{
             try {{
                 const payloadBuffer = await readBinaryGenePayload(shardUrl, token);
                 if (!payloadBuffer) return false;
@@ -10109,6 +10271,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     ${{corrRows}}
                 </div>
             `);
+        }} else if (currentGene && !DATA.gene_correlations?.[currentGene]?.length) {{
+            const originallyEmbedded = Array.isArray(DATA.embedded_genes) && DATA.embedded_genes.includes(currentGene);
+            const emptyText = DATA.gene_aux_url && !originallyEmbedded
+                ? 'No precomputed correlations for this sidecar-loaded gene.'
+                : 'No positive precomputed correlations for this gene among the embedded genes.';
+            sections.push(`
+                <div class="gene-discovery-section">
+                    <div class="gene-discovery-label">Correlated with ${{escapeHtml(currentGene)}}</div>
+                    <div class="gene-discovery-empty">${{escapeHtml(emptyText)}}</div>
+                </div>
+            `);
         }}
 
         if (DATA.spatial_variable_genes?.length) {{
@@ -10136,7 +10309,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="gene-token-grid">
                         ${{group.genes.map((gene) => renderGeneTokenButton(gene, {{
                             isActive: gene === currentGene,
-                            title: `Suggested marker for ${{group.category}}`,
+                            title: `Suggested DE gene for ${{group.category}}`,
                         }})).join('')}}
                     </div>
                 </div>
@@ -10369,7 +10542,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function parseGeneList(text) {{
         if (!text) return [];
         const parts = String(text)
-            .split(/[,\s]+/)
+            .split(/[,\\s]+/)
             .map(s => s.trim())
             .filter(Boolean);
         const seen = new Set();
@@ -11325,7 +11498,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const scoreLabel = formatModalGeneDiscoveryEntryScore(entry);
                 const titleParts = [`Load ${{entry.gene}} into the viewer`];
                 if (Number.isFinite(entry.exprScore)) titleParts.push(`enrichment ${{entry.exprScore.toFixed(3)}}x`);
-                if (Number(entry.markerScore || 0) > 0) titleParts.push('marker-supported');
+                if (Number(entry.markerScore || 0) > 0) titleParts.push('DE-supported');
                 return `
                     <div class="modal-gene-panel-entry">
                         <button
@@ -11759,7 +11932,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         for (let shardIdx = 0; shardIdx < shardEntries.length; shardIdx++) {{
             if (isCancelled()) return null;
             const [shardUrl, shardGenes] = shardEntries[shardIdx];
-            if (sidecarFormat === 'binary-v1') {{
+            if (isBinaryGeneSidecarFormat(sidecarFormat)) {{
                 const indexInfo = await loadBinaryShardIndex(shardUrl);
                 if (isCancelled()) return null;
                 await preloadBinaryShardBuffer(shardUrl, indexInfo);
@@ -11988,11 +12161,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     async function fetchGeneAuxShardForAnalysis(shardUrl) {{
         const resolvedUrl = resolveViewerRelativeUrl(shardUrl);
-        const response = await fetch(resolvedUrl, {{ credentials: 'same-origin' }});
+        const response = await fetch(resolvedUrl, {{ credentials: 'same-origin', cache: 'no-store' }});
         if (!response.ok) {{
             throw new Error(`HTTP ${{response.status}} while loading gene shard`);
         }}
-        const payload = await response.json();
+        const text = await response.text();
+        if (!text || !text.trim()) {{
+            throw new Error(`Empty gene shard response from ${{resolvedUrl}}`);
+        }}
+        let payload = null;
+        try {{
+            payload = JSON.parse(text);
+        }} catch (error) {{
+            throw new Error(
+                `Invalid JSON in gene shard ${{resolvedUrl}} `
+                + `(HTTP ${{response.status}}, ${{text.length.toLocaleString()}} bytes): `
+                + `${{error?.message || 'parse failed'}}`
+            );
+        }}
         if (!payload || payload.format !== 'karospace-gene-sidecar-shard-v2') {{
             throw new Error('Unsupported gene sidecar shard format');
         }}
@@ -12185,7 +12371,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             for (let shardIdx = 0; shardIdx < shardEntries.length; shardIdx++) {{
                 if (annotationDeFullRunToken !== token) return;
                 const [shardUrl, shardGenes] = shardEntries[shardIdx];
-                if (sidecarFormat === 'binary-v1') {{
+                if (isBinaryGeneSidecarFormat(sidecarFormat)) {{
                     const indexInfo = await loadBinaryShardIndex(shardUrl);
                     if (annotationDeFullRunToken !== token) return;
                     await preloadBinaryShardBuffer(shardUrl, indexInfo);
@@ -12449,11 +12635,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function exportMarkerGenesCsv() {{
         const csvText = buildMarkerGenesCsv(currentColor);
         if (!csvText) {{
-            alert('No marker genes are available for this color to export.');
+            alert('No pseudobulk DE genes are available for this color to export.');
             return;
         }}
         const colorLabel = sanitizeFilenamePart(currentColor || 'color');
-        const filename = `karospace-marker-genes-${{colorLabel}}-${{getScreenshotTimestamp()}}.csv`;
+        const filename = `karospace-pseudobulk-de-genes-${{colorLabel}}-${{getScreenshotTimestamp()}}.csv`;
         downloadTextFile(csvText, filename, 'text/csv;charset=utf-8');
     }}
 
@@ -14112,7 +14298,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getAvailableComparisonColors() {{
-        const withDE = new Set(Object.keys(DATA.cluster_de || {{}}));
+        const withDE = new Set(Object.keys(DATA.pseudobulk_de || {{}}));
         return getCategoricalColorColumns().sort((a, b) => {{
             const aHas = withDE.has(a), bHas = withDE.has(b);
             if (aHas !== bHas) return bHas - aHas;
@@ -14123,7 +14309,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function getClusterDECategories(colorCol) {{
         if (!colorCol) return [];
         const fromMeta = getCategoriesForColorColumn(colorCol).map(value => String(value));
-        const fromData = Object.keys((DATA.cluster_de || {{}})[colorCol] || {{}})
+        const fromData = Object.keys((DATA.pseudobulk_de || {{}})[colorCol] || {{}})
+            .filter((value) => !String(value).startsWith('_'))
             .map((value) => formatCategoryLabel(colorCol, value));
         return Array.from(new Set([...fromMeta, ...fromData]));
     }}
@@ -14250,7 +14437,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function getPairwiseClusterDEResult(colorCol, sourceCategory, referenceCategory) {{
         const rawSource = resolveRawCategoryValue(colorCol, sourceCategory);
         const rawReference = resolveRawCategoryValue(colorCol, referenceCategory);
-        return (((DATA.cluster_de || {{}})[colorCol] || {{}})[rawSource] || {{}})[rawReference] || null;
+        return (((DATA.pseudobulk_de || {{}})[colorCol] || {{}})[rawSource] || {{}})[rawReference] || null;
     }}
 
     function getGeneSuggestionGroups() {{
@@ -14258,7 +14445,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!config || config.is_continuous) {{
             return {{
                 title: 'Suggestions unavailable',
-                subtitle: 'Switch to a categorical color to use marker-based suggestions.',
+                subtitle: 'Switch to a categorical color to use pseudobulk DE gene suggestions.',
                 groups: [],
                 hiddenCount: 0,
             }};
@@ -14269,10 +14456,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const availableColors = getAvailableMarkerGeneColors();
             const availableLabel = availableColors.length
                 ? ` Available for: ${{availableColors.join(', ')}}.`
-                : ' No marker genes are embedded in this viewer.';
+                : ' No pseudobulk DE genes are embedded in this viewer.';
             return {{
                 title: `Suggested from ${{formatMetadataLabel(currentColor)}}`,
-                subtitle: `No marker genes are available for the active color.${{availableLabel}}`,
+                subtitle: `No pseudobulk DE genes are available for the active color.${{availableLabel}}`,
                 groups: [],
                 hiddenCount: 0,
             }};
@@ -14292,7 +14479,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         return {{
             title: `Suggested from ${{formatMetadataLabel(currentColor)}}`,
-            subtitle: groups.length ? '' : 'No marker genes are available for the active color.',
+            subtitle: groups.length ? '' : 'No pseudobulk DE genes are available for the active color.',
             groups: groups.slice(0, GENE_DISCOVERY_SUGGESTION_GROUP_LIMIT),
             hiddenCount: Math.max(0, groups.length - GENE_DISCOVERY_SUGGESTION_GROUP_LIMIT),
         }};
@@ -14352,7 +14539,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const bMarkers = getModalBlendMarkerHtml('b');
             const markerBlocks = [aMarkers, bMarkers].filter(Boolean);
             const hasMarkers = markerBlocks.length > 0;
-            const toggleLabel = modalBlendMarkersCollapsed ? 'Show marker genes' : 'Hide marker genes';
+            const toggleLabel = modalBlendMarkersCollapsed ? 'Show DE genes' : 'Hide DE genes';
             modalBlendMeta.innerHTML = [
                 `<div class="modal-blend-summary">${{escapeHtml(summary)}}</div>`,
                 hasMarkers
@@ -18249,7 +18436,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const INSIGHTS_TOP_LEVEL_TABS = ['overview', 'genes', 'compare', 'neighbors'];
     const INSIGHTS_SUBTABS = {{
         overview: ['summary', 'sections'],
-        genes: ['markers', 'spatial', 'distribution'],
+        genes: ['de-genes', 'spatial', 'distribution', 'means'],
         compare: ['groups', 'regions', 'cell-de', 'river'],
         neighbors: ['enrichment', 'interactions', 'dispersion'],
     }};
@@ -18257,7 +18444,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function normalizeInsightsTabsState() {{
         if (!INSIGHTS_TOP_LEVEL_TABS.includes(insightsTopLevelTab)) insightsTopLevelTab = 'overview';
         if (!INSIGHTS_SUBTABS.overview.includes(insightsOverviewTab)) insightsOverviewTab = 'summary';
-        if (!INSIGHTS_SUBTABS.genes.includes(insightsGenesTab)) insightsGenesTab = 'markers';
+        if (!INSIGHTS_SUBTABS.genes.includes(insightsGenesTab)) insightsGenesTab = 'de-genes';
         if (!INSIGHTS_SUBTABS.compare.includes(insightsCompareTab)) insightsCompareTab = 'groups';
         if (!INSIGHTS_SUBTABS.neighbors.includes(insightsNeighborsTab)) insightsNeighborsTab = 'enrichment';
     }}
@@ -18346,12 +18533,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         if (insightsTopLevelTab === 'genes') {{
-            if (insightsGenesTab === 'spatial') {{
-                renderSpatialVariableGenes();
-            }} else if (insightsGenesTab === 'distribution') {{
-                renderGeneDistributionInsights();
-            }} else {{
+            if (insightsGenesTab === 'de-genes') {{
                 renderMarkerGenes();
+            }} else if (insightsGenesTab === 'spatial') {{
+                renderSpatialVariableGenes();
+            }} else if (insightsGenesTab === 'means') {{
+                renderPseudobulkGeneMeans();
+            }} else {{
+                renderGeneDistributionInsights();
             }}
             return;
         }}
@@ -18593,7 +18782,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
             `;
         }} else if (!deResult.available && deResult.reason === 'no_loaded_genes') {{
-            resultHtml = '<div class="agg-group-meta">No genes are currently loaded for region DE. Load genes in the Genes tab or click marker genes first.</div>';
+            resultHtml = '<div class="agg-group-meta">No genes are currently loaded for region DE. Load genes in the Genes tab or click pseudobulk DE genes first.</div>';
         }} else if (!deResult.available) {{
             resultHtml = '<div class="agg-group-meta">Choose two different annotations to compare.</div>';
         }} else if (!deResult.results.length) {{
@@ -18887,12 +19076,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <div class="color-tab-content" id="color-tab-genes-content">
                     <div class="insights-subtab-label">Genes details</div>
                     <div class="color-tabs insights-subtabs">
-                        <button class="color-tab active" id="genes-tab-markers" data-insights-parent="genes" data-insights-subtab="markers" type="button">Markers</button>
+                        <button class="color-tab active" id="genes-tab-de-genes" data-insights-parent="genes" data-insights-subtab="de-genes" type="button">DE Genes</button>
                         <button class="color-tab" id="genes-tab-spatial" data-insights-parent="genes" data-insights-subtab="spatial" type="button">Spatial</button>
                         <button class="color-tab" id="genes-tab-distribution" data-insights-parent="genes" data-insights-subtab="distribution" type="button">Distribution</button>
+                        <button class="color-tab" id="genes-tab-means" data-insights-parent="genes" data-insights-subtab="means" type="button">Means</button>
                     </div>
-                    <div class="color-tab-content active" id="genes-tab-markers-content">
-                        <input class="marker-search" id="marker-gene-search" type="text" placeholder="Search marker genes...">
+                    <div class="color-tab-content active" id="genes-tab-de-genes-content">
+                        <input class="marker-search" id="marker-gene-search" type="text" placeholder="Search pseudobulk DE genes...">
                         <div class="marker-genes" id="marker-genes"></div>
                     </div>
                     <div class="color-tab-content" id="genes-tab-spatial-content">
@@ -18901,6 +19091,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                     <div class="color-tab-content" id="genes-tab-distribution-content">
                         <div class="gene-distribution-panel" id="gene-distribution-panel"></div>
+                    </div>
+                    <div class="color-tab-content" id="genes-tab-means-content">
+                        <div class="gene-distribution-panel" id="pseudobulk-gene-means"></div>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-compare-content">
@@ -19059,8 +19252,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         const markerSearch = document.getElementById('marker-gene-search');
-        markerSearch.addEventListener('input', () => {{
-            if (insightsTopLevelTab === 'genes' && insightsGenesTab === 'markers') {{
+        markerSearch?.addEventListener('input', () => {{
+            if (insightsTopLevelTab === 'genes' && insightsGenesTab === 'de-genes') {{
                 renderMarkerGenes();
             }}
         }});
@@ -19926,7 +20119,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const colorMeta = DATA.colors_meta?.[currentColor];
         if (!colorMeta || colorMeta.is_continuous) {{
-            container.innerHTML = '<div class="agg-group-meta">Marker genes are available for categorical colors only.</div>';
+            container.innerHTML = '<div class="agg-group-meta">Pseudobulk DE genes are available for categorical colors only.</div>';
             return;
         }}
 
@@ -19935,8 +20128,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const availableColors = getAvailableMarkerGeneColors();
             const extra = availableColors.length
                 ? ` Available for: ${{availableColors.join(', ')}}.`
-                : ' No marker genes were embedded in this viewer.';
-            container.innerHTML = `<div class="agg-group-meta">No marker genes available for this color.${{escapeHtml(extra)}}</div>`;
+                : ' No pseudobulk DE genes were embedded in this viewer.';
+            container.innerHTML = `<div class="agg-group-meta">No pseudobulk DE genes available for this color.${{escapeHtml(extra)}}</div>`;
             return;
         }}
 
@@ -19970,10 +20163,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     isActive: !!entry.canonical && entry.canonical === currentGene,
                     showMeta: false,
                     title: entry.canonical
-                        ? 'Load marker gene into the viewer'
-                        : 'Marker gene name only; this gene was not embedded in the viewer',
+                        ? 'Load pseudobulk DE gene into the viewer'
+                        : 'DE gene name only; this gene was not embedded in the viewer',
                 }})).join('')
-                : '<div class="agg-group-meta">No marker genes found.</div>';
+                : '<div class="agg-group-meta">No pseudobulk DE genes found.</div>';
             const isSpotlit = linkedSpotlightEnabled && spotlightPinnedCategory === key;
             return `
                 <div class="marker-group">
@@ -19984,15 +20177,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}).filter(Boolean);
 
         if (rows.length === 0) {{
-            container.innerHTML = '<div class="agg-group-meta">No marker genes match your search.</div>';
+            container.innerHTML = '<div class="agg-group-meta">No pseudobulk DE genes match your search.</div>';
             return;
         }}
 
         const loadedGeneNote = currentGene
-            ? `<div class="agg-group-meta">Loaded gene: <strong>${{escapeHtml(currentGene)}}</strong>. Click another marker gene to switch.</div>`
-            : '<div class="agg-group-meta">Click a marker gene to load it in the viewer. Genes not embedded in this viewer are shown as names only.</div>';
+            ? `<div class="agg-group-meta">Loaded gene: <strong>${{escapeHtml(currentGene)}}</strong>. Click another DE gene to switch.</div>`
+            : '<div class="agg-group-meta">Click a pseudobulk DE gene to load it in the viewer. Genes not embedded in this viewer are shown as names only.</div>';
 
-        const exportBar = `<div class="marker-genes-export"><button class="selection-summary-compare-btn" type="button" id="marker-genes-export-btn" title="Download marker genes for every ${{escapeHtml(formatMetadataLabel(currentColor))}} cluster as a CSV">Export marker genes (CSV)</button></div>`;
+        const exportBar = `<div class="marker-genes-export"><button class="selection-summary-compare-btn" type="button" id="marker-genes-export-btn" title="Download pseudobulk DE genes for every ${{escapeHtml(formatMetadataLabel(currentColor))}} category as a CSV">Export DE genes (CSV)</button></div>`;
 
         container.innerHTML = loadedGeneNote + exportBar + rows.join('');
         bindGeneActivateButtons(container, renderMarkerGenes);
@@ -20437,6 +20630,92 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         wireGeneDistributionInputs(container);
     }}
 
+    function renderPseudobulkGeneMeans() {{
+        const container = document.getElementById('pseudobulk-gene-means');
+        if (!container) return;
+        const data = DATA.cluster_gene_means;
+        const columns = data?.columns || {{}};
+        const genes = Array.isArray(data?.genes) ? data.genes.map(g => String(g)) : [];
+        const availableCols = Object.keys(columns).filter(col => columns[col]?.means);
+        if (!genes.length || !availableCols.length) {{
+            container.innerHTML = '<div class="agg-group-meta">No pseudobulk-derived category means are available. They are created from embedded significant DE genes.</div>';
+            return;
+        }}
+
+        const selectedColRaw = document.getElementById('pseudobulk-means-color')?.value || currentColor || availableCols[0];
+        const selectedCol = availableCols.includes(selectedColRaw) ? selectedColRaw : availableCols[0];
+        const geneRaw = document.getElementById('pseudobulk-means-gene')?.value || currentGene || genes[0];
+        const selectedGene = genes.includes(geneRaw) ? geneRaw : genes[0];
+        const geneIdx = genes.indexOf(selectedGene);
+        const colData = columns[selectedCol] || {{}};
+        const categories = (colData.categories || Object.keys(colData.means || {{}})).map(cat => String(cat));
+
+        const colorOptions = availableCols.map((col) => `
+            <option value="${{escapeHtml(col)}}"${{col === selectedCol ? ' selected' : ''}}>${{escapeHtml(formatMetadataLabel(col))}}</option>
+        `).join('');
+        const geneOptions = genes.map((gene) => `<option value="${{escapeHtml(gene)}}"></option>`).join('');
+
+        const rows = categories.map((category, idx) => {{
+            const values = colData.means?.[category] || [];
+            const mean = Number(values[geneIdx] ?? 0);
+            const nCells = Number(colData.n_cells?.[category] ?? NaN);
+            const color = getCategoryColorForValue(selectedCol, category);
+            return `
+                <tr data-pseudobulk-mean-category="${{escapeHtml(category)}}" style="cursor:pointer">
+                    <td><span class="agg-dot" style="background:${{color}}"></span>${{escapeHtml(formatCategoryLabel(selectedCol, category))}}</td>
+                    <td>${{Number.isFinite(mean) ? mean.toFixed(4) : 'n/a'}}</td>
+                    <td>${{Number.isFinite(nCells) ? nCells.toLocaleString() : 'n/a'}}</td>
+                </tr>
+            `;
+        }}).join('');
+
+        const background = Number(colData.background?.[geneIdx] ?? NaN);
+        container.innerHTML = `
+            <div class="cluster-de-controls">
+                <div>
+                    <label>Annotation</label>
+                    <select id="pseudobulk-means-color">${{colorOptions}}</select>
+                </div>
+                <div>
+                    <label>Gene</label>
+                    <input type="text" id="pseudobulk-means-gene" list="pseudobulk-means-gene-list" value="${{escapeHtml(selectedGene)}}" autocomplete="off" spellcheck="false">
+                    <datalist id="pseudobulk-means-gene-list">${{geneOptions}}</datalist>
+                </div>
+            </div>
+            <div class="gene-distribution-summary">Pseudobulk-derived category means for <strong>${{escapeHtml(selectedGene)}}</strong>. Background mean: ${{Number.isFinite(background) ? background.toFixed(4) : 'n/a'}}.</div>
+            <table class="gene-distribution-table">
+                <thead>
+                    <tr><th>Category</th><th>Mean</th><th>Cells</th></tr>
+                </thead>
+                <tbody>${{rows}}</tbody>
+            </table>
+        `;
+
+        container.querySelector('#pseudobulk-means-color')?.addEventListener('change', renderPseudobulkGeneMeans);
+        const geneInput = container.querySelector('#pseudobulk-means-gene');
+        geneInput?.addEventListener('keydown', async (event) => {{
+            if (event.key !== 'Enter') return;
+            event.preventDefault();
+            const gene = resolveCanonicalGeneName(geneInput.value) || String(geneInput.value || '').trim();
+            if (!genes.includes(gene)) return;
+            const ok = await activateViewerGene(gene, {{ showErrors: true }});
+            if (ok) renderPseudobulkGeneMeans();
+        }});
+        geneInput?.addEventListener('change', renderPseudobulkGeneMeans);
+        container.querySelectorAll('[data-pseudobulk-mean-category]').forEach((row) => {{
+            row.addEventListener('click', () => {{
+                const cat = row.getAttribute('data-pseudobulk-mean-category');
+                if (!cat) return;
+                linkedSpotlightEnabled = true;
+                neighborNetworkFocusCategories = null;
+                spotlightPinnedCategory = spotlightPinnedCategory === cat ? null : cat;
+                spotlightHoverCategory = null;
+                updateAllLegendSpotlightClasses();
+                rerenderForSpotlightChange();
+            }});
+        }});
+    }}
+
     function renderSpatialVariableGenes() {{
         const container = document.getElementById('spatially-variable-genes');
         if (!container) return;
@@ -20595,7 +20874,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return `
                 <div class="agg-group">
                     <div class="agg-group-title">Marker Summary</div>
-                    <div class="agg-group-meta">Marker genes were not precomputed for this annotation.</div>
+                    <div class="agg-group-meta">Pseudobulk DE genes were not precomputed for this annotation.</div>
                 </div>
             `;
         }}
@@ -20603,20 +20882,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return `
             <div class="agg-group">
                 <div class="agg-group-title">Marker Summary</div>
-                <div class="agg-group-meta">Top markers for each category. Click a gene to load it when available.</div>
+                <div class="agg-group-meta">Top pseudobulk DE genes for each category. Click a gene to load it when available.</div>
             </div>
             <div class="agg-group">
-                <div class="agg-group-title"><span class="agg-dot" style="background: ${{sourceColor}}"></span>${{escapeHtml(sourceCategory)}} markers</div>
-                ${{renderComparisonGeneTokenGrid(sourceMarkers, 'No marker genes available for Category A.', 'Load Category A marker gene into the viewer')}}
+                <div class="agg-group-title"><span class="agg-dot" style="background: ${{sourceColor}}"></span>${{escapeHtml(sourceCategory)}} DE genes</div>
+                ${{renderComparisonGeneTokenGrid(sourceMarkers, 'No pseudobulk DE genes available for Category A.', 'Load Category A DE gene into the viewer')}}
             </div>
             <div class="agg-group">
-                <div class="agg-group-title"><span class="agg-dot" style="background: ${{referenceColor}}"></span>${{escapeHtml(referenceCategory)}} markers</div>
-                ${{renderComparisonGeneTokenGrid(referenceMarkers, 'No marker genes available for Category B.', 'Load Category B marker gene into the viewer')}}
+                <div class="agg-group-title"><span class="agg-dot" style="background: ${{referenceColor}}"></span>${{escapeHtml(referenceCategory)}} DE genes</div>
+                ${{renderComparisonGeneTokenGrid(referenceMarkers, 'No pseudobulk DE genes available for Category B.', 'Load Category B DE gene into the viewer')}}
             </div>
             <div class="agg-group">
                 <div class="agg-group-title">Marker Overlap</div>
                 <div class="agg-group-meta">Shared names across the top marker lists.</div>
-                ${{renderComparisonGeneTokenGrid(overlap, 'No shared top markers found.', 'Load shared marker gene into the viewer')}}
+                ${{renderComparisonGeneTokenGrid(overlap, 'No shared top DE genes found.', 'Load shared DE gene into the viewer')}}
             </div>
         `;
     }}
@@ -20645,7 +20924,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="agg-group">
                 <div class="agg-group-title">${{title}}</div>
                 <div class="agg-group-meta">${{meta}}</div>
-                ${{renderComparisonGeneTokenGrid(summary.genes, available ? 'No contact-conditioned genes returned.' : 'Contact-conditioned markers unavailable for this direction.', 'Load contact-conditioned marker gene into the viewer')}}
+                ${{renderComparisonGeneTokenGrid(summary.genes, available ? 'No contact-conditioned genes returned.' : 'Contact-conditioned DE genes unavailable for this direction.', 'Load contact-conditioned DE gene into the viewer')}}
             </div>
         `;
     }}
@@ -20656,7 +20935,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return `
                 <div class="agg-group">
                     <div class="agg-group-title">Contact-Conditioned Markers</div>
-                    <div class="agg-group-meta">Interaction markers were not precomputed for this annotation.</div>
+                    <div class="agg-group-meta">Interaction DE genes were not precomputed for this annotation.</div>
                 </div>
             `;
         }}
@@ -20671,27 +20950,244 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         `;
     }}
 
-    function buildVolcanoPlot(genes, logfc, pvalsAdj) {{
+    function normalizePositiveThreshold(value, fallback) {{
+        const numeric = Number(value);
+        return Number.isFinite(numeric) && numeric >= 0 ? numeric : fallback;
+    }}
+
+    function getClusterDESignificanceClass(log2fcValue, padjValue, padjCutoff, log2fcCutoff) {{
+        if (!Number.isFinite(log2fcValue) || !Number.isFinite(padjValue)) return 'grey';
+        if (padjValue > padjCutoff || Math.abs(log2fcValue) < log2fcCutoff) return 'grey';
+        return log2fcValue > 0 ? 'red' : 'blue';
+    }}
+
+    function getClusterDEPointColor(pointClass) {{
+        if (pointClass === 'red') return '#d94f4f';
+        if (pointClass === 'blue') return '#4f82d9';
+        return 'var(--border-color)';
+    }}
+
+    function formatAdjustedPValue(value) {{
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 'n/a';
+        if (numeric > 0 && numeric < 0.001) return numeric.toExponential(2);
+        return formatScaleNumber(numeric);
+    }}
+
+    function getTextColorForBackground(color) {{
+        if (String(color || '').startsWith('var(')) return 'var(--text-color)';
+        const [r, g, b] = cssColorToRgb(color);
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        return luminance > 0.62 ? '#222222' : '#ffffff';
+    }}
+
+    function buildClusterDESummaryItem(label, color, count = null) {{
+        const bg = color || 'var(--border-color)';
+        const textColor = getTextColorForBackground(bg);
+        const countValue = Number(count || 0);
+        const countLabel = countValue.toLocaleString() + (countValue === 1 ? ' gene' : ' genes');
+        const countHtml = count === null || count === undefined
+            ? ''
+            : '<span class="volcano-summary-count">' + countLabel + '</span>';
+        return '<span class="volcano-summary-item">'
+            + '<span class="volcano-summary-chip" style="background:' + bg + '; color:' + textColor + ';">' + escapeHtml(label) + '</span>'
+            + countHtml
+            + '</span>';
+    }}
+
+    function wrapClusterDEPlot(title, meta, svgText) {{
+        if (!svgText) return '';
+        return `
+            <div class="cluster-de-plot-panel">
+                <div class="cluster-de-plot-title">${{escapeHtml(title)}}</div>
+                ${{meta ? `<div class="cluster-de-plot-meta">${{escapeHtml(meta)}}</div>` : ''}}
+                ${{svgText}}
+                <div class="volcano-tooltip"></div>
+            </div>
+        `;
+    }}
+
+    function buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5) {{
         if (!genes.length) return '';
-        const W = 310, H = 190, ml = 34, mr = 10, mt = 10, mb = 26;
+        const rawPThreshold = 0.05;
+        const W = 390, H = 190, ml = 44, mr = 14, mt = 10, mb = 30;
+        const iw = W - ml - mr, ih = H - mt - mb;
+        const xValues = genes.map((_, i) => {{
+            const value = Number(baseMean[i]);
+            return Math.max(Number.isFinite(value) ? value : 0, 0);
+        }});
+        const yValues = genes.map((_, i) => {{
+            const value = Number(log2fc[i]);
+            return Number.isFinite(value) ? value : 0;
+        }});
+        const maxX = Math.max.apply(null, xValues.concat([1]));
+        const maxAbsY = Math.max.apply(null, yValues.map(v => Math.abs(v)).concat([0.5]));
+        const yRange = maxAbsY * 1.15;
+        function xs(x) {{ return ml + (x / maxX) * iw; }}
+        function ys(y) {{ return mt + ih - ((y + yRange) / (2 * yRange)) * ih; }}
+        const parts = [];
+        parts.push('<svg class="cluster-de-qc-svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">');
+        parts.push('<line x1="' + ml + '" y1="' + mt + '" x2="' + ml + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
+        parts.push('<line x1="' + ml + '" y1="' + (mt+ih) + '" x2="' + (ml+iw) + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
+        const xTicks = Array.from(new Set([0, Math.ceil(maxX / 2), Math.ceil(maxX)])).filter((t) => Number.isFinite(t) && t >= 0);
+        xTicks.forEach((t) => {{
+            parts.push('<text class="volcano-axis-label" x="' + xs(t).toFixed(1) + '" y="' + (mt+ih+13) + '" text-anchor="middle">' + formatScaleNumber(t) + '</text>');
+        }});
+        [-Math.ceil(maxAbsY), 0, Math.ceil(maxAbsY)].forEach((t) => {{
+            parts.push('<text class="volcano-axis-label" x="' + (ml-5) + '" y="' + ys(t).toFixed(1) + '" text-anchor="end" dy="0.35em">' + t + '</text>');
+        }});
+        parts.push('<text class="volcano-axis-label" x="' + (ml+iw/2).toFixed(1) + '" y="' + (H-2) + '" text-anchor="middle">baseMean</text>');
+        parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">logFC</text>');
+        const counts = {{ green: 0, grey: 0 }};
+        genes.forEach((gene, i) => {{
+            const fc = yValues[i];
+            const rawP = Number(pvals[i]);
+            const padj = Number(pvalsAdj[i]);
+            const isRawSignificant = Number.isFinite(rawP) && rawP < rawPThreshold;
+            const dotClass = isRawSignificant ? 'green' : 'grey';
+            counts[dotClass] += 1;
+            const rawPDisplay = Number.isFinite(rawP) ? formatScaleNumber(rawP) : 'n/a';
+            const padjDisplay = formatAdjustedPValue(padj);
+            const baseDisplay = formatScaleNumber(xValues[i]);
+            const color = isRawSignificant ? '#2f9e67' : 'var(--border-color)';
+            parts.push('<circle class="volcano-dot" cx="' + xs(xValues[i]).toFixed(1) + '" cy="' + ys(fc).toFixed(1) + '" r="2.8" fill="' + color + '" fill-opacity="0.78" data-volcano-gene="' + escapeHtml(gene) + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-p="' + rawPDisplay + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="baseMean: ' + escapeHtml(baseDisplay) + '" data-tooltip-line2="logFC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line3="pvalue: ' + escapeHtml(rawPDisplay) + '" data-tooltip-line4="adj. p: ' + escapeHtml(padjDisplay) + '"/>');
+        }});
+        parts.push('</svg>');
+        const summary = [
+            '<div class="volcano-summary" aria-label="MA plot dot counts">',
+            buildClusterDESummaryItem('p < 0.05', '#2f9e67', counts.green),
+            buildClusterDESummaryItem('p >= 0.05', 'var(--border-color)', counts.grey),
+            '</div>',
+        ].join('');
+        return wrapClusterDEPlot('MA Plot', 'Mean expression vs log fold-change', parts.join('') + summary);
+    }}
+
+    function buildPseudobulkPCAPlot(sampleInfo, colorCol) {{
+        const points = Array.isArray(sampleInfo?.pca) ? sampleInfo.pca : [];
+        if (points.length < 2) return '';
+        const groups = Array.isArray(sampleInfo.groups) ? sampleInfo.groups : [];
+        const labels = Array.isArray(sampleInfo.labels) ? sampleInfo.labels : [];
+        const replicates = Array.isArray(sampleInfo.replicates) ? sampleInfo.replicates : [];
+        const nCells = Array.isArray(sampleInfo.n_cells) ? sampleInfo.n_cells : [];
+        const librarySizes = Array.isArray(sampleInfo.library_size) ? sampleInfo.library_size : [];
+        const uniqueGroups = Array.from(new Set(groups.map(g => String(g))));
+        const W = 390, H = 210, ml = 42, mr = 14, mt = 12, mb = 30;
+        const iw = W - ml - mr, ih = H - mt - mb;
+        const xsRaw = points.map(p => Number(p?.[0])).filter(Number.isFinite);
+        const ysRaw = points.map(p => Number(p?.[1])).filter(Number.isFinite);
+        if (!xsRaw.length || !ysRaw.length) return '';
+        const minX = Math.min.apply(null, xsRaw), maxX = Math.max.apply(null, xsRaw);
+        const minY = Math.min.apply(null, ysRaw), maxY = Math.max.apply(null, ysRaw);
+        const padX = Math.max((maxX - minX) * 0.08, 1e-6);
+        const padY = Math.max((maxY - minY) * 0.08, 1e-6);
+        function xs(x) {{ return ml + ((x - minX + padX) / (maxX - minX + 2 * padX)) * iw; }}
+        function ys(y) {{ return mt + ih - ((y - minY + padY) / (maxY - minY + 2 * padY)) * ih; }}
+        function groupColor(group) {{
+            if (colorCol) return getCategoryColorForValue(colorCol, group);
+            const idx = uniqueGroups.indexOf(String(group));
+            return idx >= 0 ? getCategoryColor(idx) : '#999';
+        }}
+        const variance = Array.isArray(sampleInfo.pca_variance) ? sampleInfo.pca_variance : [];
+        const pc1 = Number(variance[0]);
+        const pc2 = Number(variance[1]);
+        const xLabel = Number.isFinite(pc1) ? `PC1 (${{Math.round(pc1 * 100)}}%)` : 'PC1';
+        const yLabel = Number.isFinite(pc2) ? `PC2 (${{Math.round(pc2 * 100)}}%)` : 'PC2';
+        const parts = [];
+        parts.push('<svg class="cluster-de-qc-svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">');
+        parts.push('<line x1="' + ml + '" y1="' + mt + '" x2="' + ml + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
+        parts.push('<line x1="' + ml + '" y1="' + (mt+ih) + '" x2="' + (ml+iw) + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
+        points.forEach((point, i) => {{
+            const x = Number(point?.[0]), y = Number(point?.[1]);
+            if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+            const group = groups[i] ?? '';
+            const label = labels[i] || group;
+            const replicate = replicates[i] ?? '';
+            const nCellText = Number.isFinite(Number(nCells[i])) ? Number(nCells[i]).toLocaleString() : 'n/a';
+            const libraryText = Number.isFinite(Number(librarySizes[i])) ? Number(librarySizes[i]).toLocaleString() : 'n/a';
+            parts.push('<circle class="volcano-dot" cx="' + xs(x).toFixed(1) + '" cy="' + ys(y).toFixed(1) + '" r="4" fill="' + groupColor(group) + '" fill-opacity="0.85" data-tooltip-title="' + escapeHtml(label) + '" data-tooltip-line1="Category: ' + escapeHtml(group) + '" data-tooltip-line2="Replicate: ' + escapeHtml(replicate) + '" data-tooltip-line3="PC1: ' + escapeHtml(formatScaleNumber(x)) + '" data-tooltip-line4="PC2: ' + escapeHtml(formatScaleNumber(y)) + '" data-tooltip-line5="Cells: ' + escapeHtml(nCellText) + '" data-tooltip-line6="Library size: ' + escapeHtml(libraryText) + '"/>');
+        }});
+        parts.push('<text class="volcano-axis-label" x="' + (ml+iw/2).toFixed(1) + '" y="' + (H-2) + '" text-anchor="middle">' + escapeHtml(xLabel) + '</text>');
+        parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">' + escapeHtml(yLabel) + '</text>');
+        const legend = uniqueGroups.slice(0, 6).map((group) => buildClusterDESummaryItem(group, groupColor(group))).join('');
+        parts.push('</svg>');
+        return wrapClusterDEPlot('PCA', `Pseudobulk samples, ${{Number(sampleInfo.pca_features || 0).toLocaleString()}} variable genes`, parts.join('') + '<div class="volcano-summary">' + legend + '</div>');
+    }}
+
+    function buildPseudobulkDistanceHeatmap(sampleInfo, colorCol) {{
+        const matrix = Array.isArray(sampleInfo?.distance_matrix) ? sampleInfo.distance_matrix : [];
+        const n = matrix.length;
+        if (n < 2) return '';
+        const groups = Array.isArray(sampleInfo.distance_groups) ? sampleInfo.distance_groups : [];
+        const labels = Array.isArray(sampleInfo.distance_labels) ? sampleInfo.distance_labels : [];
+        const uniqueGroups = Array.from(new Set(groups.map(g => String(g))));
+        const W = 390, H = 390, ml = 82, mt = 20, mr = 8, mb = 82;
+        const size = Math.min(W - ml - mr, H - mt - mb);
+        const cell = size / n;
+        const values = matrix.flat().map(Number).filter(Number.isFinite);
+        const minV = Math.min.apply(null, values.concat([0]));
+        const maxV = Math.max.apply(null, values.concat([1]));
+        function heatColor(v) {{
+            const t = maxV > minV ? Math.max(0, Math.min(1, (Number(v) - minV) / (maxV - minV))) : 0;
+            const shade = Math.round(255 * (1 - t));
+            return `rgb(${{shade}},${{shade}},${{shade}})`;
+        }}
+        function groupColor(group) {{
+            if (colorCol) return getCategoryColorForValue(colorCol, group);
+            const idx = uniqueGroups.indexOf(String(group));
+            return idx >= 0 ? getCategoryColor(idx) : '#999';
+        }}
+        const parts = [];
+        parts.push('<svg class="cluster-de-qc-svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">');
+        for (let i = 0; i < n; i++) {{
+            parts.push('<rect x="' + (ml + i * cell).toFixed(2) + '" y="' + (mt - 8) + '" width="' + Math.max(1, cell).toFixed(2) + '" height="6" fill="' + groupColor(groups[i]) + '"/>');
+            parts.push('<rect x="' + (ml - 8) + '" y="' + (mt + i * cell).toFixed(2) + '" width="6" height="' + Math.max(1, cell).toFixed(2) + '" fill="' + groupColor(groups[i]) + '"/>');
+            for (let j = 0; j < n; j++) {{
+                parts.push('<rect x="' + (ml + j * cell).toFixed(2) + '" y="' + (mt + i * cell).toFixed(2) + '" width="' + Math.max(1, cell).toFixed(2) + '" height="' + Math.max(1, cell).toFixed(2) + '" fill="' + heatColor(matrix[i][j]) + '"/>');
+            }}
+        }}
+        if (n <= 24) {{
+            labels.forEach((label, i) => {{
+                const shortLabel = String(label || '').split(' | ')[0];
+                parts.push('<text class="volcano-axis-label" x="' + (ml - 12) + '" y="' + (mt + i * cell + cell / 2).toFixed(1) + '" text-anchor="end" dy="0.35em">' + escapeHtml(shortLabel) + '</text>');
+                parts.push('<text class="volcano-axis-label" x="' + (ml + i * cell + cell / 2).toFixed(1) + '" y="' + (mt + size + 8) + '" text-anchor="end" transform="rotate(-55,' + (ml + i * cell + cell / 2).toFixed(1) + ',' + (mt + size + 8) + ')">' + escapeHtml(shortLabel) + '</text>');
+            }});
+        }}
+        parts.push('</svg>');
+        const legend = uniqueGroups.slice(0, 12).map((group) => buildClusterDESummaryItem(group, groupColor(group))).join('');
+        return wrapClusterDEPlot(
+            'Distance Matrix',
+            'Hierarchical clustering of pseudobulk samples, Euclidean distance on log1p CPM',
+            parts.join('') + '<div class="volcano-summary">' + legend + '</div>'
+        );
+    }}
+
+    function buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5, colorCol = null, sourceCategory = null, referenceCategory = null) {{
+        if (!genes.length) return '';
+        const padjThreshold = Math.min(Math.max(normalizePositiveThreshold(padjCutoff, 0.05), 0), 1);
+        const fcThr = normalizePositiveThreshold(log2fcCutoff, 0.5);
+        const sourceColor = colorCol && sourceCategory !== null ? getCategoryColorForValue(colorCol, sourceCategory) : '#d94f4f';
+        const referenceColor = colorCol && referenceCategory !== null ? getCategoryColorForValue(colorCol, referenceCategory) : '#4f82d9';
+        const sourceLabel = sourceCategory !== null ? String(sourceCategory) : 'Source';
+        const referenceLabel = referenceCategory !== null ? String(referenceCategory) : 'Reference';
+        const W = 390, H = 220, ml = 44, mr = 14, mt = 12, mb = 30;
         const iw = W - ml - mr, ih = H - mt - mb;
         const logfcValues = genes.map(function(_, i) {{
-            const value = Number(logfc[i]);
+            const value = Number(log2fc[i]);
             return Number.isFinite(value) ? value : 0;
         }});
         const nlp = genes.map(function(_, i) {{
             const value = Number(pvalsAdj[i]);
-            const safe = Number.isFinite(value) && value > 0 ? value : 1;
-            return -Math.log10(Math.max(safe, 1e-300));
+            const safe = Number.isFinite(value) ? (value > 0 ? value : Number.MIN_VALUE) : 1;
+            return -Math.log10(Math.max(safe, Number.MIN_VALUE));
         }});
         const maxAbsFC = Math.max.apply(null, logfcValues.map(function(v) {{ return Math.abs(v); }}).concat([0.5]));
         const fcRange = maxAbsFC * 1.15;
         const maxNLP = Math.max.apply(null, nlp.concat([2])) * 1.1;
         function xs(fc) {{ return ml + (fc + fcRange) / (2 * fcRange) * iw; }}
         function ys(v) {{ return mt + ih - (v / maxNLP) * ih; }}
-        const sigNLP = -Math.log10(0.05);
-        const fcThr = 0.5;
+        const sigNLP = -Math.log10(Math.max(padjThreshold, Number.MIN_VALUE));
         const parts = [];
+        const counts = {{ source: 0, reference: 0, grey: 0 }};
         parts.push('<svg class="volcano-svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">');
         parts.push('<line x1="' + ml + '" y1="' + mt + '" x2="' + ml + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
         parts.push('<line x1="' + ml + '" y1="' + (mt+ih) + '" x2="' + (ml+iw) + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
@@ -20711,18 +21207,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             parts.push('<text class="volcano-axis-label" x="' + (ml-5) + '" y="' + ty.toFixed(1) + '" text-anchor="end" dy="0.35em">' + t + '</text>');
         }});
         parts.push('<text class="volcano-axis-label" x="' + (ml+iw/2).toFixed(1) + '" y="' + (H-2) + '" text-anchor="middle">log\u2082FC</text>');
-        parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">\u2212log\u2081\u2080p</text>');
+        parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">\u2212log\u2081\u2080 adj. p</text>');
         genes.forEach(function(gene, i) {{
             const fc = logfcValues[i], nlpi = nlp[i];
-            const sig = nlpi >= sigNLP && Math.abs(fc) >= fcThr;
-            const col = sig ? (fc > 0 ? '#d94f4f' : '#4f82d9') : 'var(--border-color)';
             const pvalAdj = Number(pvalsAdj[i]);
+            const sig = Number.isFinite(pvalAdj) && pvalAdj <= padjThreshold && Math.abs(fc) >= fcThr;
+            const dotClass = sig ? (fc > 0 ? 'source' : 'reference') : 'grey';
+            counts[dotClass] += 1;
+            const col = dotClass === 'source' ? sourceColor : (dotClass === 'reference' ? referenceColor : 'var(--border-color)');
             const safePAdj = Number.isFinite(pvalAdj) ? pvalAdj : 1;
-            const padjDisplay = safePAdj < 0.001 ? safePAdj.toExponential(2) : safePAdj.toFixed(4);
-            parts.push('<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(nlpi).toFixed(1) + '" r="3" fill="' + col + '" fill-opacity="0.82" data-volcano-gene="' + escapeHtml(gene) + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-padj="' + padjDisplay + '"/>');
+            const padjDisplay = formatAdjustedPValue(safePAdj);
+            parts.push('<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(nlpi).toFixed(1) + '" r="3" fill="' + col + '" fill-opacity="0.82" data-volcano-class="' + dotClass + '" data-volcano-gene="' + escapeHtml(gene) + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="log\u2082FC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line2="adj. p: ' + escapeHtml(padjDisplay) + '"/>');
         }});
         parts.push('</svg>');
-        return '<div class="volcano-container">' + parts.join('') + '<div class="volcano-tooltip"></div></div>';
+        const greyLabel = 'adj. p > ' + formatAdjustedPValue(padjThreshold)
+            + ' or |log2FC| < ' + formatScaleNumber(fcThr);
+        const summary = [
+            '<div class="volcano-summary" aria-label="Volcano dot counts">',
+            buildClusterDESummaryItem(referenceLabel, referenceColor, counts.reference),
+            buildClusterDESummaryItem(sourceLabel, sourceColor, counts.source),
+            buildClusterDESummaryItem(greyLabel, 'var(--border-color)', counts.grey),
+            '</div>',
+        ].join('');
+        return '<div class="volcano-container">' + parts.join('') + summary + '<div class="volcano-tooltip"></div></div>';
     }}
 
     function buildGroupVolcanoPlot(entries) {{
@@ -20806,13 +21313,230 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
+    function renderClusterDEDotTooltip(dot) {{
+        const title = dot.getAttribute('data-tooltip-title') || dot.getAttribute('data-volcano-gene') || '';
+        const lines = [];
+        for (let i = 1; i <= 8; i++) {{
+            const line = dot.getAttribute('data-tooltip-line' + i);
+            if (line) lines.push(line);
+        }}
+        if (!lines.length && dot.hasAttribute('data-volcano-gene')) {{
+            const fc = dot.getAttribute('data-volcano-fc') || '';
+            const padj = dot.getAttribute('data-volcano-padj') || '';
+            const score = dot.getAttribute('data-volcano-score') || '';
+            if (fc) lines.push('log\u2082FC: ' + fc);
+            if (padj) lines.push('adj. p: ' + padj);
+            if (score) lines.push('score: ' + score);
+        }}
+        return '<strong>' + escapeHtml(title) + '</strong>' + (lines.length ? '<br>' + lines.map(escapeHtml).join('<br>') : '');
+    }}
+
+    function positionClusterDEDotTooltip(plotContainer, tooltip, dot) {{
+        const cRect = plotContainer.getBoundingClientRect();
+        const dRect = dot.getBoundingClientRect();
+        let left = dRect.left - cRect.left + 10;
+        let top = dRect.top - cRect.top - 8;
+        if (left + tooltip.offsetWidth > cRect.width - 4) left -= tooltip.offsetWidth + 16;
+        if (top < 0) top = dRect.bottom - cRect.top + 4;
+        tooltip.style.left = left + 'px';
+        tooltip.style.top = top + 'px';
+    }}
+
+    function bindClusterDEPlotInteractions(container, rerenderFn) {{
+        container.querySelectorAll('.volcano-svg, .cluster-de-qc-svg').forEach((plotSvg) => {{
+            const plotContainer = plotSvg.closest('.volcano-container, .cluster-de-plot-panel') || plotSvg.parentElement;
+            const tooltip = plotContainer?.querySelector('.volcano-tooltip');
+            if (!plotContainer || !tooltip) return;
+            plotSvg.addEventListener('mouseover', (e) => {{
+                const dot = e.target.closest('[data-tooltip-title], [data-volcano-gene]');
+                if (!dot) return;
+                tooltip.innerHTML = renderClusterDEDotTooltip(dot);
+                tooltip.style.display = 'block';
+                positionClusterDEDotTooltip(plotContainer, tooltip, dot);
+            }});
+            plotContainer.addEventListener('mouseleave', () => {{
+                tooltip.style.display = 'none';
+            }});
+            plotSvg.addEventListener('click', async (e) => {{
+                const dot = e.target.closest('[data-volcano-gene]');
+                if (!dot) return;
+                const gene = dot.getAttribute('data-volcano-gene') || '';
+                if (!gene) return;
+                const ok = await activateViewerGene(gene, {{ showErrors: true }});
+                if (ok) rerenderFn();
+            }});
+        }});
+    }}
+
+    function getClusterDEColoredIndices(result) {{
+        if (!result || result.available === false) return [];
+        const genes = Array.isArray(result.genes) ? result.genes : [];
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
+        const pvals = Array.isArray(result.pvals) ? result.pvals : [];
+        const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
+        const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(result.padj_cutoff, 0.05), 0), 1);
+        const log2fcCutoff = normalizePositiveThreshold(result.log2fc_cutoff, 0.5);
+        return genes.map((gene, idx) => idx).filter((idx) => {{
+            const log2fcValue = Number(log2fc[idx]);
+            const pvalAdjValue = Number(pvalsAdj[idx]);
+            return Number.isFinite(log2fcValue)
+                && Number.isFinite(pvalAdjValue)
+                && pvalAdjValue <= padjCutoff
+                && Math.abs(log2fcValue) >= log2fcCutoff;
+        }});
+    }}
+
+    function getClusterDETableEntries(result, coloredOnly = false) {{
+        if (!result || result.available === false) return [];
+        const genes = Array.isArray(result.genes) ? result.genes : [];
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
+        const pvals = Array.isArray(result.pvals) ? result.pvals : [];
+        const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
+        const scores = Array.isArray(result.scores) ? result.scores : [];
+        const pctSource = Array.isArray(result.pct_source) ? result.pct_source : [];
+        const pctReference = Array.isArray(result.pct_reference) ? result.pct_reference : [];
+        const baseMean = Array.isArray(result.base_mean) ? result.base_mean : [];
+        const indices = coloredOnly ? getClusterDEColoredIndices(result) : genes.map((gene, idx) => idx);
+        return indices.map((idx) => ({{
+            gene: genes[idx],
+            baseMean: Number(baseMean[idx]),
+            log2fc: Number(log2fc[idx]),
+            pvalue: Number(pvals[idx]),
+            padj: Number(pvalsAdj[idx]),
+            score: Number(scores[idx]),
+            pctSource: Number(pctSource[idx]),
+            pctReference: Number(pctReference[idx]),
+        }}));
+    }}
+
+    function getClusterDEFilenameStem() {{
+        return [
+            'karospace-pseudobulk-de',
+            sanitizeFilenamePart(clusterDeGroupby || 'annotation'),
+            sanitizeFilenamePart(clusterDeSourceCategory || 'A'),
+            'vs',
+            sanitizeFilenamePart(clusterDeReferenceCategory || 'B'),
+            getScreenshotTimestamp(),
+        ].filter(Boolean).join('-');
+    }}
+
+    function buildClusterDECsv(entries) {{
+        const headers = ['gene', 'base_mean', 'log2fc', 'pvalue', 'padj', 'score', 'pct_source', 'pct_reference'];
+        const lines = [headers.map(csvEscape).join(',')];
+        entries.forEach((entry) => {{
+            lines.push([
+                entry.gene,
+                csvFormatNumber(entry.baseMean),
+                csvFormatNumber(entry.log2fc),
+                csvFormatNumber(entry.pvalue),
+                csvFormatNumber(entry.padj),
+                csvFormatNumber(entry.score),
+                csvFormatNumber(entry.pctSource),
+                csvFormatNumber(entry.pctReference),
+            ].map(csvEscape).join(','));
+        }});
+        return lines.join('\\n') + '\\n';
+    }}
+
+    function buildClusterDEExcelHtml(entries) {{
+        const headers = ['gene', 'base_mean', 'log2fc', 'pvalue', 'padj', 'score', 'pct_source', 'pct_reference'];
+        const rows = entries.map((entry) => [
+            entry.gene,
+            csvFormatNumber(entry.baseMean),
+            csvFormatNumber(entry.log2fc),
+            csvFormatNumber(entry.pvalue),
+            csvFormatNumber(entry.padj),
+            csvFormatNumber(entry.score),
+            csvFormatNumber(entry.pctSource),
+            csvFormatNumber(entry.pctReference),
+        ]);
+        return [
+            '<html><head><meta charset="utf-8"></head><body><table>',
+            '<thead><tr>' + headers.map((h) => '<th>' + escapeHtml(h) + '</th>').join('') + '</tr></thead>',
+            '<tbody>' + rows.map((row) => '<tr>' + row.map((value) => '<td>' + escapeHtml(value) + '</td>').join('') + '</tr>').join('') + '</tbody>',
+            '</table></body></html>',
+        ].join('');
+    }}
+
+    function downloadCurrentClusterDETable(format) {{
+        const result = getPairwiseClusterDEResult(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory);
+        const entries = getClusterDETableEntries(result);
+        if (!entries.length) {{
+            alert('No pseudobulk DE genes are available for this comparison.');
+            return;
+        }}
+        const stem = getClusterDEFilenameStem();
+        if (format === 'excel') {{
+            downloadTextFile(buildClusterDEExcelHtml(entries), `${{stem}}.xls`, 'application/vnd.ms-excel;charset=utf-8');
+        }} else {{
+            downloadTextFile(buildClusterDECsv(entries), `${{stem}}.csv`, 'text/csv;charset=utf-8');
+        }}
+    }}
+
+    function getClusterDEVolcanoSvgText(container) {{
+        const svg = container?.querySelector?.('.volcano-svg');
+        if (!svg) {{
+            return null;
+        }}
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        clone.querySelectorAll('.volcano-dot').forEach((dot) => dot.removeAttribute('class'));
+        return new XMLSerializer().serializeToString(clone);
+    }}
+
+    function downloadCurrentClusterDEVolcanoSvg(container) {{
+        const text = getClusterDEVolcanoSvgText(container);
+        if (!text) {{
+            alert('No volcano plot is available for this comparison.');
+            return;
+        }}
+        downloadTextFile(text, `${{getClusterDEFilenameStem()}}-volcano.svg`, 'image/svg+xml;charset=utf-8');
+    }}
+
+    function downloadCurrentClusterDEVolcanoPng(container) {{
+        const text = getClusterDEVolcanoSvgText(container);
+        const svg = container?.querySelector?.('.volcano-svg');
+        if (!text || !svg) {{
+            alert('No volcano plot is available for this comparison.');
+            return;
+        }}
+        const rect = svg.viewBox?.baseVal;
+        const width = Math.max(1, Math.ceil(rect?.width || Number(svg.getAttribute('width')) || svg.clientWidth || 390));
+        const height = Math.max(1, Math.ceil(rect?.height || Number(svg.getAttribute('height')) || svg.clientHeight || 220));
+        const blob = new Blob([text], {{ type: 'image/svg+xml;charset=utf-8' }});
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => {{
+            const canvas = document.createElement('canvas');
+            const scale = Math.max(2, Math.ceil(window.devicePixelRatio || 1));
+            canvas.width = width * scale;
+            canvas.height = height * scale;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--input-bg').trim() || '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.setTransform(scale, 0, 0, scale, 0, 0);
+            ctx.drawImage(img, 0, 0, width, height);
+            URL.revokeObjectURL(url);
+            downloadCanvasImage(canvas, `${{getClusterDEFilenameStem()}}-volcano.png`);
+        }};
+        img.onerror = () => {{
+            URL.revokeObjectURL(url);
+            alert('Could not render volcano plot PNG.');
+        }};
+        img.src = url;
+    }}
+
     function renderClusterDEResultSection(colorCol, sourceCategory, referenceCategory) {{
         const result = getPairwiseClusterDEResult(colorCol, sourceCategory, referenceCategory);
         if (!result) {{
             return `
                 <div class="agg-group">
-                    <div class="agg-group-title">Pairwise DE</div>
-                    <div class="agg-group-meta">No pairwise DE result is available for this comparison.</div>
+                    <div class="agg-group-title">Pseudobulk DE</div>
+                    <div class="agg-group-meta">No pseudobulk DE result is available for this comparison.</div>
                 </div>
             `;
         }}
@@ -20821,59 +21545,80 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const nSource = Number(result.n_source ?? 0).toLocaleString();
             const nReference = Number(result.n_reference ?? 0).toLocaleString();
             const minCells = Number(result.min_cells_required ?? 0).toLocaleString();
+            const minReplicates = Number(result.min_replicates_required ?? 0).toLocaleString();
             let detail = `n=${{nSource}} vs n=${{nReference}}.`;
             if (result.reason === 'insufficient_cells') {{
-                detail = `Need >= ${{minCells}} cells per category (got ${{nSource}} vs ${{nReference}}).`;
+                detail = `Need >= ${{minCells}} cells per replicate/category sample (got ${{nSource}} vs ${{nReference}} total cells).`;
+            }} else if (result.reason === 'insufficient_replicates') {{
+                detail = result.details || `Need >= ${{minReplicates}} paired replicates for this comparison.`;
+            }} else if (result.reason === 'de_failed' && result.details) {{
+                detail = result.details;
             }}
             return `
                 <div class="agg-group">
-                    <div class="agg-group-title">Pairwise DE</div>
+                    <div class="agg-group-title">Pseudobulk DE</div>
                     <div class="agg-group-meta">${{escapeHtml(detail)}}</div>
                 </div>
             `;
         }}
 
         const genes = Array.isArray(result.genes) ? result.genes : [];
-        const logfc = Array.isArray(result.logfoldchanges) ? result.logfoldchanges : [];
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
+        const pvals = Array.isArray(result.pvals) ? result.pvals : [];
         const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
         const scores = Array.isArray(result.scores) ? result.scores : [];
         const pctSource = Array.isArray(result.pct_source) ? result.pct_source : [];
         const pctReference = Array.isArray(result.pct_reference) ? result.pct_reference : [];
+        const baseMean = Array.isArray(result.base_mean) ? result.base_mean : [];
+        const sampleInfo = result.pseudobulk_samples || null;
+        const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(result.padj_cutoff, 0.05), 0), 1);
+        const log2fcCutoff = normalizePositiveThreshold(result.log2fc_cutoff, 0.5);
         if (!genes.length) {{
             return `
                 <div class="agg-group">
-                    <div class="agg-group-title">Pairwise DE</div>
-                    <div class="agg-group-meta">No DE genes were returned for this comparison.</div>
+                    <div class="agg-group-title">Pseudobulk DE</div>
+                    <div class="agg-group-meta">No pseudobulk DE genes were returned for this comparison.</div>
                 </div>
             `;
         }}
 
-        const rows = genes.map((gene, idx) => {{
-            const logfcValue = logfc[idx];
-            const pvalAdjValue = pvalsAdj[idx];
+        const significantIndices = getClusterDEColoredIndices(result);
+        const sourceColor = colorCol && sourceCategory !== null ? getCategoryColorForValue(colorCol, sourceCategory) : '#d94f4f';
+        const referenceColor = colorCol && referenceCategory !== null ? getCategoryColorForValue(colorCol, referenceCategory) : '#4f82d9';
+
+        const rows = significantIndices.map((idx) => {{
+            const gene = genes[idx];
+            const log2fcValue = Number(log2fc[idx]);
+            const pvalAdjValue = Number(pvalsAdj[idx]);
             const scoreValue = scores[idx];
             const pctSourceValue = pctSource[idx];
             const pctReferenceValue = pctReference[idx];
+            const rowColor = Number.isFinite(log2fcValue)
+                ? (log2fcValue >= 0 ? sourceColor : referenceColor)
+                : '';
+            const rowBackground = rowColor ? colorToRgbaCss(rowColor, 0.12) : 'transparent';
+            const mostExpressed = Number.isFinite(log2fcValue)
+                ? (log2fcValue >= 0 ? sourceCategory : referenceCategory)
+                : '';
             return `
-                <tr>
+                <tr style="background:${{rowBackground}};" data-most-expressed="${{escapeHtml(mostExpressed || '')}}">
                     <td><button type="button" class="cluster-de-gene-btn" data-cluster-de-gene="${{escapeHtml(gene)}}">${{escapeHtml(gene)}}</button></td>
-                    <td>${{formatScaleNumber(Number.isFinite(logfcValue) ? logfcValue : NaN)}}</td>
-                    <td>${{formatScaleNumber(Number.isFinite(pvalAdjValue) ? pvalAdjValue : NaN)}}</td>
+                    <td>${{formatScaleNumber(Number.isFinite(log2fcValue) ? log2fcValue : NaN)}}</td>
+                    <td>${{formatAdjustedPValue(pvalAdjValue)}}</td>
                     <td>${{formatScaleNumber(Number.isFinite(scoreValue) ? scoreValue : NaN)}}</td>
                     <td>${{formatClusterDEPct(Number.isFinite(pctSourceValue) ? pctSourceValue : NaN)}}</td>
                     <td>${{formatClusterDEPct(Number.isFinite(pctReferenceValue) ? pctReferenceValue : NaN)}}</td>
                 </tr>
             `;
         }}).join('');
-
-        return `
-            <div class="cluster-de-result">
-                ${{buildVolcanoPlot(genes, logfc, pvalsAdj)}}
+        const tableHtml = significantIndices.length ? `
                 <table class="cluster-de-table">
                     <thead>
                         <tr>
                             <th>Gene</th>
-                            <th>logFC</th>
+                            <th>log\u2082FC</th>
                             <th>adj. p</th>
                             <th>Score</th>
                             <th>% A</th>
@@ -20882,6 +21627,31 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </thead>
                     <tbody>${{rows}}</tbody>
                 </table>
+            ` : `
+                <div class="agg-group-meta">
+                    No genes pass adj. p <= ${{formatScaleNumber(padjCutoff)}} and |log\u2082FC| >= ${{formatScaleNumber(log2fcCutoff)}}.
+                </div>
+            `;
+        const plotPanels = [
+            buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff, log2fcCutoff),
+            buildPseudobulkPCAPlot(sampleInfo, colorCol),
+            buildPseudobulkDistanceHeatmap(sampleInfo, colorCol),
+        ].filter(Boolean).join('');
+        const diagnosticPlots = plotPanels
+            ? `<div class="cluster-de-plot-grid"><div class="cluster-de-plot-grid-title">Pseudobulk Analysis Diagnostics</div>${{plotPanels}}</div>`
+            : '';
+
+        return `
+            <div class="cluster-de-result">
+                ${{diagnosticPlots}}
+                ${{buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff, log2fcCutoff, colorCol, sourceCategory, referenceCategory)}}
+                <div class="cluster-de-actions">
+                    <button type="button" class="legend-btn" data-cluster-de-download-volcano>Save Volcano SVG</button>
+                    <button type="button" class="legend-btn" data-cluster-de-download-volcano-png>Save Volcano PNG</button>
+                    <button type="button" class="legend-btn" data-cluster-de-download-csv>Save Table CSV</button>
+                    <button type="button" class="legend-btn" data-cluster-de-download-excel>Save Table Excel</button>
+                </div>
+                ${{tableHtml}}
             </div>
         `;
     }}
@@ -20980,7 +21750,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         container.innerHTML = `
             <div class="cluster-de-meta">
                 Comparing <strong>${{escapeHtml(clusterDeSourceCategory)}}</strong> vs <strong>${{escapeHtml(clusterDeReferenceCategory)}}</strong>
-                in <strong>${{escapeHtml(formatMetadataLabel(clusterDeGroupby))}}</strong>.
+                in <strong>${{escapeHtml(formatMetadataLabel(clusterDeGroupby))}}</strong> with pseudobulk DESeq2.
             </div>
             ${{renderComparisonMarkerSummary(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory)}}
             ${{renderClusterDEResultSection(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory)}}
@@ -20995,40 +21765,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (ok) renderClusterDE();
             }});
         }});
-
-        const volcanoSvg = container.querySelector('.volcano-svg');
-        const volcanoTooltip = container.querySelector('.volcano-tooltip');
-        if (volcanoSvg && volcanoTooltip) {{
-            const volcanoContainer = volcanoSvg.parentElement;
-            volcanoSvg.addEventListener('mouseover', (e) => {{
-                const dot = e.target.closest('[data-volcano-gene]');
-                if (!dot) return;
-                const gene = dot.getAttribute('data-volcano-gene') || '';
-                const fc = dot.getAttribute('data-volcano-fc') || '';
-                const padj = dot.getAttribute('data-volcano-padj') || '';
-                volcanoTooltip.innerHTML = '<strong>' + escapeHtml(gene) + '</strong><br>logFC: ' + fc + '<br>adj.p: ' + padj;
-                volcanoTooltip.style.display = 'block';
-                const cRect = volcanoContainer.getBoundingClientRect();
-                const dRect = dot.getBoundingClientRect();
-                let left = dRect.left - cRect.left + 10;
-                let top = dRect.top - cRect.top - 8;
-                if (left + volcanoTooltip.offsetWidth > cRect.width - 4) left -= volcanoTooltip.offsetWidth + 16;
-                if (top < 0) top = dRect.bottom - cRect.top + 4;
-                volcanoTooltip.style.left = left + 'px';
-                volcanoTooltip.style.top = top + 'px';
-            }});
-            volcanoContainer.addEventListener('mouseleave', () => {{
-                volcanoTooltip.style.display = 'none';
-            }});
-            volcanoSvg.addEventListener('click', async (e) => {{
-                const dot = e.target.closest('[data-volcano-gene]');
-                if (!dot) return;
-                const gene = dot.getAttribute('data-volcano-gene') || '';
-                if (!gene) return;
-                const ok = await activateViewerGene(gene, {{ showErrors: true }});
-                if (ok) renderClusterDE();
-            }});
-        }}
+        container.querySelector('[data-cluster-de-download-volcano]')?.addEventListener('click', () => {{
+            downloadCurrentClusterDEVolcanoSvg(container);
+        }});
+        container.querySelector('[data-cluster-de-download-volcano-png]')?.addEventListener('click', () => {{
+            downloadCurrentClusterDEVolcanoPng(container);
+        }});
+        container.querySelector('[data-cluster-de-download-csv]')?.addEventListener('click', () => {{
+            downloadCurrentClusterDETable('csv');
+        }});
+        container.querySelector('[data-cluster-de-download-excel]')?.addEventListener('click', () => {{
+            downloadCurrentClusterDETable('excel');
+        }});
+        bindClusterDEPlotInteractions(container, renderClusterDE);
     }}
 
     function getGroupDEExportState(groupA, groupB, quickResult = null) {{
@@ -21808,7 +22557,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 `;
             }} else if (!quickResult.available && quickResult.reason === 'no_loaded_genes') {{
-                resultHtml = '<div class="agg-group-meta">No genes are currently loaded for group DE. Load genes in the Genes tab or click marker genes first.</div>';
+                resultHtml = '<div class="agg-group-meta">No genes are currently loaded for group DE. Load genes in the Genes tab or click pseudobulk DE genes first.</div>';
             }} else if (!quickResult.available && quickResult.reason === 'same_group') {{
                 resultHtml = '<div class="agg-group-meta">Choose two different groups to compare.</div>';
             }} else if (!quickResult.available) {{
@@ -24020,7 +24769,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const renderInlineGeneLinks = (genes) => genes.map(g =>
             `<span class="interaction-gene-link" data-gene-activate="${{escapeHtml(g)}}" title="Load ${{escapeHtml(g)}} into the viewer">${{escapeHtml(g)}}</span>`
         ).join(', ');
-        const sourceMarkerLabel = sourceMarkers.length ? renderInlineGeneLinks(sourceMarkers) : 'No marker genes available.';
+        const sourceMarkerLabel = sourceMarkers.length ? renderInlineGeneLinks(sourceMarkers) : 'No pseudobulk DE genes available.';
         const sourceN = (nCells[sourceIdx] ?? 0).toLocaleString();
         const degreeLabel = Number.isFinite(meanDegree[sourceIdx]) ? meanDegree[sourceIdx].toFixed(2) : '0.00';
         const withContactMarkers = topEntries.filter(entry => !!entry.contact).length;
@@ -24062,9 +24811,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="agg-group">
                 <div class="agg-group-title"><span class="agg-dot" style="background: ${{sourceColor}}"></span>${{source}} → targets</div>
                 <div class="agg-group-meta">n=${{sourceN}} | mean degree=${{degreeLabel}} | neighbor edges=${{formatNeighborCount(total)}}</div>
-                <div class="agg-group-meta">Source markers: ${{sourceMarkerLabel}}</div>
-                <div class="agg-group-meta">Contact-conditioned markers available for ${{withContactMarkers}}/${{topEntries.length}} shown targets.</div>
-                ${{hasInteractionMarkers ? '' : '<div class="agg-group-meta">Contact markers not precomputed for this color (set interaction_markers_groupby during export).</div>'}}
+                <div class="agg-group-meta">Source DE genes: ${{sourceMarkerLabel}}</div>
+                <div class="agg-group-meta">Contact-conditioned DE genes available for ${{withContactMarkers}}/${{topEntries.length}} shown targets.</div>
+                ${{hasInteractionMarkers ? '' : '<div class="agg-group-meta">Contact DE genes not precomputed for this color (use pseudobulk_additional_colors during export for extra annotations).</div>'}}
             </div>
             <table class="trend-table">
                 <thead>
@@ -24073,8 +24822,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <th>Share</th>
                         <th>Edges</th>
                         <th>Z</th>
-                        <th>Contact markers</th>
-                        <th>Type markers</th>
+                        <th>Contact DE genes</th>
+                        <th>Type DE genes</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -25637,7 +26386,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const file = e.target.files && e.target.files[0];
             if (!file || !modalSection) {{ e.target.value = ''; return; }}
             const section = modalSection;
-            const layerName = (file.name || 'Uploaded').replace(/\.[^.]+$/, '') || 'Uploaded';
+            const layerName = (file.name || 'Uploaded').replace(/\\.[^.]+$/, '') || 'Uploaded';
             const reader = new FileReader();
             reader.onload = () => {{
                 // Add as a new named layer (from the file name) and make it active.
@@ -25853,16 +26602,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const colorLabel = spec.color ? formatMetadataLabel(spec.color) : 'Cell type';
             const byColor = (DATA.marker_genes || {{}})[spec.color];
             if (!byColor || typeof byColor !== 'object') {{
-                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}}): unavailable`)}}</div>`;
+                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}}): unavailable`)}}</div>`;
             }}
             const category = spec.category;
             if (category && category !== BLEND_ALL_CATEGORIES) {{
                 const genes = getMarkerGenesForColorCategory(spec.color, category);
                 if (!genes.length) {{
-                    return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}} · ${{category}}): unavailable`)}}</div>`;
+                    return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}} · ${{category}}): unavailable`)}}</div>`;
                 }}
                 return [
-                    `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}} · ${{category}})`)}}</div>`,
+                    `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}} · ${{category}})`)}}</div>`,
                     `<div class="modal-blend-marker-row">${{escapeHtml(genes.join(' '))}}</div>`,
                 ].join('');
             }}
@@ -25875,10 +26624,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 return `<div class="modal-blend-marker-row"><span class="modal-blend-marker-name">${{escapeHtml(String(cat))}}</span>: ${{escapeHtml(genes.join(' '))}}</div>`;
             }}).filter(Boolean);
             if (!rows.length) {{
-                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}}): unavailable`)}}</div>`;
+                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}}): unavailable`)}}</div>`;
             }}
             return [
-                `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} markers (${{colorLabel}} · all categories)`)}}</div>`,
+                `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}} · all categories)`)}}</div>`,
                 ...rows,
             ].join('');
         }}
@@ -25895,7 +26644,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const bMarkers = getModalBlendMarkerHtml('b');
                 const markerBlocks = [aMarkers, bMarkers].filter(Boolean);
                 const hasMarkers = markerBlocks.length > 0;
-                const toggleLabel = modalBlendMarkersCollapsed ? 'Show marker genes' : 'Hide marker genes';
+            const toggleLabel = modalBlendMarkersCollapsed ? 'Show DE genes' : 'Hide DE genes';
                 modalBlendMeta.innerHTML = [
                     `<div class="modal-blend-summary">${{escapeHtml(summary)}}</div>`,
                     hasMarkers
@@ -26396,42 +27145,32 @@ def export_to_html(
     min_panel_size: int = 150,
     spot_size: Union[float, str, None] = "auto",
     downsample: Optional[int] = None,
-    theme: str = "light",
-    vmin: Optional[float] = None,
-    vmax: Optional[float] = None,
     outline_by: Optional[str] = "course",
     metadata_labels: Optional[Mapping[str, str]] = None,
     viewer_info_html: Optional[str] = None,
     additional_colors: Optional[List[str]] = None,
     genes: Optional[List[str]] = None,
     gene_encoding: str = "auto",
-    gene_value_encoding: str = "float32",
-    gene_sidecar_format: str = GENE_SIDECAR_FORMAT_JSON_V2,
+    gene_value_encoding: str = "uint16",
     gene_storage: str = "embedded",
     gene_aux_path: Optional[str] = None,
     gene_sidecar_shard_size: int = GENE_SIDECAR_SHARD_SIZE,
     gene_sparse_zero_threshold: float = 0.8,
-    pack_arrays: bool = True,
-    pack_arrays_min_len: int = 1024,
-    hvg_limit: int = 20,
-    marker_genes_groupby: Optional[List[str]] = None,
-    marker_genes_top_n: int = 30,
-    use_hvgs: bool = True,
-    cluster_de_groupby: Optional[List[str]] = None,
-    cluster_de_top_n: int = 20,
-    cluster_de_method: str = "wilcoxon",
-    cluster_de_layer: Optional[str] = "normalized",
-    cluster_de_min_cells: int = 20,
+    pseudobulk_additional_colors: Optional[List[str]] = None,
+    pseudobulk_counts_layer: Optional[str] = "counts",
+    pseudobulk_min_replicates: int = 2,
+    pseudobulk_min_pct_expressed: float = 0.0,
+    pseudobulk_p_adjust_method: str = "fdr_bh",
+    pseudobulk_padj_cutoff: float = 0.05,
+    pseudobulk_log2fc_cutoff: float = 0.5,
+    pseudobulk_deseq2_fit_type: str = "parametric",
     neighbor_stats_groupby: Optional[List[str]] = None,
     neighbor_stats_permutations: Union[int, None] = None,
     neighbor_stats_seed: int = 0,
-    interaction_markers_groupby: Optional[List[str]] = None,
     interaction_markers_top_targets: int = 8,
     interaction_markers_top_genes: int = 20,
     interaction_markers_min_cells: int = 30,
     interaction_markers_min_neighbors: int = 1,
-    interaction_markers_method: str = "wilcoxon",
-    interaction_markers_layer: Optional[str] = "normalized",
     section_rotations: Optional[Mapping[str, Union[int, float]]] = None,
     deconvolutions: Optional[Dict[str, str]] = None,
     gene_correlation_top_n: int = 10,
@@ -26464,10 +27203,6 @@ def export_to_html(
         "auto"/"adaptive"/"density" (or None) to estimate from cell density.
     downsample : int, optional
         Downsample cells per section (for large datasets)
-    theme : str
-        'light' or 'dark'
-    vmin, vmax : float, optional
-        Min/max for continuous color scale
     outline_by : str, optional
         Metadata column used to color panel outlines (default: "course")
     metadata_labels : mapping, optional
@@ -26483,12 +27218,8 @@ def export_to_html(
         "dense", "sparse", or "auto" (default). "auto" uses sparse encoding for
         zero-inflated genes to reduce HTML size.
     gene_value_encoding : str
-        Only used for sidecar/package genes. "float32" (default) stores full-
-        precision values; "uint16" and "uint8" store linearly quantized values
-        using each gene's exported vmin/vmax range.
-    gene_sidecar_format : str
-        Sidecar storage format. "json-v2" (default) writes JSON shard files.
-        "binary-v1" writes indexed binary `.bin` shards for faster random access.
+        Only used for sidecar/package genes. "uint16" (default) and "uint8"
+        store linearly quantized values using each gene's exported vmin/vmax range.
     gene_storage : str
         "embedded" (default) keeps gene data in the HTML. "sidecar" embeds only
         the selected/preloaded genes and writes remaining genes to an auxiliary
@@ -26502,39 +27233,34 @@ def export_to_html(
     gene_sparse_zero_threshold : float
         Only used when gene_encoding="auto". Use sparse encoding when the
         fraction of zeros is >= this threshold (default: 0.8).
-    pack_arrays : bool
-        Pack large per-section numeric arrays (coordinates, colors, UMAP) as base64 typed arrays
-        for smaller HTML and faster load. Default: True.
-    pack_arrays_min_len : int
-        Only pack per-section arrays when section cell count is >= this value. Default: 1024.
-    hvg_limit : int
-        Max number of highly variable genes to include (default 20)
     gene_correlation_top_n : int
         Number of top correlated genes to show per embedded gene (default 10). Set to 0 to disable.
     cluster_means_n_genes : int
-        Number of top variable genes to precompute per-cluster means for (default 500).
-        These means power the mean-expression panel in the lasso selection summary for
-        all genes including sidecar ones. Set to 0 to disable.
+        Maximum embedded pseudobulk-DE genes to expose in category mean summaries
+        (default 500). These means power the Genes -> Means tab and the lasso
+        selection summary. Set to 0 to disable.
     spatial_variable_genes_n : int
         Number of top variable genes to score with Moran's I spatial autocorrelation
         (default 200). Requires a spatial weight matrix in adata.obsp. Set to 0 to disable.
-    marker_genes_groupby : list, optional
-        Obs columns to compute marker genes for (categorical only). If None/empty,
-        marker genes are not computed.
-    marker_genes_top_n : int
-        Number of top marker genes to keep per group
-    cluster_de_groupby : list, optional
-        Obs columns to compute pairwise cluster-vs-cluster DE for (categorical only).
-        If None/empty, cluster DE is not computed.
-    cluster_de_top_n : int
-        Number of top DE genes to keep per cluster pair.
-    cluster_de_method : str
-        Method passed to scanpy.tl.rank_genes_groups for cluster DE
-        (e.g. "wilcoxon", "t-test").
-    cluster_de_layer : str, optional
-        Layer used for cluster DE (default: "normalized" if present).
-    cluster_de_min_cells : int
-        Minimum cells required in both clusters to report pairwise DE.
+    pseudobulk_additional_colors : list, optional
+        Additional color columns to analyze with category pseudobulk DE and
+        interaction pseudobulk DE. The initial color is always analyzed automatically.
+    pseudobulk_counts_layer : str, optional
+        Raw-count AnnData layer for pseudobulk aggregation. Defaults to "counts";
+        falls back to adata.X with a warning if absent.
+    pseudobulk_min_replicates : int
+        Minimum paired replicates required for each group-vs-group contrast.
+    pseudobulk_min_pct_expressed : float
+        Minimum fraction of cells expressing a gene required in both compared
+        groups. Values > 1 are interpreted as percentages.
+    pseudobulk_p_adjust_method : str
+        Multiple-testing correction method: "fdr_bh", "bonferroni", "holm", or "none".
+    pseudobulk_padj_cutoff : float
+        Adjusted p-value cutoff used for volcano coloring and DE table inclusion.
+    pseudobulk_log2fc_cutoff : float
+        Absolute log2 fold-change cutoff used for volcano coloring and DE table inclusion.
+    pseudobulk_deseq2_fit_type : str
+        PyDESeq2 dispersion trend fit type: "parametric" or "mean".
     neighbor_stats_groupby : list, optional
         Obs columns to compute neighbor composition stats for (categorical only).
         If None/empty, neighbor stats are not computed.
@@ -26542,20 +27268,15 @@ def export_to_html(
         Number of permutations for neighbor enrichment z-scores (0 disables)
     neighbor_stats_seed : int
         Random seed used for neighbor permutations
-    interaction_markers_groupby : list, optional
-        Obs columns to compute contact-conditioned interaction markers for.
     interaction_markers_top_targets : int
         Number of target cell types to evaluate per source.
     interaction_markers_top_genes : int
         Number of top DE genes to keep per source-target interaction.
     interaction_markers_min_cells : int
-        Minimum cells required in both contact+ and contact- groups.
+        Minimum cells required per replicate in both contact+ and contact-
+        pseudobulk samples.
     interaction_markers_min_neighbors : int
         Minimum target neighbors to classify source cells as contact+.
-    interaction_markers_method : str
-        Method passed to scanpy.tl.rank_genes_groups (e.g. "wilcoxon", "t-test").
-    interaction_markers_layer : str, optional
-        Layer used for interaction DE (default: "normalized" if present).
     section_rotations : mapping, optional
         Optional mapping of section_id -> initial rotation angle in degrees.
         Angles are stored exactly (normalized modulo 360) for the interactive viewer.
@@ -26591,51 +27312,29 @@ def export_to_html(
         gene_aux_path = package_gene_manifest_name
         output_path = str(requested_output_path)
 
-    # Theme colors
-    if theme == "dark":
-        colors = {
-            "background": "#1a1a1a",
-            "text_color": "#e0e0e0",
-            "header_bg": "#2a2a2a",
-            "panel_bg": "#2a2a2a",
-            "border_color": "#404040",
-            "input_bg": "#333333",
-            "muted_color": "#888888",
-            "hover_bg": "#3a3a3a",
-            "graph_color": "rgba(255, 255, 255, 0.12)",
-        }
-    else:
-        colors = {
-            "background": "#f5f5f5",
-            "text_color": "#1a1a1a",
-            "header_bg": "#ffffff",
-            "panel_bg": "#ffffff",
-            "border_color": "#e0e0e0",
-            "input_bg": "#ffffff",
-            "muted_color": "#666666",
-            "hover_bg": "#f0f0f0",
-            "graph_color": "rgba(0, 0, 0, 0.12)",
-        }
+    colors = {
+        "background": "#f5f5f5",
+        "text_color": "#1a1a1a",
+        "header_bg": "#ffffff",
+        "panel_bg": "#ffffff",
+        "border_color": "#e0e0e0",
+        "input_bg": "#ffffff",
+        "muted_color": "#666666",
+        "hover_bg": "#f0f0f0",
+        "graph_color": "rgba(0, 0, 0, 0.12)",
+    }
 
     gene_storage = str(gene_storage or "embedded").strip().lower()
     if gene_storage not in {"embedded", "sidecar"}:
         raise ValueError("gene_storage must be one of: 'embedded', 'sidecar'")
-    gene_sidecar_format = _validate_gene_sidecar_format(gene_sidecar_format)
     gene_sidecar_shard_size = int(gene_sidecar_shard_size)
     if gene_sidecar_shard_size < 1:
         raise ValueError("gene_sidecar_shard_size must be >= 1")
-    if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1 and gene_value_encoding not in {"uint8", "uint16"}:
-        raise ValueError("binary-v1 sidecar format requires gene_value_encoding='uint8' or 'uint16'")
+    gene_value_encoding = str(gene_value_encoding or "uint16").strip().lower()
+    if gene_value_encoding not in {"uint8", "uint16"}:
+        raise ValueError("gene_value_encoding must be one of: 'uint16', 'uint8'")
     resolved_section_rotations = _resolve_section_rotations(dataset, section_rotations)
 
-    # Prefer highly variable genes for expression if available; otherwise use provided genes
-    hv_genes = None
-    if use_hvgs and "highly_variable" in dataset.adata.var.columns:
-        hv_mask = dataset.adata.var["highly_variable"].to_numpy(dtype=bool)
-        if hv_mask.any():
-            hv_genes = dataset.adata.var_names[hv_mask].tolist()[:max(0, int(hvg_limit))]
-    if hv_genes is not None:
-        genes = hv_genes
     embedded_genes = list(dict.fromkeys([g for g in (genes or []) if g in dataset.adata.var_names]))
     sidecar_genes: List[str] = []
     resolved_gene_aux_path: Optional[Path] = None
@@ -26643,7 +27342,6 @@ def export_to_html(
     gene_aux_url: Optional[str] = None
     sidecar_export_indices = None
     if gene_storage == "sidecar":
-        sidecar_genes = [g for g in dataset.var_names if g not in set(embedded_genes)]
         sidecar_export_indices = dataset._get_export_section_indices(downsample=downsample)
         output_path_obj = requested_output_path
         if gene_aux_path:
@@ -26660,10 +27358,20 @@ def export_to_html(
 
     if outline_by and outline_by not in dataset.metadata_columns:
         print(f"  Warning: outline_by '{outline_by}' not in metadata columns; no outlines will be shown.")
-    if int(cluster_de_top_n) < 1:
-        raise ValueError("cluster_de_top_n must be >= 1")
-    if int(cluster_de_min_cells) < 1:
-        raise ValueError("cluster_de_min_cells must be >= 1")
+    if int(pseudobulk_min_replicates) < 1:
+        raise ValueError("pseudobulk_min_replicates must be >= 1")
+    correction_method = str(pseudobulk_p_adjust_method or "fdr_bh").strip().lower().replace("-", "_")
+    if correction_method not in {"fdr_bh", "bh", "benjamini_hochberg", "bonferroni", "bonf", "holm", "holm_bonferroni", "none", "raw", "pvalue", "pvalues"}:
+        raise ValueError("pseudobulk_p_adjust_method must be one of: fdr_bh, bonferroni, holm, none")
+    if float(pseudobulk_min_pct_expressed) < 0:
+        raise ValueError("pseudobulk_min_pct_expressed must be >= 0")
+    if not 0 <= float(pseudobulk_padj_cutoff) <= 1:
+        raise ValueError("pseudobulk_padj_cutoff must be between 0 and 1")
+    if float(pseudobulk_log2fc_cutoff) < 0:
+        raise ValueError("pseudobulk_log2fc_cutoff must be >= 0")
+    fit_type = str(pseudobulk_deseq2_fit_type or "parametric").strip().lower()
+    if fit_type not in {"parametric", "mean"}:
+        raise ValueError("pseudobulk_deseq2_fit_type must be one of: parametric, mean")
 
     if viewer_info_html is None:
         viewer_info_html = (
@@ -26690,55 +27398,58 @@ def export_to_html(
     viewer_info_html_safe = viewer_info_html.replace('{', '{{').replace('}', '}}')
 
     # Get data with multiple color layers and genes
-    if neighbor_stats_groupby is None:
-        neighbor_stats_groupby = [color]
-        if additional_colors:
-            neighbor_stats_groupby.extend(additional_colors)
-
     if neighbor_stats_permutations is None:
         # Auto-tune: permutation z-scores are expensive for very large datasets.
         # Keep the feature (counts + mean degree) always, but skip permutations unless requested.
         neighbor_stats_permutations = 0 if int(dataset.adata.n_obs) >= 200_000 else 20
 
-    marker_genes_groupby = _resolve_marker_genes_groupby(
-        dataset=dataset,
-        color=color,
-        marker_genes_groupby=marker_genes_groupby,
-    )
     companion_analytics = dataset.get_companion_analytics()
+    pseudobulk_de_groupby = []
+    for col in [color, *(pseudobulk_additional_colors or [])]:
+        if col and col not in pseudobulk_de_groupby:
+            pseudobulk_de_groupby.append(col)
+    if neighbor_stats_groupby is None:
+        neighbor_stats_groupby = list(pseudobulk_de_groupby)
+        if additional_colors:
+            neighbor_stats_groupby.extend(
+                col for col in additional_colors if col and col not in neighbor_stats_groupby
+            )
+    else:
+        neighbor_stats_groupby = list(neighbor_stats_groupby)
+        neighbor_stats_groupby.extend(
+            col for col in pseudobulk_de_groupby if col and col not in neighbor_stats_groupby
+        )
 
     data = dataset.to_json_data(
         color,
         downsample=downsample,
-        vmin=vmin,
-        vmax=vmax,
         additional_colors=additional_colors,
         genes=embedded_genes,
         gene_encoding=gene_encoding,
         gene_sparse_zero_threshold=gene_sparse_zero_threshold,
-        section_array_pack=pack_arrays,
-        section_array_pack_min_len=pack_arrays_min_len,
-        marker_genes_groupby=marker_genes_groupby,
-        marker_genes_top_n=marker_genes_top_n,
-        cluster_de_groupby=cluster_de_groupby,
-        cluster_de_top_n=cluster_de_top_n,
-        cluster_de_method=cluster_de_method,
-        cluster_de_layer=cluster_de_layer,
-        cluster_de_min_cells=cluster_de_min_cells,
+        pseudobulk_de_groupby=pseudobulk_de_groupby,
+        pseudobulk_counts_layer=pseudobulk_counts_layer,
+        pseudobulk_min_replicates=pseudobulk_min_replicates,
+        pseudobulk_min_pct_expressed=pseudobulk_min_pct_expressed,
+        pseudobulk_p_adjust_method=correction_method,
+        pseudobulk_padj_cutoff=pseudobulk_padj_cutoff,
+        pseudobulk_log2fc_cutoff=pseudobulk_log2fc_cutoff,
+        pseudobulk_deseq2_fit_type=fit_type,
         neighbor_stats_groupby=neighbor_stats_groupby,
         neighbor_stats_permutations=neighbor_stats_permutations,
         neighbor_stats_seed=neighbor_stats_seed,
-        interaction_markers_groupby=interaction_markers_groupby,
         interaction_markers_top_targets=interaction_markers_top_targets,
         interaction_markers_top_genes=interaction_markers_top_genes,
         interaction_markers_min_cells=interaction_markers_min_cells,
         interaction_markers_min_neighbors=interaction_markers_min_neighbors,
-        interaction_markers_method=interaction_markers_method,
-        interaction_markers_layer=interaction_markers_layer,
         section_rotations=resolved_section_rotations,
         deconvolutions=deconvolutions,
     )
     data["scalebar_unit"] = str(scalebar_unit or "μm")
+    embedded_genes = list(data.get("available_genes") or embedded_genes)
+    data["embedded_genes"] = list(embedded_genes)
+    if gene_storage == "sidecar":
+        sidecar_genes = [g for g in dataset.var_names if g not in set(embedded_genes)]
     original_total_cells = int(dataset.adata.n_obs)
     exported_total_cells = int(data.get("total_cells") or 0)
     downsample_configured = downsample is not None
@@ -26807,17 +27518,6 @@ def export_to_html(
     data["features_by_modality"] = features_by_modality
     data["default_modality"] = default_modality_name if modality_descriptors else None
 
-    if int(gene_correlation_top_n) > 0 and embedded_genes:
-        if "gene_correlations" in companion_analytics:
-            print("Using KaroSpaceCompanion gene correlations.")
-            data["gene_correlations"] = companion_analytics["gene_correlations"]
-        else:
-            data["gene_correlations"] = _compute_gene_correlations(
-                dataset.adata, embedded_genes, top_n=int(gene_correlation_top_n)
-            )
-    else:
-        data["gene_correlations"] = {}
-
     if int(spatial_variable_genes_n) > 0:
         if "spatial_variable_genes" in companion_analytics:
             print("Using KaroSpaceCompanion spatially variable genes.")
@@ -26835,23 +27535,26 @@ def export_to_html(
             print("Using KaroSpaceCompanion cluster gene means.")
             data["cluster_gene_means"] = companion_analytics["cluster_gene_means"]
         else:
-            cmeans_genes = _select_top_variable_genes(dataset.adata, int(cluster_means_n_genes))
-            categorical_cols = [
-                col for col in (data.get("available_colors") or [])
-                if not (data.get("colors_meta") or {}).get(col, {}).get("is_continuous", True)
-            ]
-            if categorical_cols and cmeans_genes:
-                print(f"  - precomputing cluster gene means ({len(cmeans_genes)} genes × {len(categorical_cols)} columns)...")
-                cmeans_columns = {}
-                for col in categorical_cols:
-                    result = _compute_cluster_gene_means(dataset.adata, cmeans_genes, col)
-                    if result:
-                        cmeans_columns[col] = result
-                data["cluster_gene_means"] = {"genes": cmeans_genes, "columns": cmeans_columns} if cmeans_columns else None
-            else:
-                data["cluster_gene_means"] = None
+            data["cluster_gene_means"] = _cluster_gene_means_from_pseudobulk_de(
+                data.get("pseudobulk_de"),
+                embedded_genes,
+                int(cluster_means_n_genes),
+            )
     else:
         data["cluster_gene_means"] = None
+
+    if int(gene_correlation_top_n) > 0 and embedded_genes:
+        if "gene_correlations" in companion_analytics:
+            print("Using KaroSpaceCompanion gene correlations.")
+            data["gene_correlations"] = companion_analytics["gene_correlations"]
+        else:
+            data["gene_correlations"] = _compute_gene_correlations_from_category_means(
+                data.get("cluster_gene_means"),
+                embedded_genes,
+                top_n=int(gene_correlation_top_n),
+            )
+    else:
+        data["gene_correlations"] = {}
 
     resolved_spot_size, used_auto_spot_size = _resolve_spot_size(
         dataset=dataset,
@@ -26863,8 +27566,8 @@ def export_to_html(
     modal_spot_slider_max = max(0.04, modal_spot_size * 2.0)
 
     # Theme settings
-    theme_icon = "☀️" if theme == "dark" else "🌙"
-    initial_theme = theme
+    theme_icon = "🌙"
+    initial_theme = "light"
 
     # Load logo for favicon
     logo_base64 = _load_logo_base64()
@@ -26962,20 +27665,15 @@ def export_to_html(
                     dynamic_ncols=True,
                 )
         manifest = {
-            "format": (
-                "karospace-gene-sidecar-manifest-v3"
-                if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1
-                else "karospace-gene-sidecar-manifest-v2"
-            ),
-            "gene_sidecar_format": gene_sidecar_format,
+            "format": "karospace-gene-sidecar-manifest-v3",
+            "gene_sidecar_format": GENE_SIDECAR_FORMAT_BINARY,
             "shards": {},
             "genes_meta": {},
             "gene_encodings": {},
             "gene_value_encodings": {},
             "gene_to_shard": {},
+            "section_order": [section.section_id for section in dataset.sections],
         }
-        if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1:
-            manifest["section_order"] = [section.section_id for section in dataset.sections]
         output_parent = Path(output_path).resolve().parent
         section_cell_counts = {
             section_id: int(len(indices))
@@ -26983,8 +27681,7 @@ def export_to_html(
         }
         genes_written = 0
         for shard_idx, shard_genes in enumerate(shard_groups):
-            shard_suffix = ".bin" if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1 else ".json"
-            shard_filename = f"{shard_idx:03d}{shard_suffix}"
+            shard_filename = f"{shard_idx:03d}.bin"
             shard_path = resolved_gene_aux_dir / shard_filename
             shard_rel = Path(os.path.relpath(shard_path, start=output_parent)).as_posix()
             shard_start = genes_written + 1
@@ -27016,21 +27713,13 @@ def export_to_html(
                     manifest["gene_encodings"][gene] = shard_data["gene_encodings"][gene]
                 if gene in shard_data.get("gene_value_encodings", {}):
                     manifest["gene_value_encodings"][gene] = shard_data["gene_value_encodings"][gene]
-            if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1:
-                _write_binary_gene_shard(
-                    shard_path=shard_path,
-                    shard_genes=shard_genes,
-                    shard_data=shard_data,
-                    section_order=manifest["section_order"],
-                    section_cell_counts=section_cell_counts,
-                )
-            else:
-                shard_data["format"] = "karospace-gene-sidecar-shard-v2"
-                shard_data.pop("genes_meta", None)
-                shard_data.pop("gene_encodings", None)
-                shard_data.pop("gene_value_encodings", None)
-                with open(shard_path, "w", encoding="utf-8") as f:
-                    json.dump(shard_data, f, separators=(",", ":"))
+            _write_binary_gene_shard(
+                shard_path=shard_path,
+                shard_genes=shard_genes,
+                shard_data=shard_data,
+                section_order=manifest["section_order"],
+                section_cell_counts=section_cell_counts,
+            )
             genes_written += len(shard_genes)
             shard_elapsed = time.perf_counter() - shard_t0
             if progress is not None:
@@ -27052,10 +27741,9 @@ def export_to_html(
                 "gene_value_encodings": dict(manifest["gene_value_encodings"]),
                 "gene_to_shard": dict(manifest["gene_to_shard"]),
                 "value_kind": "counts",
+                "section_order": list(manifest["section_order"]),
             }
         }
-        if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1:
-            manifest["modalities"][default_modality_name]["section_order"] = list(manifest["section_order"])
 
         # Per-modality shard writes for non-default modalities.
         for mod_name in extra_modalities:
@@ -27078,12 +27766,10 @@ def export_to_html(
                 "gene_to_shard": {},
                 "value_kind": mod.value_kind,
                 "label": mod.label or mod_name,
+                "section_order": [section.section_id for section in dataset.sections],
             }
-            if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1:
-                mod_entry["section_order"] = [section.section_id for section in dataset.sections]
             for shard_idx, shard_features in enumerate(mod_shard_groups):
-                shard_suffix = ".bin" if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1 else ".json"
-                shard_filename = f"{shard_idx:03d}{shard_suffix}"
+                shard_filename = f"{shard_idx:03d}.bin"
                 shard_path = mod_aux_dir / shard_filename
                 shard_rel = Path(os.path.relpath(shard_path, start=output_parent)).as_posix()
                 shard_data = dataset.to_gene_sidecar_data(
@@ -27104,21 +27790,13 @@ def export_to_html(
                         mod_entry["gene_encodings"][feat] = shard_data["gene_encodings"][feat]
                     if feat in shard_data.get("gene_value_encodings", {}):
                         mod_entry["gene_value_encodings"][feat] = shard_data["gene_value_encodings"][feat]
-                if gene_sidecar_format == GENE_SIDECAR_FORMAT_BINARY_V1:
-                    _write_binary_gene_shard(
-                        shard_path=shard_path,
-                        shard_genes=shard_features,
-                        shard_data=shard_data,
-                        section_order=mod_entry["section_order"],
-                        section_cell_counts=section_cell_counts,
-                    )
-                else:
-                    shard_data["format"] = "karospace-gene-sidecar-shard-v2"
-                    shard_data.pop("genes_meta", None)
-                    shard_data.pop("gene_encodings", None)
-                    shard_data.pop("gene_value_encodings", None)
-                    with open(shard_path, "w", encoding="utf-8") as f:
-                        json.dump(shard_data, f, separators=(",", ":"))
+                _write_binary_gene_shard(
+                    shard_path=shard_path,
+                    shard_genes=shard_features,
+                    shard_data=shard_data,
+                    section_order=mod_entry["section_order"],
+                    section_cell_counts=section_cell_counts,
+                )
             manifest["modalities"][mod_name] = mod_entry
 
         # Bump format only when extra modalities are actually present.
@@ -27127,6 +27805,8 @@ def export_to_html(
 
         with open(resolved_gene_aux_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f, separators=(",", ":"))
+        if package_mode:
+            _validate_gene_sidecar_manifest_payload(manifest, resolved_gene_aux_path)
         if total_sidecar_genes:
             total_elapsed = time.perf_counter() - sidecar_t0
             if progress is not None:
@@ -27175,14 +27855,18 @@ def export_to_html(
         print(f"  - spot size {resolved_spot_size:.2f}")
     print(f"  - {len(data['available_colors'])} color options")
     if embedded_genes:
-        print(f"  - {len(data['genes_meta'])} genes loaded")
+        print(f"  - {len(data['genes_meta'])} genes embedded in HTML")
         enc = data.get("gene_encodings") or {}
         if enc:
             n_sparse = sum(1 for v in enc.values() if v == "sparse")
             n_dense = sum(1 for v in enc.values() if v == "dense")
             print(f"  - gene encoding: {n_sparse} sparse, {n_dense} dense")
     if gene_aux_url:
+        if not embedded_genes:
+            print("  - 0 genes embedded in HTML; gene expression is sidecar-only")
         print(f"  - sidecar genes available via {gene_aux_url}")
+        print("  - sidecar viewers must be opened over HTTP(S) with the .genes.json file and .genes/ directory next to the HTML")
+        print(f"  - sidecar format: {GENE_SIDECAR_FORMAT_BINARY}")
         print(f"  - sidecar value encoding: {gene_value_encoding}")
     if package_temp_dir is not None:
         package_temp_dir.cleanup()

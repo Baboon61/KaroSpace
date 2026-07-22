@@ -19,8 +19,7 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **Split compare slider** — Compare two variables side-by-side in the modal (`Cell type` or `Gene`, including `All categories`), draggable directly on the canvas
 - **Legend controls + spotlight** — Toggle/hide categories and spotlight one class across grid and UMAP
 - **Flexible coloring + gene discovery** — Switch between annotation columns, fuzzy-search genes, and reuse recent or saved gene panels
-- **Insights panel** — `Summary`, `Compare`, `Genes`, `Neighborhood`, and `Regions` tabs with marker genes, pairwise cluster DE, neighbor composition, interaction markers, and region comparison
-- **Marker-gene CSV export** — Download the top marker genes for every cluster of the current color as a tidy CSV
+- **Insights panel** — `Summary`, `Compare`, `Genes`, `Neighborhood`, and `Regions` tabs with pseudobulk category DE, neighbor composition, interaction markers, and region comparison
 - **Annotation river plot** — `Insights → Compare → River` draws a Sankey of how two annotations correspond (e.g. `leiden_1` ↔ `leiden_2`); click a node to recolor and spotlight it, or export the crosstab as CSV
 - **Numeric category ordering** — Numeric cluster labels sort naturally (`2` before `10`) in legends, dropdowns, and plots, with `adata.uns` palettes kept aligned
 - **Modal selection workflow** — Lasso in the sample view, open a focused subview, browse `Genes in selection`, and use `Space` + drag to pan while Select or Annotate is active
@@ -116,7 +115,6 @@ export_to_html(
     min_panel_size=150,          # Min panel width (responsive autoscaling)
     spot_size="auto",            # Adaptive by section density (or set a fixed number)
     downsample=30000,            # Max cells per section
-    theme="light",               # "light" or "dark"
     additional_colors=[          # Extra columns for color dropdown
         "leiden",
         "condition",
@@ -130,17 +128,15 @@ export_to_html(
     gene_storage="embedded",     # "embedded" | "sidecar"
     gene_aux_path=None,          # Optional manifest path; defaults to viewer.genes.json
     gene_sparse_zero_threshold=0.8,
-    pack_arrays=True,
-    use_hvgs=True,
-    hvg_limit=20,
-    marker_genes_groupby=None,
-    marker_genes_top_n=30,
     neighbor_stats_groupby=["cell_type"],
     neighbor_stats_permutations=20,
-    interaction_markers_groupby=None,
-    cluster_de_groupby=["cell_type"],
-    cluster_de_top_n=20,
-    cluster_de_method="wilcoxon",
+    pseudobulk_additional_colors=["cell_type"],
+    pseudobulk_counts_layer="counts",
+    pseudobulk_min_pct_expressed=0.0,
+    pseudobulk_p_adjust_method="fdr_bh",
+    pseudobulk_padj_cutoff=0.05,
+    pseudobulk_log2fc_cutoff=0.5,
+    pseudobulk_deseq2_fit_type="parametric",
     section_rotations={
         "sample_a": 37.5,
         "sample_b": -90,
@@ -161,36 +157,69 @@ karospace your_data.h5ad -o viewer.html --color leiden
 | `-o, --output` | Output HTML file path | `karospace.html` |
 | `-c, --color` | Initial color column | `leiden` |
 | `--additional-colors` | Comma-separated extra obs columns to embed as selectable colors (needed to compare two annotations in the River plot) | empty |
+| `--genes` | Comma-separated genes to preload; significant pseudobulk DE genes are embedded automatically | empty |
 | `--metadata-labels` | JSON object mapping metadata/obs column keys to display labels in the viewer UI | empty |
+| `--metadata-columns` | Comma-separated obs columns to use as section metadata and filter chips | loader defaults |
+| `--metadata-value-order` | JSON object mapping metadata columns to ordered value lists | empty |
+| `--metadata-max-columns` | Limit metadata columns used, preserving order | empty |
 | `-g, --groupby` | Column to group sections by | `sample_id` |
+| `--group-order` | Comma-separated section/group IDs to control section order | empty |
+| `--spatial-key` | Key in `adata.obsm` containing spatial coordinates, or target key created from `--spatial-x/--spatial-y` | `spatial` |
+| `--spatial-x` | Obs/metadata column to use as X coordinates; requires `--spatial-y` | empty |
+| `--spatial-y` | Obs/metadata column to use as Y coordinates; requires `--spatial-x` | empty |
 | `--min-panel-size` | Minimum panel width in pixels | `150` |
 | `--spot-size` | Cell/spot size (`auto` or positive number) | `auto` |
 | `--downsample` | Max cells per section | None |
-| `--theme` | Color theme (`light` or `dark`) | `light` |
 | `--title` | Page title | `KaroSpace` |
+| `--outline-by` | Metadata column used for panel outline colors; use `None` to disable | `course` |
+| `--viewer-info-html` | HTML string shown in the viewer Info tab | default info |
+| `--viewer-info-html-file` | Path to an HTML fragment shown in the viewer Info tab | empty |
 | `--gene-encoding` | Gene vector encoding (`auto`, `dense`, `sparse`) | `auto` |
+| `--gene-value-encoding` | Sidecar/package gene value encoding for binary shards (`uint16`, `uint8`) | `uint16` |
 | `--gene-storage` | Gene storage mode (`embedded`, `sidecar`) | `embedded` |
 | `--gene-aux-path` | Path for the gene sidecar manifest JSON | auto |
+| `--gene-sidecar-shard-size` | Genes/features per sidecar shard | `256` |
 | `--gene-sparse-zero-threshold` | Zero fraction threshold for `auto` sparse encoding | `0.8` |
-| `--no-pack-arrays` | Disable base64 packing of large per-section arrays | off |
-| `--pack-arrays-min-len` | Only pack arrays when section cell count ≥ this value | `1024` |
+| `--modalities` | Comma-separated modalities to export | all detected |
 | `--neighbor-permutations` | Permutations for neighbor enrichment z-scores | `auto` |
 | `--neighbor-stats-groupby` | Obs columns for neighbor composition stats (`auto` or comma-separated) | `auto` |
-| `--marker-genes-groupby` | Obs columns to compute marker genes for | empty |
-| `--interaction-markers-groupby` | Obs columns to compute contact-conditioned markers for | empty |
-| `--cluster-de-groupby` | Categorical obs columns for pairwise cluster DE (`Insights → Compare`) | empty |
-| `--cluster-de-top-n` | Top genes kept per cluster pair | `20` |
-| `--cluster-de-method` | `scanpy.tl.rank_genes_groups` method | `wilcoxon` |
-| `--cluster-de-layer` | AnnData layer for pairwise cluster DE | `normalized` |
-| `--cluster-de-min-cells` | Minimum cells required in both clusters | `20` |
+| `--neighbor-stats-seed` | Random seed for neighbor enrichment permutations | `0` |
+| `--interaction-markers-top-targets` | Target cell types evaluated per source for contact-conditioned markers | `8` |
+| `--interaction-markers-top-genes` | Top DE genes kept per source-target interaction | `20` |
+| `--interaction-markers-min-cells` | Minimum cells per replicate contact+ and contact- pseudobulk sample | `30` |
+| `--interaction-markers-min-neighbors` | Minimum target neighbors to classify contact+ source cells | `1` |
+| `--pseudobulk-additional-colors` | Additional color columns to analyze with pseudobulk DE. The initial `--color` is always analyzed | empty |
+| `--pseudobulk-counts-layer` | Raw-count AnnData layer for pseudobulk aggregation; use `None` for `adata.X` | `counts` |
+| `--pseudobulk-min-replicates` | Minimum paired replicates required for each contrast | `2` |
+| `--pseudobulk-min-pct-expressed` | Minimum fraction of cells expressing a gene required in both compared groups; values >1 are interpreted as percentages | `0` |
+| `--pseudobulk-p-adjust-method` | Multiple-testing correction method (`fdr_bh`, `bonferroni`, `holm`, `none`) | `fdr_bh` |
+| `--pseudobulk-padj-cutoff` | Adjusted p-value cutoff for volcano coloring and DE table inclusion | `0.05` |
+| `--pseudobulk-log2fc-cutoff` | Absolute log2FC cutoff for volcano coloring and DE table inclusion | `0.5` |
+| `--pseudobulk-deseq2-fit-type` | PyDESeq2 dispersion trend fit type; use `mean` to avoid parametric trend fallback warnings | `parametric` |
 | `--section-rotations` | Comma-separated `section_id:angle` pairs | empty |
 | `--gene-correlation-top-n` | Correlated genes shown per embedded gene in discovery panel | `10` |
+| `--cluster-means-n-genes` | Maximum embedded pseudobulk-DE genes used for category mean summaries; use `0` to disable | `500` |
+| `--spatial-variable-genes-n` | Top variable genes scored with Moran's I; use `0` to disable | `200` |
+| `--deconvolutions` | JSON object mapping deconvolution labels to obs/obsm keys | empty |
+| `--section-images` | JSON object mapping section IDs to image paths/specs | empty |
+| `--section-images-max-px` | Maximum image dimension when embedding section images | `4096` |
+| `--scalebar-unit` | Unit label for the scalebar | `μm` |
 
 ## Data Requirements
 
 - **`adata.obsm['spatial']`** — 2D coordinates for each cell (x, y)
 - **`adata.obs[groupby]`** — Column identifying which section each cell belongs to
 - **Categorical or numeric columns in `adata.obs`** — For coloring cells
+
+If coordinates are stored as separate obs columns instead of an `obsm` matrix,
+pass them on the CLI:
+
+```bash
+karospace your_data.h5ad -o viewer.html --spatial-x x_centroid --spatial-y y_centroid
+```
+
+This creates `adata.obsm["spatial"]` during loading. Use `--spatial-key` to pick
+a different target key.
 
 ### Optional metadata
 
@@ -217,9 +246,9 @@ If `adata.uns["{col}_colors"]` exists (scanpy convention — list of hex aligned
 
 If `adata.obsp` contains a neighbor graph (`spatial_connectivities`, `connectivities`, `neighbors`, or `neighbor_graph`), KaroSpace exposes graph overlay and neighbor-hover controls.
 
-To enable contact-conditioned interaction markers, pass `interaction_markers_groupby=[...]` (typically the same categorical column used for coloring).
+Contact-conditioned interaction markers are computed automatically for the initial `color` column and for `pseudobulk_additional_colors`. KaroSpace classifies source cells as contact+ or contact- within each `groupby` replicate, aggregates raw counts by replicate/contact status, and fits pseudobulk DESeq2 with a paired replicate design.
 
-To enable pairwise cluster DE in `Insights → Genes → Compare`, pass `cluster_de_groupby=[...]`.
+Pseudobulk category-vs-category DE is precomputed automatically for the initial `color` column and shown in `Insights → Compare → Cell DE`. It aggregates raw counts by `groupby` replicate and category. Significant genes passing both adjusted p-value and log2FC thresholds are embedded automatically, exposed in `Insights → Genes → DE Genes`, and reused for category means/correlations. Use `pseudobulk_additional_colors=[...]` or `--pseudobulk-additional-colors ...` to compute category DE and interaction pseudobulk DE for extra annotation columns.
 
 ## Examples
 
@@ -230,7 +259,7 @@ See [`examples/`](examples/) for complete dataset-specific export scripts.
 ### Grid View
 - **Click a section** — Open detailed modal view
 - **Color dropdown** — Switch between annotation columns
-- **Gene input** — Fuzzy search with keyboard navigation, recent genes, saved panels, and marker suggestions
+- **Gene input** — Fuzzy search with keyboard navigation, recent genes, saved panels, and pseudobulk DE gene suggestions
 - **Size slider** — Adjust spot size
 - **Filter chips** — Filter sections by metadata
 - **Legend items** — Toggle categories; spotlight one across grid and UMAP

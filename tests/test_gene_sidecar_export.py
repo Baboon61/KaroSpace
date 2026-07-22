@@ -40,6 +40,7 @@ def _build_dataset() -> SpatialDataset:
         dtype=float,
     )
     adata = AnnData(X=x, obs=obs, var=var)
+    adata.layers["counts"] = x.copy()
     adata.layers["normalized"] = x.copy()
     adata.obsm["spatial"] = np.array(
         [
@@ -139,7 +140,6 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_encoding="sparse",
         gene_storage="sidecar",
     )
@@ -153,24 +153,21 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     html_text = output_path.read_text(encoding="utf-8")
     embedded = _extract_data_json(html_text)
     manifest = json.loads(aux_path.read_text(encoding="utf-8"))
-    shard_files = sorted(shard_dir.glob("*.json"))
+    shard_files = sorted(shard_dir.glob("*.bin"))
     assert shard_files
-    shard = json.loads(shard_files[0].read_text(encoding="utf-8"))
+    entries, _blob = _parse_binary_sidecar_index(shard_files[0])
 
     assert embedded["available_genes"] == ["G1", "G2", "G3"]
     assert embedded["gene_aux_url"] == "viewer.genes.json"
     assert set(embedded["genes_meta"]) == {"G1"}
     assert set(manifest["genes_meta"]) == {"G2", "G3"}
-    assert manifest["format"] == "karospace-gene-sidecar-manifest-v2"
+    assert manifest["format"] == "karospace-gene-sidecar-manifest-v3"
+    assert manifest["gene_sidecar_format"] == "binary"
     assert manifest["gene_to_shard"]["G2"].startswith("viewer.genes/")
-    assert manifest["gene_value_encodings"]["G2"] == "float32"
-    assert shard["format"] == "karospace-gene-sidecar-shard-v2"
-    assert "genes_meta" not in shard
-    assert "gene_encodings" not in shard
-    assert "gene_value_encodings" not in shard
-    assert "G1" not in shard["genes"]
-    assert "G2" in shard["genes"]
-    assert "sparse" in shard["genes"]["G2"]["sections"]["S1"]
+    assert manifest["gene_to_shard"]["G2"].endswith(".bin")
+    assert manifest["gene_value_encodings"]["G2"] == "uint16"
+    assert "G1" not in entries
+    assert "G2" in entries
     assert "async function ensureGeneAvailable" in html_text
     assert "function requestModalBlendGene(gene, modality = null)" in html_text
     assert "requestModalBlendGene(gene, modName);" in html_text
@@ -352,11 +349,42 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "function fetchGeneAuxShardForAnalysis(shardUrl)" in html_text
     assert "function decodeDenseSidecarSection(sectionEntry)" in html_text
     assert "function base64ToUint8Array(b64)" in html_text
-    assert "function buildVolcanoPlot(genes, logfc, pvalsAdj)" in html_text
+    assert "function buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5, colorCol = null, sourceCategory = null, referenceCategory = null)" in html_text
+    assert "function buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5)" in html_text
+    assert "const pvals = Array.isArray(result.pvals) ? result.pvals : [];" in html_text
+    assert "buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff, log2fcCutoff)" in html_text
+    assert "baseMean" in html_text
+    assert "baseMean + 1" not in html_text
+    assert "Pseudobulk Analysis Diagnostics" in html_text
+    assert "buildClusterDESummaryItem('p < 0.05', '#2f9e67', counts.green)" in html_text
+    assert "buildClusterDESummaryItem('p >= 0.05', 'var(--border-color)', counts.grey)" in html_text
+    assert "function buildPseudobulkPCAPlot(sampleInfo, colorCol)" in html_text
+    assert "function buildPseudobulkDistanceHeatmap(sampleInfo, colorCol)" in html_text
+    assert "const greyLabel = 'adj. p > ' + formatAdjustedPValue(padjThreshold)" in html_text
+    assert "+ ' or |log2FC| < ' + formatScaleNumber(fcThr)" in html_text
+    assert "buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff, log2fcCutoff, colorCol, sourceCategory, referenceCategory)" in html_text
+    assert "function bindClusterDEPlotInteractions(container, rerenderFn)" in html_text
     assert "function buildGroupVolcanoPlot(entries)" in html_text
     assert "function bindVolcanoGroupInteraction(container, rerenderFn)" in html_text
+    assert "function downloadCurrentClusterDEVolcanoSvg(container)" in html_text
+    assert "function downloadCurrentClusterDEVolcanoPng(container)" in html_text
+    assert "function downloadCurrentClusterDETable(format)" in html_text
     assert 'class="volcano-container"' in html_text
+    assert 'class="cluster-de-plot-grid"' in html_text
+    assert 'class="volcano-summary"' in html_text
+    assert 'class="volcano-summary-chip"' in html_text
+    assert 'class="volcano-summary-count"' in html_text
     assert 'class="volcano-tooltip"' in html_text
+    assert "function formatAdjustedPValue(value)" in html_text
+    assert "formatAdjustedPValue(pvalAdjValue)" in html_text
+    assert 'data-tooltip-line2="adj. p: ' in html_text
+    assert 'data-most-expressed="' in html_text
+    assert "colorToRgbaCss(rowColor, 0.12)" in html_text
+    assert "Save Volcano SVG" in html_text
+    assert "Save Volcano PNG" in html_text
+    assert "Save Table CSV" in html_text
+    assert "Save Table Excel" in html_text
+    assert "Number.MIN_VALUE" in html_text
     assert "if (window.__karospacePackageMode) {" in html_text
     assert "function runFullRegionAnnotationDE(annotationA, annotationB)" in html_text
     assert "function exportAnnotationDEReport(annotationA, annotationB, exportState)" in html_text
@@ -427,6 +455,35 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
             Path(script_path).unlink(missing_ok=True)
 
 
+def test_sidecar_export_with_no_embedded_genes_keeps_gene_catalog_and_warns(tmp_path, capsys):
+    dataset = _build_dataset()
+    output_path = tmp_path / "viewer.html"
+
+    export_to_html(
+        dataset,
+        output_path=str(output_path),
+        color="leiden",
+        genes=[],
+        gene_storage="sidecar",
+    )
+
+    html_text = output_path.read_text(encoding="utf-8")
+    embedded = _extract_data_json(html_text)
+    manifest = json.loads((tmp_path / "viewer.genes.json").read_text(encoding="utf-8"))
+    output = capsys.readouterr().out
+
+    assert embedded["available_genes"] == ["G1", "G2", "G3"]
+    assert embedded["genes_meta"] == {}
+    assert set(manifest["genes_meta"]) == {"G1", "G2", "G3"}
+    assert "function getAvailableFeaturesForModality" in html_text
+    assert "const availableGenes = DATA.available_genes || [];" in html_text
+    assert "return getAvailableFeaturesForModality(CURRENT_MODALITY);" in html_text
+    assert "Empty gene shard response from ${shardUrl}" in html_text
+    assert "Invalid JSON in gene shard ${shardUrl}" in html_text
+    assert "0 genes embedded in HTML; gene expression is sidecar-only" in output
+    assert "sidecar viewers must be opened over HTTP(S)" in output
+
+
 def test_sidecar_export_respects_custom_shard_size(tmp_path):
     dataset = _build_dataset()
     output_path = tmp_path / "viewer.html"
@@ -436,14 +493,13 @@ def test_sidecar_export_respects_custom_shard_size(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_storage="sidecar",
         gene_sidecar_shard_size=1,
     )
 
     aux_path = tmp_path / "viewer.genes.json"
     manifest = json.loads(aux_path.read_text(encoding="utf-8"))
-    shard_files = sorted((tmp_path / "viewer.genes").glob("*.json"))
+    shard_files = sorted((tmp_path / "viewer.genes").glob("*.bin"))
 
     assert len(shard_files) == 2
     assert len(manifest["shards"]) == 2
@@ -464,7 +520,7 @@ def test_sidecar_auto_encoding_prefers_compact_sparse_and_packed_dense():
     g1_s1 = sidecar["genes"]["G1"]["sections"]["S1"]
     g3_s1 = sidecar["genes"]["G3"]["sections"]["S1"]
 
-    assert "db64" in g1_s1
+    assert "dq16b64" in g1_s1
     assert "dense" not in g1_s1
     assert "sparse" in g3_s1
 
@@ -478,25 +534,17 @@ def test_sidecar_uint16_quantization_emits_compact_value_payloads(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=[],
-        use_hvgs=False,
         gene_storage="sidecar",
         gene_value_encoding="uint16",
     )
 
     manifest = json.loads((tmp_path / "viewer.genes.json").read_text(encoding="utf-8"))
-    shard_path = sorted((tmp_path / "viewer.genes").glob("*.json"))[0]
-    shard = json.loads(shard_path.read_text(encoding="utf-8"))
+    shard_path = sorted((tmp_path / "viewer.genes").glob("*.bin"))[0]
+    entries, _blob = _parse_binary_sidecar_index(shard_path)
 
     assert manifest["gene_value_encodings"]["G1"] == "uint16"
     assert manifest["gene_value_encodings"]["G3"] == "uint16"
-
-    g1_s1 = shard["genes"]["G1"]["sections"]["S1"]
-    g3_s1 = shard["genes"]["G3"]["sections"]["S1"]["sparse"]
-
-    assert "db64" not in g1_s1
-    assert "dq16b64" in g1_s1
-    assert "vb64" not in g3_s1
-    assert "vq16b64" in g3_s1
+    assert set(entries) == {"G1", "G2", "G3"}
 
 
 def test_sidecar_uint8_quantization_emits_compact_value_payloads(tmp_path):
@@ -508,25 +556,17 @@ def test_sidecar_uint8_quantization_emits_compact_value_payloads(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=[],
-        use_hvgs=False,
         gene_storage="sidecar",
         gene_value_encoding="uint8",
     )
 
     manifest = json.loads((tmp_path / "viewer.genes.json").read_text(encoding="utf-8"))
-    shard_path = sorted((tmp_path / "viewer.genes").glob("*.json"))[0]
-    shard = json.loads(shard_path.read_text(encoding="utf-8"))
+    shard_path = sorted((tmp_path / "viewer.genes").glob("*.bin"))[0]
+    entries, _blob = _parse_binary_sidecar_index(shard_path)
 
     assert manifest["gene_value_encodings"]["G1"] == "uint8"
     assert manifest["gene_value_encodings"]["G3"] == "uint8"
-
-    g1_s1 = shard["genes"]["G1"]["sections"]["S1"]
-    g3_s1 = shard["genes"]["G3"]["sections"]["S1"]
-
-    assert "db64" not in g1_s1
-    assert "dq8b64" in g1_s1
-    assert "dense" not in g3_s1
-    assert "dq8b64" in g3_s1
+    assert set(entries) == {"G1", "G2", "G3"}
 
 
 def test_sidecar_uint8_quantization_supports_sparse_payloads():
@@ -554,9 +594,7 @@ def test_binary_sidecar_export_writes_indexed_bin_shards(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_storage="sidecar",
-        gene_sidecar_format="binary-v1",
         gene_value_encoding="uint8",
     )
 
@@ -568,7 +606,7 @@ def test_binary_sidecar_export_writes_indexed_bin_shards(tmp_path):
 
     assert embedded["gene_aux_url"] == "viewer.genes.json"
     assert manifest["format"] == "karospace-gene-sidecar-manifest-v3"
-    assert manifest["gene_sidecar_format"] == "binary-v1"
+    assert manifest["gene_sidecar_format"] == "binary"
     assert manifest["section_order"] == ["S1", "S2"]
     assert manifest["gene_to_shard"]["G2"].endswith(".bin")
     assert set(entries) == {"G2", "G3"}
@@ -588,9 +626,7 @@ def test_binary_karospace_package_stores_bin_shards_uncompressed(tmp_path):
         output_path=str(package_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_storage="sidecar",
-        gene_sidecar_format="binary-v1",
         gene_value_encoding="uint8",
     )
 
@@ -604,7 +640,7 @@ def test_binary_karospace_package_stores_bin_shards_uncompressed(tmp_path):
         gene_manifest = json.loads(zf.read(gene_manifest_name).decode("utf-8"))
 
         assert gene_manifest["format"] == "karospace-gene-sidecar-manifest-v3"
-        assert gene_manifest["gene_sidecar_format"] == "binary-v1"
+        assert gene_manifest["gene_sidecar_format"] == "binary"
         assert infos[bin_names[0]].compress_type == zipfile.ZIP_STORED
         assert infos[gene_manifest_name].header_offset < infos[bin_names[0]].header_offset
         assert infos["index.html"].header_offset < infos[bin_names[0]].header_offset
@@ -620,7 +656,6 @@ def test_karospace_package_export_wraps_sidecar_assets(tmp_path):
         output_path=str(package_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_encoding="sparse",
         gene_storage="sidecar",
     )
@@ -644,14 +679,13 @@ def test_karospace_package_export_wraps_sidecar_assets(tmp_path):
         assert "karospace-package.json" in names
         assert "index.html" in names
         assert "viewer.genes.json" in names
-        shard_names = sorted(name for name in names if name.startswith("viewer.genes/") and name.endswith(".json"))
+        shard_names = sorted(name for name in names if name.startswith("viewer.genes/") and name.endswith(".bin"))
         assert shard_names
 
         package_manifest = json.loads(zf.read("karospace-package.json").decode("utf-8"))
         html_text = zf.read("index.html").decode("utf-8")
         embedded = _extract_data_json(html_text)
         manifest = json.loads(zf.read("viewer.genes.json").decode("utf-8"))
-        shard = json.loads(zf.read(shard_names[0]).decode("utf-8"))
 
     assert package_manifest["format"] == "karospace-package-v1"
     assert package_manifest["entry_html"] == "index.html"
@@ -660,6 +694,7 @@ def test_karospace_package_export_wraps_sidecar_assets(tmp_path):
     assert package_manifest["viewer"]["gene_manifest_path"] == "viewer.genes.json"
     assert package_manifest["viewer"]["gene_shard_dir"] == "viewer.genes"
     assert "index.html" in package_manifest["files"]
+    assert infos[shard_names[0]].compress_type == zipfile.ZIP_STORED
     assert infos["viewer.genes.json"].header_offset < infos[shard_names[0]].header_offset
     assert infos["index.html"].header_offset < infos[shard_names[0]].header_offset
 
@@ -673,7 +708,6 @@ def test_package_sidecar_viewer_wraps_existing_sidecar_bundle(tmp_path, capsys):
         output_path=str(html_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_storage="sidecar",
     )
 
@@ -701,7 +735,7 @@ def test_package_sidecar_viewer_wraps_existing_sidecar_bundle(tmp_path, capsys):
         package_manifest = json.loads(zf.read("karospace-package.json").decode("utf-8"))
         embedded = _extract_data_json(zf.read("index.html").decode("utf-8"))
         manifest = json.loads(zf.read("viewer.genes.json").decode("utf-8"))
-        shard = json.loads(zf.read(shard_names[0]).decode("utf-8"))
+        assert shard_names[0].endswith(".bin")
 
     assert package_manifest["entry_html"] == "index.html"
     assert package_manifest["title"] == "Spatial Viewer"
@@ -715,9 +749,31 @@ def test_package_sidecar_viewer_wraps_existing_sidecar_bundle(tmp_path, capsys):
     assert embedded["gene_aux_url"] == "viewer.genes.json"
     assert embedded["available_genes"] == ["G1", "G2", "G3"]
     assert set(embedded["genes_meta"]) == {"G1"}
-    assert manifest["format"] == "karospace-gene-sidecar-manifest-v2"
+    assert manifest["format"] == "karospace-gene-sidecar-manifest-v3"
+    assert manifest["gene_sidecar_format"] == "binary"
     assert manifest["gene_to_shard"]["G2"].startswith("viewer.genes/")
-    assert shard["format"] == "karospace-gene-sidecar-shard-v2"
+    assert manifest["gene_to_shard"]["G2"].endswith(".bin")
+
+
+def test_package_sidecar_viewer_rejects_unsupported_gene_manifest(tmp_path):
+    dataset = _build_dataset()
+    html_path = tmp_path / "viewer.html"
+
+    export_to_html(
+        dataset,
+        output_path=str(html_path),
+        color="leiden",
+        genes=["G1"],
+        gene_storage="sidecar",
+    )
+
+    manifest_path = tmp_path / "viewer.genes.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["format"] = "karospace-package-v1"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="unsupported gene sidecar manifest format"):
+        package_sidecar_viewer(html_path, output_path=tmp_path / "viewer.karospace")
 
 
 def test_karospace_package_requires_sidecar_mode(tmp_path):
@@ -729,7 +785,6 @@ def test_karospace_package_requires_sidecar_mode(tmp_path):
             output_path=str(tmp_path / "viewer.karospace"),
             color="leiden",
             genes=["G1"],
-            use_hvgs=False,
             gene_storage="embedded",
         )
 
@@ -747,6 +802,8 @@ def test_karospace_package_loader_page_contains_expected_runtime_hooks():
     assert "karospace-gene-sidecar-manifest-v2" in loader_html
     assert "karospace-gene-sidecar-manifest-v3" in loader_html
     assert "karospace-gene-sidecar-manifest-v4" in loader_html
+    assert "Packaged gene manifest format is not supported at" in loader_html
+    assert "JSON.stringify(packagedGeneManifest.format)" in loader_html
     assert "function injectBootstrap(htmlText, sessionId)" in loader_html
     assert "window.fetch = function packageAwareFetch(input, init)" in loader_html
     assert "window.__karospacePackageSession" in loader_html
@@ -779,7 +836,6 @@ def test_embedded_mode_stays_single_file(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_storage="embedded",
     )
 
@@ -804,7 +860,6 @@ def test_export_embeds_normalized_section_rotations(tmp_path):
         dataset,
         output_path=str(output_path),
         color="leiden",
-        use_hvgs=False,
         section_rotations={"S1": 44.5, "S2": -50.25},
     )
 
@@ -815,55 +870,85 @@ def test_export_embeds_normalized_section_rotations(tmp_path):
     }
 
 
-def test_export_includes_initial_categorical_color_in_marker_genes(tmp_path):
+def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
     dataset = _build_dataset()
     output_path = tmp_path / "viewer.html"
+
+    def fake_deseq2_pair(counts, metadata, source, reference):
+        return pd.DataFrame(
+            {
+                "baseMean": [4.0, 2.0, 1.0],
+                "log2FoldChange": [2.0, -1.0, 0.5],
+                "stat": [3.0, -1.0, 1.5],
+                "pvalue": [0.001, 0.5, 0.02],
+                "padj": [0.01, 0.6, 0.05],
+            },
+            index=["G1", "G2", "G3"],
+        )
+
+    monkeypatch.setattr("karospace.pseudobulk._fit_deseq2_pair", fake_deseq2_pair)
 
     export_to_html(
         dataset,
         output_path=str(output_path),
         color="leiden",
-        use_hvgs=False,
-        marker_genes_groupby=["condition"],
-        marker_genes_top_n=5,
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
-    marker_genes = embedded.get("marker_genes") or {}
-    assert "leiden" in marker_genes
-    assert "condition" in marker_genes
-
-
-def test_export_embeds_pairwise_cluster_de(tmp_path):
-    dataset = _build_dataset()
-    output_path = tmp_path / "viewer.html"
-
-    export_to_html(
-        dataset,
-        output_path=str(output_path),
-        color="leiden",
-        use_hvgs=False,
-        cluster_de_groupby=["leiden"],
-        cluster_de_top_n=2,
-        cluster_de_method="t-test",
-        cluster_de_min_cells=1,
-    )
-
-    embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
-    cluster_de = embedded.get("cluster_de") or {}
-    assert "leiden" in cluster_de
-    assert set(cluster_de["leiden"]) == {"A", "B"}
-    assert "A" not in cluster_de["leiden"]["A"]
-    result = cluster_de["leiden"]["A"]["B"]
+    pseudobulk_de = embedded.get("pseudobulk_de") or {}
+    assert "leiden" in pseudobulk_de
+    assert {"A", "B"}.issubset(set(pseudobulk_de["leiden"]))
+    assert "A" not in pseudobulk_de["leiden"]["A"]
+    result = pseudobulk_de["leiden"]["A"]["B"]
     assert result["available"] is True
+    assert result["method"] == "pseudobulk-deseq2"
     assert result["n_source"] == 2
     assert result["n_reference"] == 2
-    assert 1 <= len(result["genes"]) <= 2
-    assert len(result["genes"]) == len(result["logfoldchanges"]) == len(result["pvals_adj"]) == len(result["scores"])
+    assert result["n_replicates"] == 2
+    assert len(result["genes"]) == 3
+    assert result["log2foldchanges"] == result["logfoldchanges"]
+    assert result["p_adjust_method"] == "fdr_bh"
+    assert result["padj_cutoff"] == 0.05
+    assert result["log2fc_cutoff"] == 0.5
+    assert len(result["genes"]) == len(result["log2foldchanges"]) == len(result["pvals_adj"]) == len(result["scores"])
     assert len(result["genes"]) == len(result["pct_source"]) == len(result["pct_reference"])
 
 
-def test_export_marks_cluster_de_unavailable_for_small_clusters(tmp_path):
+def test_pseudobulk_min_pct_expressed_requires_both_groups(monkeypatch, tmp_path):
+    dataset = _build_dataset()
+    output_path = tmp_path / "viewer.html"
+
+    def fake_deseq2_pair(counts, metadata, source, reference):
+        return pd.DataFrame(
+            {
+                "baseMean": [4.0, 2.0, 1.0],
+                "log2FoldChange": [2.0, -1.0, 0.5],
+                "stat": [3.0, -1.0, 1.5],
+                "pvalue": [0.001, 0.5, 0.02],
+                "padj": [0.01, 0.6, 0.05],
+            },
+            index=["G1", "G2", "G3"],
+        )
+
+    monkeypatch.setattr("karospace.pseudobulk._fit_deseq2_pair", fake_deseq2_pair)
+
+    export_to_html(
+        dataset,
+        output_path=str(output_path),
+        color="leiden",
+        pseudobulk_min_pct_expressed=0.5,
+    )
+
+    embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
+    result = embedded["pseudobulk_de"]["leiden"]["A"]["B"]
+
+    assert result["genes"] == ["G1"]
+    assert result["pct_source"] == [1.0]
+    assert result["pct_reference"] == [1.0]
+    assert result["min_pct_expressed"] == 0.5
+
+
+def test_export_marks_pseudobulk_de_unavailable_for_small_clusters(tmp_path):
     dataset = _build_dataset()
     output_path = tmp_path / "viewer.html"
 
@@ -871,17 +956,13 @@ def test_export_marks_cluster_de_unavailable_for_small_clusters(tmp_path):
         dataset,
         output_path=str(output_path),
         color="leiden",
-        use_hvgs=False,
-        cluster_de_groupby=["leiden"],
-        cluster_de_method="t-test",
-        cluster_de_min_cells=3,
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
-    result = embedded["cluster_de"]["leiden"]["A"]["B"]
+    result = embedded["pseudobulk_de"]["leiden"]["A"]["B"]
     assert result["available"] is False
     assert result["reason"] == "insufficient_cells"
-    assert result["min_cells_required"] == 3
+    assert result["min_cells_required"] == 20
 
 
 def test_export_rejects_unknown_section_rotation_ids(tmp_path):
@@ -892,7 +973,6 @@ def test_export_rejects_unknown_section_rotation_ids(tmp_path):
             dataset,
             output_path=str(tmp_path / "viewer.html"),
             color="leiden",
-            use_hvgs=False,
             section_rotations={"missing": 45},
         )
 
@@ -959,7 +1039,7 @@ def test_cli_accepts_fractional_section_rotations(monkeypatch, tmp_path):
     assert captured["kwargs"]["section_rotations"] == {"S1": 37.5, "S2": -12.25}
 
 
-def test_cli_passes_cluster_de_options_to_export(monkeypatch, tmp_path):
+def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
     input_path = tmp_path / "input.h5ad"
     input_path.write_text("placeholder", encoding="utf-8")
     captured = {}
@@ -979,26 +1059,43 @@ def test_cli_passes_cluster_de_options_to_export(monkeypatch, tmp_path):
         [
             "karospace",
             str(input_path),
-            "--cluster-de-groupby",
-            "leiden,condition",
-            "--cluster-de-top-n",
-            "12",
-            "--cluster-de-method",
-            "t-test",
-            "--cluster-de-layer",
-            "normalized",
-            "--cluster-de-min-cells",
-            "7",
+            "--pseudobulk-additional-colors",
+            "subclass,region",
+            "--pseudobulk-counts-layer",
+            "counts",
+            "--pseudobulk-min-replicates",
+            "3",
+            "--pseudobulk-min-pct-expressed",
+            "0.1",
+            "--pseudobulk-p-adjust-method",
+            "holm",
+            "--pseudobulk-padj-cutoff",
+            "0.01",
+            "--pseudobulk-log2fc-cutoff",
+            "1.2",
+            "--pseudobulk-deseq2-fit-type",
+            "mean",
         ],
     )
 
     cli_module.main()
 
-    assert captured["kwargs"]["cluster_de_groupby"] == ["leiden", "condition"]
-    assert captured["kwargs"]["cluster_de_top_n"] == 12
-    assert captured["kwargs"]["cluster_de_method"] == "t-test"
-    assert captured["kwargs"]["cluster_de_layer"] == "normalized"
-    assert captured["kwargs"]["cluster_de_min_cells"] == 7
+    assert "cluster_de_groupby" not in captured["kwargs"]
+    assert "cluster_de_top_n" not in captured["kwargs"]
+    assert "cluster_de_method" not in captured["kwargs"]
+    assert "cluster_de_layer" not in captured["kwargs"]
+    assert "cluster_de_min_cells" not in captured["kwargs"]
+    assert captured["kwargs"]["pseudobulk_additional_colors"] == ["subclass", "region"]
+    assert "pseudobulk_groupby" not in captured["kwargs"]
+    assert "pseudobulk_replicate" not in captured["kwargs"]
+    assert "interaction_markers_groupby" not in captured["kwargs"]
+    assert captured["kwargs"]["pseudobulk_counts_layer"] == "counts"
+    assert captured["kwargs"]["pseudobulk_min_replicates"] == 3
+    assert captured["kwargs"]["pseudobulk_min_pct_expressed"] == 0.1
+    assert captured["kwargs"]["pseudobulk_p_adjust_method"] == "holm"
+    assert captured["kwargs"]["pseudobulk_padj_cutoff"] == 0.01
+    assert captured["kwargs"]["pseudobulk_log2fc_cutoff"] == 1.2
+    assert captured["kwargs"]["pseudobulk_deseq2_fit_type"] == "mean"
 
 
 def test_cli_rejects_invalid_section_rotations(monkeypatch, tmp_path, capsys):
@@ -1031,7 +1128,6 @@ def test_gene_correlations_embedded_in_export(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=["G1", "G2", "G3"],
-        use_hvgs=False,
         gene_storage="embedded",
         gene_correlation_top_n=5,
     )
@@ -1061,7 +1157,6 @@ def test_gene_correlations_disabled_when_top_n_zero(tmp_path):
         output_path=str(output_path),
         color="leiden",
         genes=["G1", "G2", "G3"],
-        use_hvgs=False,
         gene_correlation_top_n=0,
     )
 
@@ -1099,6 +1194,40 @@ def test_cli_passes_gene_correlation_top_n_to_export(monkeypatch, tmp_path):
     assert captured["kwargs"]["gene_correlation_top_n"] == 15
 
 
+def test_cli_sidecar_done_message_points_to_http_server(monkeypatch, tmp_path, capsys):
+    input_path = tmp_path / "input.h5ad"
+    input_path.write_text("placeholder", encoding="utf-8")
+    output_path = tmp_path / "viewer.html"
+
+    def fake_load(path, groupby, spatial_key="spatial"):
+        return _build_dataset()
+
+    def fake_export(dataset, **kwargs):
+        return str(output_path)
+
+    monkeypatch.setattr("karospace.data_loader.load_spatial_data", fake_load)
+    monkeypatch.setattr("karospace.exporter.export_to_html", fake_export)
+    monkeypatch.setattr(
+        cli_module.sys,
+        "argv",
+        [
+            "karospace",
+            str(input_path),
+            "-o",
+            str(output_path),
+            "--gene-storage",
+            "sidecar",
+        ],
+    )
+
+    cli_module.main()
+
+    output = capsys.readouterr().out
+    assert "Sidecar gene loading requires HTTP(S)" in output
+    assert f"python -m http.server --directory {output_path.parent}" in output
+    assert f"http://localhost:8000/{output_path.name}" in output
+
+
 def test_spatial_variable_genes_empty_without_spatial_graph(tmp_path):
     """spatial_variable_genes is [] when no obsp spatial graph exists."""
     dataset = _build_dataset()
@@ -1108,7 +1237,6 @@ def test_spatial_variable_genes_empty_without_spatial_graph(tmp_path):
         dataset,
         output_path=str(output_path),
         color="leiden",
-        use_hvgs=False,
         spatial_variable_genes_n=100,
     )
 
@@ -1168,7 +1296,6 @@ def test_spatial_variable_genes_computed_with_spatial_graph(tmp_path):
         dataset,
         output_path=str(output_path),
         color="leiden",
-        use_hvgs=False,
         spatial_variable_genes_n=10,
     )
 
@@ -1195,7 +1322,6 @@ def test_spatial_variable_genes_disabled_when_n_zero(tmp_path):
         dataset,
         output_path=str(output_path),
         color="leiden",
-        use_hvgs=False,
         spatial_variable_genes_n=0,
     )
 
@@ -1265,8 +1391,7 @@ def test_cli_package_sidecar_dispatches_to_packager(monkeypatch, tmp_path):
 def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
     dataset = _build_dataset()
     output_path = tmp_path / "viewer.html"
-    marker_genes = {"leiden": {"A": ["G1"], "B": ["G2"]}}
-    cluster_de = {
+    pseudobulk_de = {
         "leiden": {
             "A": {
                 "B": {
@@ -1324,8 +1449,7 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
     }
     _attach_companion_analytics(
         dataset,
-        marker_genes=marker_genes,
-        cluster_de=cluster_de,
+        pseudobulk_de=pseudobulk_de,
         neighbor_stats=neighbor_stats,
         interaction_markers=interaction_markers,
         gene_correlations=gene_correlations,
@@ -1336,29 +1460,23 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
     def _fail(*args, **kwargs):
         raise AssertionError("unexpected recomputation")
 
-    monkeypatch.setattr("karospace.data_loader.sc.tl.rank_genes_groups", _fail)
-    monkeypatch.setattr("karospace.exporter._compute_gene_correlations", _fail)
+    monkeypatch.setattr("karospace.exporter._compute_gene_correlations_from_category_means", _fail)
     monkeypatch.setattr("karospace.exporter._compute_morans_i", _fail)
-    monkeypatch.setattr("karospace.exporter._compute_cluster_gene_means", _fail)
+    monkeypatch.setattr("karospace.exporter._cluster_gene_means_from_pseudobulk_de", _fail)
 
     export_to_html(
         dataset,
         output_path=str(output_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
-        marker_genes_groupby=["leiden"],
-        cluster_de_groupby=["leiden"],
         neighbor_stats_groupby=["leiden"],
-        interaction_markers_groupby=["leiden"],
         gene_correlation_top_n=5,
         spatial_variable_genes_n=25,
         cluster_means_n_genes=10,
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
-    assert embedded["marker_genes"] == marker_genes
-    assert embedded["cluster_de"] == cluster_de
+    assert embedded["pseudobulk_de"] == pseudobulk_de
     assert embedded["neighbor_stats"] == neighbor_stats
     assert embedded["interaction_markers"] == interaction_markers
     assert embedded["gene_correlations"] == gene_correlations
@@ -1371,8 +1489,16 @@ def test_export_falls_back_when_companion_analytics_absent(monkeypatch, tmp_path
     output_path = tmp_path / "viewer.html"
     expected_gene_correlations = {"G1": [{"gene": "G2", "r": 0.33}]}
 
+    cluster_gene_means = {
+        "genes": ["G1", "G2"],
+        "columns": {"leiden": {"means": {"A": [1.0, 2.0], "B": [2.0, 1.0]}}},
+    }
     monkeypatch.setattr(
-        "karospace.exporter._compute_gene_correlations",
+        "karospace.exporter._cluster_gene_means_from_pseudobulk_de",
+        lambda *args, **kwargs: cluster_gene_means,
+    )
+    monkeypatch.setattr(
+        "karospace.exporter._compute_gene_correlations_from_category_means",
         lambda *args, **kwargs: expected_gene_correlations,
     )
 
@@ -1381,10 +1507,9 @@ def test_export_falls_back_when_companion_analytics_absent(monkeypatch, tmp_path
         output_path=str(output_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
         gene_correlation_top_n=5,
         spatial_variable_genes_n=0,
-        cluster_means_n_genes=0,
+        cluster_means_n_genes=10,
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
@@ -1394,16 +1519,17 @@ def test_export_falls_back_when_companion_analytics_absent(monkeypatch, tmp_path
 def test_export_recomputes_only_missing_companion_analytics(monkeypatch, tmp_path):
     dataset = _build_dataset()
     output_path = tmp_path / "viewer.html"
-    marker_genes = {"leiden": {"A": ["G1"], "B": ["G2"]}}
     expected_gene_correlations = {"G1": [{"gene": "G2", "r": 0.61}]}
-    _attach_companion_analytics(dataset, marker_genes=marker_genes)
-
-    def _fail(*args, **kwargs):
-        raise AssertionError("marker genes should come from KaroSpaceCompanion")
-
-    monkeypatch.setattr("karospace.data_loader.sc.tl.rank_genes_groups", _fail)
+    cluster_gene_means = {
+        "genes": ["G1", "G2"],
+        "columns": {"leiden": {"means": {"A": [1.0, 2.0], "B": [2.0, 1.0]}}},
+    }
     monkeypatch.setattr(
-        "karospace.exporter._compute_gene_correlations",
+        "karospace.exporter._cluster_gene_means_from_pseudobulk_de",
+        lambda *args, **kwargs: cluster_gene_means,
+    )
+    monkeypatch.setattr(
+        "karospace.exporter._compute_gene_correlations_from_category_means",
         lambda *args, **kwargs: expected_gene_correlations,
     )
 
@@ -1412,15 +1538,13 @@ def test_export_recomputes_only_missing_companion_analytics(monkeypatch, tmp_pat
         output_path=str(output_path),
         color="leiden",
         genes=["G1"],
-        use_hvgs=False,
-        marker_genes_groupby=["leiden"],
         gene_correlation_top_n=5,
         spatial_variable_genes_n=0,
-        cluster_means_n_genes=0,
+        cluster_means_n_genes=10,
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
-    assert embedded["marker_genes"] == marker_genes
+    assert embedded["marker_genes"] == {}
     assert embedded["gene_correlations"] == expected_gene_correlations
 
 
