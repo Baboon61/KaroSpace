@@ -54,13 +54,13 @@ print(f"Available color columns: {dataset.obs_columns[:10]}...")
 export_to_html(
     dataset,
     output_path="mouseBrainXenium5k.html",
-    color=PRIMARY_CLUSTER,
+    annotation=PRIMARY_CLUSTER,
     title="KaroSpace",
     min_panel_size=120,
     spot_size="auto",
     downsample=100000,
     outline_by=None,
-    additional_colors=[
+    additional_annotations=[
         "CellCharter_5",
         "CellCharter_15",
         "CellCharter_20",

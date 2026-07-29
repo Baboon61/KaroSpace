@@ -184,30 +184,49 @@ def _compute_category_gene_means_from_aggregate(
     categories: Sequence[str],
     gene_names: Sequence[str],
 ) -> Dict[str, Any]:
-    """Summarize category-level mean expression from existing pseudobulk counts."""
+    """Summarize category-level means from replicate-level pseudobulk counts."""
     genes = [str(g) for g in gene_names]
     category_means: Dict[str, List[Optional[float]]] = {}
     category_cells: Dict[str, int] = {}
     aggregate = np.asarray(aggregate, dtype=float)
     n_cells = pb_meta["n_cells"].to_numpy(dtype=float) if "n_cells" in pb_meta else np.zeros(aggregate.shape[0])
-    total_counts = np.zeros(aggregate.shape[1], dtype=float)
-    total_cells = 0.0
+    n_cells[~np.isfinite(n_cells)] = 0
+    n_cells[n_cells < 0] = 0
+    valid_rows = n_cells > 0
+    per_sample_means = np.zeros_like(aggregate, dtype=float)
+    if aggregate.size:
+        np.divide(
+            aggregate,
+            n_cells[:, None],
+            out=per_sample_means,
+            where=valid_rows[:, None],
+        )
+    group_values = pb_meta["_pb_group"].astype(str).to_numpy()
 
     for category in [str(c) for c in categories]:
-        mask = pb_meta["_pb_group"].astype(str).to_numpy() == category
+        mask = (group_values == category) & valid_rows
         cells = float(np.sum(n_cells[mask])) if mask.any() else 0.0
         category_cells[category] = int(cells)
-        if cells > 0:
-            summed = np.asarray(aggregate[mask].sum(axis=0), dtype=float)
-            means = summed / cells
-            total_counts += summed
-            total_cells += cells
+        if mask.any():
+            means = per_sample_means[mask].mean(axis=0)
             category_means[category] = [_json_float(v, 6) for v in means]
         else:
             category_means[category] = [0.0 for _ in genes]
 
-    if total_cells > 0:
-        background = [_json_float(v, 6) for v in (total_counts / total_cells)]
+    if "_pb_replicate" in pb_meta:
+        replicate_values = pb_meta["_pb_replicate"].astype(str).to_numpy()
+        replicate_means = []
+        for replicate in sorted(set(replicate_values)):
+            mask = (replicate_values == replicate) & valid_rows
+            cells = float(np.sum(n_cells[mask])) if mask.any() else 0.0
+            if cells > 0:
+                replicate_means.append(np.asarray(aggregate[mask].sum(axis=0), dtype=float) / cells)
+        if replicate_means:
+            background = [_json_float(v, 6) for v in np.vstack(replicate_means).mean(axis=0)]
+        else:
+            background = [0.0 for _ in genes]
+    elif valid_rows.any():
+        background = [_json_float(v, 6) for v in per_sample_means[valid_rows].mean(axis=0)]
     else:
         background = [0.0 for _ in genes]
 
@@ -219,6 +238,56 @@ def _compute_category_gene_means_from_aggregate(
         "n_cells": category_cells,
         "source": "pseudobulk_aggregate",
     }
+
+
+def _log2fc_from_pseudobulk_means(
+    counts: np.ndarray,
+    metadata: pd.DataFrame,
+    source: str,
+    reference: str,
+) -> np.ndarray:
+    """Compute source/reference log2FC from replicate-level aggregate per-cell means."""
+    dense = np.asarray(counts, dtype=float)
+    dense[~np.isfinite(dense)] = 0
+    dense[dense < 0] = 0
+    groups = metadata["_pb_group"].astype(str).to_numpy()
+    if "n_cells" in metadata.columns:
+        n_cells = metadata["n_cells"].to_numpy(dtype=float)
+        n_cells[~np.isfinite(n_cells)] = 0
+        n_cells[n_cells < 0] = 0
+    else:
+        n_cells = np.ones(dense.shape[0], dtype=float)
+
+    source_mask = groups == str(source)
+    reference_mask = groups == str(reference)
+    n_vars = int(dense.shape[1])
+    valid_rows = n_cells > 0
+    per_sample_means = np.zeros_like(dense, dtype=float)
+    if dense.size:
+        np.divide(
+            dense,
+            n_cells[:, None],
+            out=per_sample_means,
+            where=valid_rows[:, None],
+        )
+    source_rows = source_mask & valid_rows
+    reference_rows = reference_mask & valid_rows
+    source_mean = (
+        per_sample_means[source_rows].mean(axis=0)
+        if source_rows.any()
+        else np.zeros(n_vars, dtype=float)
+    )
+    reference_mean = (
+        per_sample_means[reference_rows].mean(axis=0)
+        if reference_rows.any()
+        else np.zeros(n_vars, dtype=float)
+    )
+    tiny = np.nextafter(0.0, 1.0)
+    log2fc = np.log2(np.maximum(source_mean, 0.0) + tiny) - np.log2(
+        np.maximum(reference_mean, 0.0) + tiny
+    )
+    log2fc[~np.isfinite(log2fc)] = 0.0
+    return np.asarray(log2fc, dtype=float)
 
 
 def _fit_deseq2_pair(
@@ -278,7 +347,12 @@ def _fit_deseq2_pair(
             n_cpus=1,
         )
     stat_res.summary()
-    return stat_res.results_df.copy()
+    result = stat_res.results_df.copy()
+    gene_names = [str(g) for g in metadata.attrs["gene_names"]]
+    mean_log2fc = _log2fc_from_pseudobulk_means(counts, metadata, source, reference)
+    if len(mean_log2fc) == len(gene_names):
+        result["log2FoldChange"] = pd.Series(mean_log2fc, index=gene_names).reindex(result.index)
+    return result
 
 
 def _matrix_mean_var(matrix, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray, int]:
@@ -332,7 +406,10 @@ def _fit_welch_pair(
     pvalue[valid_p] = 2.0 * stats.t.sf(np.abs(stat[valid_p]), df[valid_p])
     pvalue[~np.isfinite(pvalue)] = 1.0
 
-    log2fc = np.log2((source_mean + 1.0) / (reference_mean + 1.0))
+    tiny = np.nextafter(0.0, 1.0)
+    log2fc = np.log2(np.maximum(source_mean, 0.0) + tiny) - np.log2(
+        np.maximum(reference_mean, 0.0) + tiny
+    )
     log2fc[~np.isfinite(log2fc)] = 0.0
     base_mean = (source_mean + reference_mean) / 2.0
 
@@ -505,7 +582,7 @@ def _format_result(
     if min_pct_expressed > 0:
         pct_source_arr = np.asarray([v if v is not None else 0.0 for v in pct_source], dtype=float)
         pct_reference_arr = np.asarray([v if v is not None else 0.0 for v in pct_reference], dtype=float)
-        keep_pct = (pct_source_arr >= min_pct_expressed) & (pct_reference_arr >= min_pct_expressed)
+        keep_pct = (pct_source_arr >= min_pct_expressed) | (pct_reference_arr >= min_pct_expressed)
         work = work.iloc[np.flatnonzero(keep_pct)].copy()
         pct_source = [pct_source[i] for i in np.flatnonzero(keep_pct)]
         pct_reference = [pct_reference[i] for i in np.flatnonzero(keep_pct)]
@@ -958,7 +1035,7 @@ def compute_pseudobulk_group_de(
     log2fc_cutoff: float = 0.5,
     fit_type: str = "parametric",
 ) -> Optional[Dict[str, Dict[str, Dict[str, Any]]]]:
-    """Compute pairwise pseudobulk DE for one categorical annotation column."""
+    """Compute pairwise and category-vs-rest pseudobulk DE for one categorical column."""
     if groupby not in adata.obs.columns:
         print(f"  Warning: pseudobulk DE groupby '{groupby}' not found in obs.")
         return None
@@ -1035,15 +1112,18 @@ def compute_pseudobulk_group_de(
     if use_welch:
         print(
             f"    - {len(categories)} categories -> {n_directed_comparisons} directed comparisons "
+            f"plus {len(categories)} category-vs-rest contrasts "
             "(single groupby replicate; using Welch t-test)",
             flush=True,
         )
     else:
         print(
             f"    - {len(categories)} categories -> {n_directed_comparisons} directed comparisons "
-            f"({n_unique_fits} DESeq2 fit{'s' if n_unique_fits != 1 else ''})",
+            f"plus {len(categories)} category-vs-rest contrasts "
+            f"({n_unique_fits} pairwise DESeq2 fit{'s' if n_unique_fits != 1 else ''})",
             flush=True,
         )
+    rest_reference = "__rest__"
     for source in categories:
         source_results: Dict[str, Dict[str, Any]] = {}
         for reference in categories:
@@ -1223,6 +1303,189 @@ def compute_pseudobulk_group_de(
                     min_replicates=int(min_replicates),
                     details=str(exc),
                 )
+
+        comparison_label = f"{source} vs rest"
+        source_cell_mask = (group_values.to_numpy() == source) & valid
+        reference_cell_mask = (group_values.to_numpy() != source) & valid
+        n_source = int(np.count_nonzero(source_cell_mask))
+        n_reference = int(np.count_nonzero(reference_cell_mask))
+        if n_source < int(min_cells) or n_reference < int(min_cells):
+            print(
+                f"      - {comparison_label}: skipped, insufficient cells "
+                f"({n_source} vs {n_reference}; need >= {int(min_cells)})",
+                flush=True,
+            )
+            source_results[rest_reference] = _empty_result(
+                "insufficient_cells",
+                n_source=n_source,
+                n_reference=n_reference,
+                min_cells=int(min_cells),
+                min_replicates=int(min_replicates),
+            )
+        elif use_welch:
+            print(
+                f"      - {comparison_label}: fitting Welch t-test "
+                f"({n_source} vs {n_reference} cells, {adata.n_vars} genes)",
+                flush=True,
+            )
+            rest_result = _fit_welch_pair(
+                expression_matrix,
+                source_cell_mask,
+                reference_cell_mask,
+                adata.var_names,
+            )
+            source_results[rest_reference] = _format_result(
+                rest_result,
+                source_mask=source_cell_mask,
+                reference_mask=reference_cell_mask,
+                expression_matrix=expression_matrix,
+                var_names=adata.var_names,
+                top_n=0,
+                n_source=n_source,
+                n_reference=n_reference,
+                n_replicates=1,
+                counts_layer_used=counts_layer_used,
+                warning=warning,
+                p_adjust_method=p_adjust_method,
+                min_pct_expressed=min_pct_expressed,
+                padj_cutoff=padj_cutoff,
+                log2fc_cutoff=log2fc_cutoff,
+                method="welch-t-test",
+            )
+        else:
+            rest_rows: List[np.ndarray] = []
+            rest_meta_rows: List[Dict[str, Any]] = []
+            paired_reps: List[str] = []
+            source_pb = pb_meta[
+                (pb_meta["_pb_group"] == source)
+                & (pb_meta["n_cells"] >= int(min_cells))
+            ]
+            for rep in sorted(set(source_pb["_pb_replicate"].astype(str))):
+                source_mask_pb = (
+                    (pb_meta["_pb_replicate"].astype(str) == rep)
+                    & (pb_meta["_pb_group"] == source)
+                    & (pb_meta["n_cells"] >= int(min_cells))
+                )
+                source_positions = np.flatnonzero(source_mask_pb.to_numpy())
+                if source_positions.size == 0:
+                    continue
+                rest_mask_pb = (
+                    (pb_meta["_pb_replicate"].astype(str) == rep)
+                    & (pb_meta["_pb_group"] != source)
+                )
+                rest_positions = np.flatnonzero(rest_mask_pb.to_numpy())
+                if rest_positions.size == 0:
+                    continue
+                rest_cells = int(pb_meta.iloc[rest_positions]["n_cells"].sum())
+                if rest_cells < int(min_cells):
+                    continue
+                source_pos = int(source_positions[0])
+                paired_reps.append(rep)
+                rest_rows.append(np.asarray(aggregate[source_pos], dtype=np.int64))
+                rest_meta_rows.append(
+                    {
+                        "_pb_replicate": rep,
+                        "_pb_group": source,
+                        "n_cells": int(pb_meta.iloc[source_pos]["n_cells"]),
+                    }
+                )
+                rest_rows.append(
+                    np.asarray(
+                        aggregate[rest_positions].sum(axis=0),
+                        dtype=np.int64,
+                    ).ravel()
+                )
+                rest_meta_rows.append(
+                    {
+                        "_pb_replicate": rep,
+                        "_pb_group": rest_reference,
+                        "n_cells": rest_cells,
+                    }
+                )
+
+            if len(paired_reps) < int(min_replicates):
+                print(
+                    f"      - {comparison_label}: skipped, insufficient paired replicates "
+                    f"({len(paired_reps)}; need >= {int(min_replicates)})",
+                    flush=True,
+                )
+                source_results[rest_reference] = _empty_result(
+                    "insufficient_replicates",
+                    n_source=n_source,
+                    n_reference=n_reference,
+                    min_cells=int(min_cells),
+                    min_replicates=int(min_replicates),
+                    details=f"{len(paired_reps)} paired replicate(s) available",
+                )
+            else:
+                pair_counts = np.vstack(rest_rows)
+                pair_meta = pd.DataFrame(
+                    rest_meta_rows,
+                    index=[f"pb_rest_{i}" for i in range(len(rest_meta_rows))],
+                )
+                pair_meta.attrs["gene_names"] = [str(g) for g in adata.var_names]
+                pair_gene_count = int(pair_counts.shape[1])
+                try:
+                    print(
+                        f"      - {comparison_label}: fitting DESeq2 "
+                        f"({len(paired_reps)} paired replicate"
+                        f"{'s' if len(paired_reps) != 1 else ''}, "
+                        f"{pair_counts.shape[0]} pseudobulk samples, "
+                        f"{pair_gene_count} genes)",
+                        flush=True,
+                    )
+                    sample_diagnostics = _compute_pseudobulk_sample_diagnostics(
+                        pair_counts,
+                        pair_meta,
+                    )
+                    try:
+                        rest_result = _fit_deseq2_pair(
+                            pair_counts,
+                            pair_meta,
+                            source,
+                            rest_reference,
+                            fit_type=str(fit_type or "parametric"),
+                        )
+                    except TypeError as exc:
+                        if "fit_type" not in str(exc):
+                            raise
+                        rest_result = _fit_deseq2_pair(
+                            pair_counts,
+                            pair_meta,
+                            source,
+                            rest_reference,
+                        )
+                    source_results[rest_reference] = _format_result(
+                        rest_result,
+                        source_mask=source_cell_mask,
+                        reference_mask=reference_cell_mask,
+                        expression_matrix=expression_matrix,
+                        var_names=adata.var_names,
+                        top_n=0,
+                        n_source=n_source,
+                        n_reference=n_reference,
+                        n_replicates=len(paired_reps),
+                        counts_layer_used=counts_layer_used,
+                        warning=warning,
+                        p_adjust_method=p_adjust_method,
+                        min_pct_expressed=min_pct_expressed,
+                        padj_cutoff=padj_cutoff,
+                        log2fc_cutoff=log2fc_cutoff,
+                        sample_diagnostics=sample_diagnostics,
+                    )
+                except Exception as exc:
+                    print(
+                        f"      - {comparison_label}: failed ({exc})",
+                        flush=True,
+                    )
+                    source_results[rest_reference] = _empty_result(
+                        "de_failed",
+                        n_source=n_source,
+                        n_reference=n_reference,
+                        min_cells=int(min_cells),
+                        min_replicates=int(min_replicates),
+                        details=str(exc),
+                    )
 
         if source_results:
             results[source] = source_results

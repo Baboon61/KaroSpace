@@ -46,7 +46,7 @@ OUTLINE_BY = "course"
 export_to_html(
     dataset,
     output_path="CELL-PAPER.html",
-    color='Annotation 3 (medium with DA)',  # Initial color (categorical)
+    annotation='Annotation 3 (medium with DA)',  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density
@@ -54,7 +54,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_colors=[
+    additional_annotations=[
        'NON_DA', 'DA', 'Annotation 1 (broad)',
        'Annotation 2 (medium)',
        'Annotation 4 (high)', 'Annotation 3 (medium with DA)_colors',

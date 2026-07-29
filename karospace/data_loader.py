@@ -471,17 +471,17 @@ class SpatialDataset:
         name = modality or self.default_modality
         return self.modalities.get(name)
 
-    def get_color_data(
+    def get_annotation_data(
         self,
-        color: str,
+        annotation: str,
         modality: Optional[str] = None,
     ) -> Tuple[np.ndarray, bool, Optional[List[str]]]:
         """
-        Get color values for all cells.
+        Get annotation or gene values for all cells.
 
         Parameters
         ----------
-        color : str
+        annotation : str
             Column in obs or feature name within the active modality
         modality : str, optional
             Modality name to look up the feature in. Defaults to ``default_modality``.
@@ -495,8 +495,8 @@ class SpatialDataset:
         categories : list or None
             Category names if categorical, else None
         """
-        if color in self.adata.obs.columns:
-            col = self.adata.obs[color]
+        if annotation in self.adata.obs.columns:
+            col = self.adata.obs[annotation]
             if isinstance(col.dtype, CategoricalDtype):
                 categories = list(col.cat.categories)
                 values = col.cat.codes.to_numpy().astype(float)
@@ -515,12 +515,12 @@ class SpatialDataset:
                 return values, False, categories
 
         mod = self._resolve_modality(modality)
-        if mod is not None and color in mod.feature_names:
-            return mod.get_feature_vector(color), True, None
+        if mod is not None and annotation in mod.feature_names:
+            return mod.get_feature_vector(annotation), True, None
 
-        if color in self.adata.var_names:
+        if annotation in self.adata.var_names:
             # Back-compat fallback when modality registry is unpopulated.
-            gene_idx = self.adata.var_names.get_loc(color)
+            gene_idx = self.adata.var_names.get_loc(annotation)
             expr_layer = None
             if "normalized" in self.adata.layers:
                 expr_layer = self.adata.layers["normalized"]
@@ -531,7 +531,7 @@ class SpatialDataset:
                 values = np.asarray(x).ravel()
             return values, True, None
 
-        raise KeyError(f"{color!r} not found in obs columns or modality {modality or self.default_modality!r}")
+        raise KeyError(f"{annotation!r} not found in obs columns or modality {modality or self.default_modality!r}")
 
     def get_section_indices(self) -> Dict[str, np.ndarray]:
         """Get cell indices for each section."""
@@ -601,7 +601,7 @@ class SpatialDataset:
             if gene not in feature_set:
                 continue
             try:
-                vals, _, _ = self.get_color_data(gene, modality=modality)
+                vals, _, _ = self.get_annotation_data(gene, modality=modality)
                 finite = np.isfinite(vals)
                 gene_vmin = float(np.nanmin(vals[finite])) if finite.any() else 0.0
                 gene_vmax = float(np.nanmax(vals[finite])) if finite.any() else 1.0
@@ -1021,9 +1021,9 @@ class SpatialDataset:
 
     def to_json_data(
         self,
-        color: str,
+        annotation: str,
         downsample: Optional[int] = None,
-        additional_colors: Optional[List[str]] = None,
+        additional_annotations: Optional[List[str]] = None,
         genes: Optional[List[str]] = None,
         gene_encoding: str = "auto",
         gene_sparse_zero_threshold: float = 0.8,
@@ -1037,6 +1037,7 @@ class SpatialDataset:
         pseudobulk_padj_cutoff: float = 0.05,
         pseudobulk_log2fc_cutoff: float = 0.5,
         pseudobulk_deseq2_fit_type: str = "parametric",
+        interaction_markers_groupby: Optional[List[str]] = None,
         neighbor_stats_groupby: Optional[List[str]] = None,
         neighbor_stats_permutations: int = 0,
         neighbor_stats_seed: int = 0,
@@ -1052,12 +1053,12 @@ class SpatialDataset:
 
         Parameters
         ----------
-        color : str
-            Initial color column or gene
+        annotation : str
+            Initial cell annotation column or gene
         downsample : int, optional
             If set, randomly downsample to this many cells per section
-        additional_colors : list, optional
-            Additional obs columns to include for color switching
+        additional_annotations : list, optional
+            Additional obs columns to include for annotation switching.
         genes : list, optional
             Gene names to include for expression visualization
         gene_encoding : str
@@ -1076,7 +1077,7 @@ class SpatialDataset:
             Default: 256.
         pseudobulk_de_groupby : list, optional
             Internal list of obs columns to compute pairwise pseudobulk DE for.
-            Exporter supplies the initial color and pseudobulk_additional_colors.
+            Exporter supplies the initial annotation and pseudobulk additional annotations.
         pseudobulk_counts_layer : str, optional
             AnnData layer containing raw counts for pseudobulk aggregation.
             Defaults to "counts" when present, otherwise adata.X.
@@ -1093,6 +1094,9 @@ class SpatialDataset:
             Absolute log2 fold-change cutoff used by the viewer volcano/table.
         pseudobulk_deseq2_fit_type : str
             PyDESeq2 dispersion trend fit type, "parametric" or "mean".
+        interaction_markers_groupby : list, optional
+            Internal list of obs columns to compute contact-conditioned
+            pseudobulk interaction markers for. Empty/None disables them.
         neighbor_stats_groupby : list, optional
             Obs columns to compute neighbor composition stats for (categorical only)
         neighbor_stats_permutations : int
@@ -1163,10 +1167,10 @@ class SpatialDataset:
                 neighbor_graph.indptr = neighbor_graph.indptr.astype(idx_dtype, copy=False)
                 neighbor_graph.indices = neighbor_graph.indices.astype(idx_dtype, copy=False)
 
-        # Get initial color data
-        values, is_continuous, categories = self.get_color_data(color)
+        # Get initial annotation data
+        values, is_continuous, categories = self.get_annotation_data(annotation)
 
-        # Compute global bounds for initial color
+        # Compute global bounds for initial annotation
         if is_continuous:
             finite_mask = np.isfinite(values)
             if finite_mask.any():
@@ -1177,16 +1181,16 @@ class SpatialDataset:
         else:
             global_vmin, global_vmax = None, None
 
-        # Build list of all colors to export
-        all_colors = [color]
-        if additional_colors:
-            all_colors.extend([c for c in additional_colors if c != color and c in self.obs_columns])
+        # Build list of all annotations to export
+        all_colors = [annotation]
+        if additional_annotations:
+            all_colors.extend([c for c in additional_annotations if c != annotation and c in self.obs_columns])
 
         # Pre-compute all color data
         color_data = {}
         for col in all_colors:
             try:
-                vals, is_cont, cats = self.get_color_data(col)
+                vals, is_cont, cats = self.get_annotation_data(col)
                 cat_perm = None
                 if not is_cont and cats:
                     cat_perm = _numeric_category_perm(cats)
@@ -1214,7 +1218,7 @@ class SpatialDataset:
                     "_cat_perm": cat_perm,
                 }
             except Exception as e:
-                print(f"  Warning: Could not load color '{col}': {e}")
+                    print(f"  Warning: Could not load annotation '{col}': {e}")
 
         # Pre-compute deconvolution proportion matrices (per-cell × K cell types)
         # deconvolutions: {display_name: obsm_key} where adata.obsm[obsm_key] is (N, K)
@@ -1549,7 +1553,8 @@ class SpatialDataset:
         # Compute contact-conditioned interaction markers:
         # for source S and target T, compare source cells contacting T vs source cells not contacting T.
         interaction_markers = {}
-        pending_interaction_markers_groupby = list(requested_pseudobulk_de_groupby)
+        requested_interaction_markers_groupby = list(interaction_markers_groupby or [])
+        pending_interaction_markers_groupby = list(requested_interaction_markers_groupby)
         companion_interaction_markers = companion_analytics.get("interaction_markers")
         if pending_interaction_markers_groupby and isinstance(companion_interaction_markers, dict):
             reused_interaction_groupby = [
@@ -1696,6 +1701,7 @@ class SpatialDataset:
             markers: Dict[str, Dict[str, List[str]]] = {}
             if not isinstance(payload, dict):
                 return markers
+            rest_reference_key = "__rest__"
             for color_name, by_source in payload.items():
                 if not isinstance(by_source, dict):
                     continue
@@ -1704,8 +1710,16 @@ class SpatialDataset:
                     if str(source).startswith("_") or not isinstance(by_reference, dict):
                         continue
                     ranked: Dict[str, Tuple[float, float]] = {}
-                    for reference, result in by_reference.items():
-                        if str(reference).startswith("_") or not isinstance(result, dict):
+                    references = (
+                        [(rest_reference_key, by_reference[rest_reference_key])]
+                        if rest_reference_key in by_reference
+                        else list(by_reference.items())
+                    )
+                    for reference, result in references:
+                        if (
+                            str(reference).startswith("_")
+                            and str(reference) != rest_reference_key
+                        ) or not isinstance(result, dict):
                             continue
                         genes_list = result.get("genes")
                         padj_list = result.get("pvals_adj")
@@ -1810,7 +1824,7 @@ class SpatialDataset:
             for decon_name, ddata in decon_data.items():
                 sec_matrix = ddata["matrix"][idx]  # (n_section, K)
                 sec_dominant = ddata["dominant"][idx]
-                # Dominant code feeds the existing categorical color pipeline.
+                # Dominant code feeds the existing categorical annotation pipeline.
                 section_colors_b64[decon_name] = _b64(sec_dominant.astype("<f4", copy=False))
                 section_proportions_b64[decon_name] = {
                     "k": ddata["k"],
@@ -1926,7 +1940,7 @@ class SpatialDataset:
                     except Exception:
                         pass
             colors_meta[col] = meta
-        # Deconvolution proportion entries: appear as additional categorical color modes.
+        # Deconvolution proportion entries: appear as additional categorical annotation modes.
         for decon_name, ddata in decon_data.items():
             colors_meta[decon_name] = {
                 "is_continuous": False,
@@ -1946,7 +1960,7 @@ class SpatialDataset:
             }
 
         return {
-            "initial_color": color,
+            "initial_color": annotation,
             "groupby": self.groupby,
             "colors_meta": colors_meta,
             "genes_meta": genes_meta,

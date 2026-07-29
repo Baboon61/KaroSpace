@@ -69,12 +69,12 @@ def main() -> None:
     print(f"  section IDs: {[s.section_id for s in dataset.sections][:6]} ...")
 
     common_kwargs = dict(
-        color=PRIMARY_COLOR,
+        annotation=PRIMARY_COLOR,
         title="ED Peripheral Nerve — Detailed Annotation + Banksy",
         min_panel_size=140,
         spot_size="auto",
         outline_by=None,
-        additional_colors=ADDITIONAL_COLORS,
+        additional_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",

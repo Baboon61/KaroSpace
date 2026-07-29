@@ -48,13 +48,13 @@ print(f"Loaded {dataset.n_sections} sections with {dataset.n_cells:,} total cell
 print(f"Available color columns: {dataset.obs_columns[:10]}...")
 
 common_kwargs = dict(
-    color=PRIMARY_CLUSTER,
+    annotation=PRIMARY_CLUSTER,
     title="KaroSpace",
     min_panel_size=120,
     spot_size="auto",
     downsample=10_000_000,
     outline_by=None,
-    additional_colors=ANALYTICS_COLUMNS[1:],
+    additional_annotations=ANALYTICS_COLUMNS[1:],
     genes=[],
     use_hvgs=False,
     hvg_limit=50,

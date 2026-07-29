@@ -46,7 +46,7 @@ OUTLINE_BY = "course"
 export_to_html(
     dataset,
     output_path="mouseDev-Nature.html",
-    color= 'leiden_0.5',  # Initial color (categorical)
+    annotation= 'leiden_0.5',  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density
@@ -54,7 +54,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_colors=[
+    additional_annotations=[
         'leiden_1', 'leiden_2', 'anatomical_region',
         'leiden_mana_0.3','leiden_mana_1.0'
     ],

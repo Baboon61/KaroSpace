@@ -65,6 +65,65 @@ def _build_dataset() -> SpatialDataset:
     )
 
 
+def _build_pseudobulk_dataset(cells_per_category_per_sample: int = 20) -> SpatialDataset:
+    obs_rows = []
+    x_rows = []
+    coords = []
+    for sample_idx, sample_id in enumerate(["S1", "S2"]):
+        condition = "ctrl" if sample_id == "S1" else "treated"
+        for category_idx, category in enumerate(["A", "B"]):
+            for cell_idx in range(int(cells_per_category_per_sample)):
+                obs_rows.append(
+                    {
+                        "sample_id": sample_id,
+                        "leiden": category,
+                        "condition": condition,
+                    }
+                )
+                if category == "A":
+                    x_rows.append([5.0, float(cell_idx % 3), 0.0])
+                else:
+                    x_rows.append([1.0, 4.0, float(cell_idx % 2)])
+                coords.append(
+                    [
+                        float(sample_idx * 100 + cell_idx),
+                        float(category_idx * 100 + cell_idx),
+                    ]
+                )
+
+    obs = pd.DataFrame(
+        obs_rows,
+        index=[f"cell_{i}" for i in range(len(obs_rows))],
+    )
+    obs["sample_id"] = pd.Categorical(obs["sample_id"])
+    obs["leiden"] = pd.Categorical(obs["leiden"])
+    obs["condition"] = pd.Categorical(obs["condition"])
+    var = pd.DataFrame(index=["G1", "G2", "G3"])
+    x = np.asarray(x_rows, dtype=float)
+    adata = AnnData(X=x, obs=obs, var=var)
+    adata.layers["counts"] = x.copy()
+    adata.layers["normalized"] = x.copy()
+    adata.obsm["spatial"] = np.asarray(coords, dtype=float)
+    sections = [
+        SectionData(
+            section_id=sample_id,
+            coordinates=adata.obsm["spatial"][
+                obs["sample_id"].astype(str).to_numpy() == sample_id
+            ],
+            metadata={"condition": condition},
+        )
+        for sample_id, condition in [("S1", "ctrl"), ("S2", "treated")]
+    ]
+    return SpatialDataset(
+        adata=adata,
+        sections=sections,
+        groupby="sample_id",
+        obs_columns=["sample_id", "leiden", "condition"],
+        var_names=["G1", "G2", "G3"],
+        metadata_columns=["condition"],
+    )
+
+
 def _extract_data_json(html_text: str) -> dict:
     match = re.search(
         r'<script id="karospace-data" type="application/json">(.*?)</script>',
@@ -131,6 +190,32 @@ def _write_h5ad_with_nested_null_uns_entry(path: Path) -> None:
         null_ds.attrs["encoding-version"] = "0.1.0"
 
 
+def test_export_can_disable_pseudobulk_and_interaction_markers(tmp_path):
+    dataset = _build_dataset()
+    output_path = tmp_path / "viewer.html"
+
+    export_to_html(
+        dataset,
+        output_path=str(output_path),
+        annotation="leiden",
+        genes=["G1"],
+        pseudobulk=None,
+        interaction_markers=None,
+        neighbor_stats_groupby=[],
+        neighbor_stats_permutations=0,
+        spatial_variable_genes_n=0,
+        cluster_means_n_genes=0,
+        gene_correlation_top_n=0,
+    )
+
+    embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
+    assert embedded["pseudobulk_de"] == {}
+    assert embedded["interaction_markers"] == {}
+    assert embedded["marker_genes"] == {}
+    assert embedded["cluster_gene_means"] is None
+    assert embedded["gene_correlations"] == {}
+
+
 def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     dataset = _build_dataset()
     output_path = tmp_path / "viewer.html"
@@ -138,7 +223,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_encoding="sparse",
         gene_storage="sidecar",
@@ -188,6 +273,21 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "function hideModalGeneDiscoveryPanel()" in html_text
     assert "function scoreModalSelectionMarkerGenes(section, selectedCellIndices)" in html_text
     assert "function scoreLoadedGenesForModalSelection(section, selectedCellIndices)" in html_text
+    assert "function createModalAnnotationFromSelection()" in html_text
+    assert 'id="selection-create-annotation-btn"' in html_text
+    assert 'id="selection-create-annotation-btn" type="button" title="Create annotation from this lasso selection" aria-label="Create annotation from this lasso selection" hidden' in html_text
+    assert "function markPrimarySelectionChanged()" in html_text
+    assert "function annotationAlreadyCreatedForCurrentSelection()" in html_text
+    assert "function updateSelectionCreateAnnotationButtonState()" in html_text
+    assert "function hasLassoDerivedAnnotationSelection()" in html_text
+    assert "if (parentId === null || parentId === undefined || parentId === '') return null;" in html_text
+    assert "Annotation already created for this selection" in html_text
+    assert 'id="focused-modal-annotation-toggle"' not in html_text
+    assert 'id="focused-modal-graph-toggle"' not in html_text
+    assert 'id="umap-compare-toggle"' not in html_text
+    assert 'id="umap-compare-wrap"' not in html_text
+    assert "createModalAnnotationFromPath" not in html_text
+    assert "modalAnnotationModeActive" not in html_text
     assert 'id="overview-gene-view-mode"' in html_text
     assert "function updateOverviewGeneViewState()" in html_text
     assert "function ensureSectionGeneDensityCache(section, transform, width, height, values, candidateIndices = null)" in html_text
@@ -218,7 +318,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "renderComparisonInteractionSummary(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory)" not in html_text
     assert "Pairwise DE for <strong>" not in html_text
     assert "let modalSpacePanActive = false;" in html_text
-    assert "Pan inside the modal even while Select or Annotate is active." in html_text
+    assert "Pan inside the modal while Select is active." in html_text
     assert 'id="shortcuts-overlay"' in html_text
     assert "function initShortcutsOverlay()" in html_text
     assert "function toggleShortcutsOverlay()" in html_text
@@ -226,6 +326,32 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "Open the full keyboard shortcuts overlay." in html_text
     assert "--selection-outline-color:" in html_text
     assert "function getSelectionOutlineColor()" in html_text
+    assert "const metadataColor = getMetadataValueColor(OUTLINE_BY, value);" in html_text
+    assert "function reorderModalAnnotation(sourceId, targetId)" in html_text
+    assert "function moveModalAnnotation(sourceId, targetId, position = 'before')" in html_text
+    assert "function moveModalAnnotationToRoot(sourceId)" in html_text
+    assert "function createModalAnnotationGroup()" in html_text
+    assert "parent_id: normalizeAnnotationParentId(annotation.parentId)" in html_text
+    assert "type: annotation.isGroup ? 'group' : 'polygon'" in html_text
+    assert 'id="modal-annotations-create-group"' in html_text
+    assert "modal-annotation-children" not in html_text
+    assert "modal-annotation-group-wrap" in html_text
+    assert "data-annotation-group-id" in html_text
+    assert "modal-annotation-group-placeholder" in html_text
+    assert "annotation-group" in html_text
+    assert "annotation-child" in html_text
+    assert "drag-inside" in html_text
+    assert "data-annotation-drag-handle" in html_text
+    assert "event.target?.closest?.('input, button, select, textarea, a, [contenteditable=\"true\"]')" in html_text
+    assert '.modal-annotation-row[draggable="true"]' in html_text
+    assert 'id="focused-neighbor-panel"' in html_text
+    assert 'id="focused-neighbor-panel-graph"' in html_text
+    assert 'id="focused-neighbor-panel-neighbors"' in html_text
+    assert 'id="focused-neighbor-hop-select"' in html_text
+    assert "function updateFocusedNeighborPanelState()" in html_text
+    assert "hopRow.hidden = !neighborHoverEnabled" in html_text
+    assert ".focused-neighbor-param-row[hidden]" in html_text
+    assert "panel.style.top = `${toggle.offsetTop}px`" in html_text
     assert '<button class="graph-toggle" id="graph-toggle"' not in html_text
     assert '<button class="graph-toggle" id="neighbor-hover-toggle"' not in html_text
     assert '<select id="neighbor-hop-select"' not in html_text
@@ -246,6 +372,9 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert ".modal-controls button.modal-btn-danger" in html_text
     assert "buildColorPanel();" in html_text
     assert "colorToggle.addEventListener('click', toggleInsightsPanel);" in html_text
+    assert 'id="insights-footer-bar"' not in html_text
+    assert '<div class="color-panel collapsed" id="color-panel"></div>' in html_text
+    assert 'id="color-toggle"' in html_text
     assert "document.getElementById('legend-toggle').addEventListener('click', toggleLegendPanel);" in html_text
     assert "initKeyboardShortcuts();" in html_text
     assert ">Insights<" in html_text
@@ -462,7 +591,7 @@ def test_sidecar_export_with_no_embedded_genes_keeps_gene_catalog_and_warns(tmp_
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=[],
         gene_storage="sidecar",
     )
@@ -491,7 +620,7 @@ def test_sidecar_export_respects_custom_shard_size(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
         gene_sidecar_shard_size=1,
@@ -532,7 +661,7 @@ def test_sidecar_uint16_quantization_emits_compact_value_payloads(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=[],
         gene_storage="sidecar",
         gene_value_encoding="uint16",
@@ -554,7 +683,7 @@ def test_sidecar_uint8_quantization_emits_compact_value_payloads(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=[],
         gene_storage="sidecar",
         gene_value_encoding="uint8",
@@ -592,7 +721,7 @@ def test_binary_sidecar_export_writes_indexed_bin_shards(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
         gene_value_encoding="uint8",
@@ -624,7 +753,7 @@ def test_binary_karospace_package_stores_bin_shards_uncompressed(tmp_path):
     export_to_html(
         dataset,
         output_path=str(package_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
         gene_value_encoding="uint8",
@@ -654,7 +783,7 @@ def test_karospace_package_export_wraps_sidecar_assets(tmp_path):
     returned = export_to_html(
         dataset,
         output_path=str(package_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_encoding="sparse",
         gene_storage="sidecar",
@@ -706,7 +835,7 @@ def test_package_sidecar_viewer_wraps_existing_sidecar_bundle(tmp_path, capsys):
     export_to_html(
         dataset,
         output_path=str(html_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
     )
@@ -762,7 +891,7 @@ def test_package_sidecar_viewer_rejects_unsupported_gene_manifest(tmp_path):
     export_to_html(
         dataset,
         output_path=str(html_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
     )
@@ -783,7 +912,7 @@ def test_karospace_package_requires_sidecar_mode(tmp_path):
         export_to_html(
             dataset,
             output_path=str(tmp_path / "viewer.karospace"),
-            color="leiden",
+            annotation="leiden",
             genes=["G1"],
             gene_storage="embedded",
         )
@@ -834,7 +963,7 @@ def test_embedded_mode_stays_single_file(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_storage="embedded",
     )
@@ -859,7 +988,7 @@ def test_export_embeds_normalized_section_rotations(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         section_rotations={"S1": 44.5, "S2": -50.25},
     )
 
@@ -871,10 +1000,21 @@ def test_export_embeds_normalized_section_rotations(tmp_path):
 
 
 def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
-    dataset = _build_dataset()
+    dataset = _build_pseudobulk_dataset()
     output_path = tmp_path / "viewer.html"
 
     def fake_deseq2_pair(counts, metadata, source, reference):
+        if reference == "__rest__":
+            return pd.DataFrame(
+                {
+                    "baseMean": [4.0, 2.0, 1.0],
+                    "log2FoldChange": [0.1, 1.8, -0.5],
+                    "stat": [0.2, 3.2, -1.1],
+                    "pvalue": [0.8, 0.001, 0.4],
+                    "padj": [0.8, 0.01, 0.5],
+                },
+                index=["G1", "G2", "G3"],
+            )
         return pd.DataFrame(
             {
                 "baseMean": [4.0, 2.0, 1.0],
@@ -891,7 +1031,7 @@ def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
@@ -902,8 +1042,8 @@ def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
     result = pseudobulk_de["leiden"]["A"]["B"]
     assert result["available"] is True
     assert result["method"] == "pseudobulk-deseq2"
-    assert result["n_source"] == 2
-    assert result["n_reference"] == 2
+    assert result["n_source"] == 40
+    assert result["n_reference"] == 40
     assert result["n_replicates"] == 2
     assert len(result["genes"]) == 3
     assert result["log2foldchanges"] == result["logfoldchanges"]
@@ -912,6 +1052,12 @@ def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
     assert result["log2fc_cutoff"] == 0.5
     assert len(result["genes"]) == len(result["log2foldchanges"]) == len(result["pvals_adj"]) == len(result["scores"])
     assert len(result["genes"]) == len(result["pct_source"]) == len(result["pct_reference"])
+    rest_result = pseudobulk_de["leiden"]["A"]["__rest__"]
+    assert rest_result["available"] is True
+    assert rest_result["n_source"] == 40
+    assert rest_result["n_reference"] == 40
+    assert rest_result["n_replicates"] == 2
+    assert embedded["marker_genes"]["leiden"]["A"] == ["G2"]
 
 
 def test_pseudobulk_min_pct_expressed_requires_both_groups(monkeypatch, tmp_path):
@@ -935,7 +1081,7 @@ def test_pseudobulk_min_pct_expressed_requires_both_groups(monkeypatch, tmp_path
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         pseudobulk_min_pct_expressed=0.5,
     )
 
@@ -955,7 +1101,7 @@ def test_export_marks_pseudobulk_de_unavailable_for_small_clusters(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
@@ -972,7 +1118,7 @@ def test_export_rejects_unknown_section_rotation_ids(tmp_path):
         export_to_html(
             dataset,
             output_path=str(tmp_path / "viewer.html"),
-            color="leiden",
+            annotation="leiden",
             section_rotations={"missing": 45},
         )
 
@@ -1059,7 +1205,9 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
         [
             "karospace",
             str(input_path),
-            "--pseudobulk-additional-colors",
+            "--pseudobulk",
+            "None",
+            "--pseudobulk-additional-annotations",
             "subclass,region",
             "--pseudobulk-counts-layer",
             "counts",
@@ -1075,6 +1223,8 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
             "1.2",
             "--pseudobulk-deseq2-fit-type",
             "mean",
+            "--interaction-markers",
+            "None",
         ],
     )
 
@@ -1085,7 +1235,9 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
     assert "cluster_de_method" not in captured["kwargs"]
     assert "cluster_de_layer" not in captured["kwargs"]
     assert "cluster_de_min_cells" not in captured["kwargs"]
-    assert captured["kwargs"]["pseudobulk_additional_colors"] == ["subclass", "region"]
+    assert captured["kwargs"]["pseudobulk_additional_annotations"] == ["subclass", "region"]
+    assert captured["kwargs"]["pseudobulk"] is None
+    assert captured["kwargs"]["interaction_markers"] is None
     assert "pseudobulk_groupby" not in captured["kwargs"]
     assert "pseudobulk_replicate" not in captured["kwargs"]
     assert "interaction_markers_groupby" not in captured["kwargs"]
@@ -1126,7 +1278,7 @@ def test_gene_correlations_embedded_in_export(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1", "G2", "G3"],
         gene_storage="embedded",
         gene_correlation_top_n=5,
@@ -1155,7 +1307,7 @@ def test_gene_correlations_disabled_when_top_n_zero(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1", "G2", "G3"],
         gene_correlation_top_n=0,
     )
@@ -1236,7 +1388,7 @@ def test_spatial_variable_genes_empty_without_spatial_graph(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         spatial_variable_genes_n=100,
     )
 
@@ -1295,7 +1447,7 @@ def test_spatial_variable_genes_computed_with_spatial_graph(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         spatial_variable_genes_n=10,
     )
 
@@ -1321,7 +1473,7 @@ def test_spatial_variable_genes_disabled_when_n_zero(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         spatial_variable_genes_n=0,
     )
 
@@ -1467,7 +1619,7 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         neighbor_stats_groupby=["leiden"],
         gene_correlation_top_n=5,
@@ -1505,7 +1657,7 @@ def test_export_falls_back_when_companion_analytics_absent(monkeypatch, tmp_path
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_correlation_top_n=5,
         spatial_variable_genes_n=0,
@@ -1536,7 +1688,7 @@ def test_export_recomputes_only_missing_companion_analytics(monkeypatch, tmp_pat
     export_to_html(
         dataset,
         output_path=str(output_path),
-        color="leiden",
+        annotation="leiden",
         genes=["G1"],
         gene_correlation_top_n=5,
         spatial_variable_genes_n=0,

@@ -47,7 +47,7 @@ OUTLINE_BY = "condition"
 export_to_html(
     dataset,
     output_path="XenSC.html",
-    color="leiden_2",  # Initial color (categorical)
+    annotation="leiden_2",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density
@@ -55,7 +55,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-      additional_colors=[
+      additional_annotations=[
        'leiden_0.5',
        'leiden_1', 'leiden_1.5', 'leiden_2', 'gmm_mana_10', 'gmm_mana_15',
        'gmm_mana_20', 'gmm_mana_30', 'gmm_mana_5', 'gmm_mana_8', 'condition','segmentation_method'

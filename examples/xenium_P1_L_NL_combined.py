@@ -71,12 +71,12 @@ def main() -> None:
     print(f"  section IDs: {[s.section_id for s in dataset.sections]}")
 
     common_kwargs = dict(
-        color=PRIMARY_COLOR,
+        annotation=PRIMARY_COLOR,
         title="Xenium P1 Skin — Lesional + Non-lesional (annotated)",
         min_panel_size=140,
         spot_size="auto",
         outline_by=None,
-        additional_colors=ADDITIONAL_COLORS,
+        additional_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",

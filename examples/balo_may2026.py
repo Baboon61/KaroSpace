@@ -70,12 +70,12 @@ print(f"Loaded {dataset.n_sections} sections, {dataset.n_cells:,} cells")
 print(f"Section IDs: {[s.section_id for s in dataset.sections]}")
 
 common_kwargs = dict(
-    color=PRIMARY_COLOR,
+    annotation=PRIMARY_COLOR,
     title="Balo Lesion May 2026",
     min_panel_size=120,
     spot_size="auto",
     outline_by=None,
-    additional_colors=ADDITIONAL_COLORS,
+    additional_annotations=ADDITIONAL_COLORS,
     genes=[],
     use_hvgs=False,
     hvg_limit=50,

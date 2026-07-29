@@ -46,7 +46,7 @@ OUTLINE_BY = "stage"
 export_to_html(
     dataset,
     output_path="CODEX.html",
-    color="CellCharter_10",  # Initial color (categorical)
+    annotation="CellCharter_10",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density
@@ -54,7 +54,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_colors=[ 'CellCharter_15','CellCharter_20'
+    additional_annotations=[ 'CellCharter_15','CellCharter_20'
     ],
 
     # Pre-load specific genes for expression visualization

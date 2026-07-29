@@ -466,7 +466,7 @@ def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
             '{"strain":["WT","KO"]}',
             "--metadata-max-columns",
             "2",
-            "--outline-by",
+            "--outlineby",
             "strain",
             "--genes",
             "G1,G2",
@@ -516,6 +516,7 @@ def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
     assert export_kwargs["gene_sidecar_shard_size"] == 17
     assert "marker_genes_top_n" not in export_kwargs
     assert export_kwargs["neighbor_stats_seed"] == 42
+    assert export_kwargs["interaction_markers"] == "auto"
     assert export_kwargs["interaction_markers_top_targets"] == 3
     assert export_kwargs["interaction_markers_top_genes"] == 9
     assert export_kwargs["interaction_markers_min_cells"] == 5
@@ -554,7 +555,7 @@ def test_cli_accepts_none_outline_by(monkeypatch, tmp_path):
         [
             "karospace",
             str(input_path),
-            "--outline-by",
+            "--outlineby",
             "None",
         ],
     )

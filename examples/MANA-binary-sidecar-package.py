@@ -57,13 +57,13 @@ print(f"Loaded {dataset.n_sections} sections with {dataset.n_cells:,} total cell
 print(f"Available color columns: {dataset.obs_columns[:10]}...")
 
 common_kwargs = dict(
-    color=PRIMARY_COLOR,
+    annotation=PRIMARY_COLOR,
     title="KaroSpace",
     min_panel_size=120,
     spot_size="auto",
     downsample=100000,
     outline_by=OUTLINE_BY,
-    additional_colors=[
+    additional_annotations=[
         "anno_L3",
         "anno_L2",
         "anno_L1",

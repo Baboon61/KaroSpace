@@ -46,7 +46,7 @@ OUTLINE_BY = "course"
 export_to_html(
     dataset,
     output_path="ST-BRICHOS.html",
-    color="re_annotation_regions",  # Initial color (categorical)
+    annotation="re_annotation_regions",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density
@@ -54,7 +54,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_colors=[
+    additional_annotations=[
        'leiden_0.5',
        'leiden_0.75', 'leiden_1', 'leiden_1.5', 'leiden_2', 'leiden_2.5',
        'region_annotation',

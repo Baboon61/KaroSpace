@@ -30,7 +30,7 @@ if H5AD_PATH.startswith("/path/to/"):
 
 PRIMARY_CLUSTER = "leiden_0.5"
 ANALYTICS_COLUMNS = [PRIMARY_CLUSTER, "leiden_0.1", "leiden_1", "leiden_1.5", "leiden_2"]
-additional_colors=ANALYTICS_COLUMNS[1:],
+additional_annotations=ANALYTICS_COLUMNS[1:],
 marker_genes_groupby=ANALYTICS_COLUMNS,
 cluster_de_groupby=ANALYTICS_COLUMNS,
 neighbor_stats_groupby=ANALYTICS_COLUMNS,
@@ -52,13 +52,13 @@ print(f"Available color columns: {dataset.obs_columns[:10]}...")
 export_to_html(
       dataset,
       output_path=OUTPUT_PATH,
-      color=PRIMARY_CLUSTER,
+      annotation=PRIMARY_CLUSTER,
       title="KaroSpace",
       min_panel_size=120,
       spot_size="auto",
       downsample=10_000_000,
       outline_by=None,
-      additional_colors=ANALYTICS_COLUMNS[1:],
+      additional_annotations=ANALYTICS_COLUMNS[1:],
       genes=[],
       use_hvgs=False,
       hvg_limit=50,

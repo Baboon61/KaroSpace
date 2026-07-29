@@ -40,7 +40,7 @@ This document summarizes the current capabilities in this repository, focused on
 - Category legend with hide/show toggles and spotlight behavior.
 - Light viewer styling is built in.
 - Screenshot export for current grid view.
-- Category/gene color switching from the top controls.
+- Category/ gene annotation switching from the top controls.
 - Gene discovery panel with fuzzy search, keyboard navigation, recent genes, saved panels, and pseudobulk-DE-driven suggestions.
 - Performance-aware incremental rendering and offscreen skipping.
 
@@ -90,7 +90,7 @@ This document summarizes the current capabilities in this repository, focused on
 
 ### 8.2 Neighbors Tab
 
-- Neighbor composition stats by categorical color.
+- Neighbor composition stats by categorical annotation.
 - Optional permutation-based enrichment z-scores.
 - Target search/filter.
 - Interaction browser:
@@ -101,13 +101,13 @@ This document summarizes the current capabilities in this repository, focused on
 ### 8.3 Genes Tab
 
 - Dotplot:
-  - Group by categorical color.
+  - Group by categorical annotation.
   - Optional metadata-based aggregation filter.
   - Gene list input (comma-separated).
   - Dot size as fraction expressing; dot color as mean expression.
   - Dotplot gene input supports datalist-based suggestions and Tab token autocomplete.
 - DE Genes:
-  - Pseudobulk DE genes per category for current categorical color.
+  - Pseudobulk DE genes per category for the current categorical annotation.
   - Search/filter DE-gene output.
 - Means:
   - Pseudobulk-derived category mean expression for embedded DE genes.
@@ -142,7 +142,7 @@ This document summarizes the current capabilities in this repository, focused on
   - interaction pseudobulk controls
   - section rotations
 - GUI supports:
-  - Searchable list editors for additional colors and genes
+  - Searchable list editors for additional annotations and genes
   - Advanced controls for gene storage, pseudobulk DE, neighbor stats, and interaction markers
   - Inspect/validate + export workflow with logs
 

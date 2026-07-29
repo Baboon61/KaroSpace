@@ -137,12 +137,12 @@ def main() -> None:
         section_images = None
 
     common_kwargs = dict(
-        color=PRIMARY_COLOR,
+        annotation=PRIMARY_COLOR,
         title="Breast Cancer Xenium (2 samples) — DAPI + H&E",
         min_panel_size=140,
         spot_size="auto",
         outline_by=None,
-        additional_colors=ADDITIONAL_COLORS,
+        additional_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",

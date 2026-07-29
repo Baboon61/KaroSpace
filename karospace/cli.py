@@ -63,16 +63,18 @@ def _run_export_cli(argv=None):
         help="Output HTML file path (default: karospace.html)"
     )
     viewer_args.add_argument(
-        "-c", "--color",
+        "--annotation",
         type=str,
         default="leiden",
-        help="Initial color column or gene (default: leiden)"
+        dest="annotation",
+        help="Initial cell annotation column or gene (default: leiden)"
     )
     viewer_args.add_argument(
-        "--additional-colors",
+        "--additional-annotations",
         type=str,
         default="",
-        help="Comma-separated extra obs columns to embed as selectable colors "
+        dest="additional_annotations",
+        help="Comma-separated extra obs columns to embed as selectable annotations "
              "(e.g. a second clustering). Needed to compare annotations in the River plot."
     )
     gene_args.add_argument(
@@ -173,10 +175,20 @@ def _run_export_cli(argv=None):
         help="Page title"
     )
     viewer_args.add_argument(
-        "--outline-by",
+        "--outlineby",
+        dest="outline_by",
         type=str,
         default="course",
-        help="Metadata column used to color panel outlines. Use 'None' to disable outlines. (default: course)"
+        help=(
+            "Metadata column used to paint panel outlines. Use 'None' to disable outlines. "
+            "When the column is embedded as metadata/annotation, outlines reuse that palette. (default: course)"
+        )
+    )
+    viewer_args.add_argument(
+        "--outline-by",
+        dest="outline_by",
+        type=str,
+        help=argparse.SUPPRESS,
     )
     viewer_args.add_argument(
         "--viewer-info-html",
@@ -245,13 +257,25 @@ def _run_export_cli(argv=None):
         "--neighbor-stats-groupby",
         type=str,
         default="auto",
-        help="Comma-separated obs columns to compute neighbor composition stats for. Use 'auto' (default) to match the initial color; empty disables."
+        help="Comma-separated obs columns to compute neighbor composition stats for. Use 'auto' (default) to match the initial annotation; empty disables."
     )
     pseudobulk_args.add_argument(
-        "--pseudobulk-additional-colors",
+        "--pseudobulk",
+        type=str,
+        default="auto",
+        help=(
+            "Category pseudobulk DE mode. Use 'auto' to analyze the initial --annotation "
+            "and --pseudobulk-additional-annotations, or 'None' to disable. (default: auto)"
+        )
+    )
+    pseudobulk_args.add_argument(
+        "--pseudobulk-additional-annotations",
         type=str,
         default="",
-        help="Comma-separated additional color columns to analyze with pseudobulk DE. The initial --color is always analyzed."
+        help=(
+            "Comma-separated additional annotation columns to analyze when pseudobulk or "
+            "interaction markers are enabled. The initial --annotation is included automatically."
+        )
     )
     pseudobulk_args.add_argument(
         "--pseudobulk-counts-layer",
@@ -281,13 +305,13 @@ def _run_export_cli(argv=None):
         "--pseudobulk-padj-cutoff",
         type=float,
         default=0.05,
-        help="Adjusted p-value cutoff for volcano coloring and DE table inclusion. (default: 0.05)"
+        help="Adjusted p-value cutoff for volcano highlighting and DE table inclusion. (default: 0.05)"
     )
     pseudobulk_args.add_argument(
         "--pseudobulk-log2fc-cutoff",
         type=float,
         default=0.5,
-        help="Absolute log2FC cutoff for volcano coloring and DE table inclusion. (default: 0.5)"
+        help="Absolute log2FC cutoff for volcano highlighting and DE table inclusion. (default: 0.5)"
     )
     pseudobulk_args.add_argument(
         "--pseudobulk-deseq2-fit-type",
@@ -300,6 +324,15 @@ def _run_export_cli(argv=None):
         type=int,
         default=0,
         help="Random seed for neighbor enrichment permutations. (default: 0)"
+    )
+    neighborhood_args.add_argument(
+        "--interaction-markers",
+        type=str,
+        default="auto",
+        help=(
+            "Contact-conditioned pseudobulk marker mode. Use 'auto' to analyze the initial --annotation "
+            "and --pseudobulk-additional-annotations, or 'None' to disable. (default: auto)"
+        )
     )
     neighborhood_args.add_argument(
         "--interaction-markers-top-targets",
@@ -436,12 +469,23 @@ def _run_export_cli(argv=None):
             return None
         return text
 
+    def _parse_auto_or_none(value: str, option_name: str) -> Optional[str]:
+        text = str(value or "").strip().lower()
+        if text in {"", "auto"}:
+            return "auto"
+        if text in {"none", "null"}:
+            return None
+        print(f"Error: {option_name} must be 'auto' or 'None'", file=sys.stderr)
+        sys.exit(2)
+
     if str(args.neighbor_stats_groupby).lower() == "auto":
-        neighbor_stats_groupby = [args.color]
+        neighbor_stats_groupby = [args.annotation]
     else:
         neighbor_stats_groupby = _parse_csv(args.neighbor_stats_groupby)
-    pseudobulk_additional_colors = _parse_csv(args.pseudobulk_additional_colors)
-    additional_colors = _parse_csv(args.additional_colors)
+    pseudobulk_mode = _parse_auto_or_none(args.pseudobulk, "--pseudobulk")
+    interaction_markers_mode = _parse_auto_or_none(args.interaction_markers, "--interaction-markers")
+    pseudobulk_additional_annotations = _parse_csv(args.pseudobulk_additional_annotations)
+    additional_annotations = _parse_csv(args.additional_annotations)
     genes = _parse_csv(args.genes)
     group_order = _parse_csv(args.group_order)
     metadata_columns = _parse_csv(args.metadata_columns)
@@ -515,8 +559,8 @@ def _run_export_cli(argv=None):
     output_path = export_to_html(
         dataset,
         output_path=args.output,
-        color=args.color,
-        additional_colors=additional_colors,
+        annotation=args.annotation,
+        additional_annotations=additional_annotations,
         genes=genes,
         title=args.title,
         modalities=modalities_arg,
@@ -539,7 +583,8 @@ def _run_export_cli(argv=None):
         interaction_markers_top_genes=args.interaction_markers_top_genes,
         interaction_markers_min_cells=args.interaction_markers_min_cells,
         interaction_markers_min_neighbors=args.interaction_markers_min_neighbors,
-        pseudobulk_additional_colors=pseudobulk_additional_colors,
+        pseudobulk=pseudobulk_mode,
+        pseudobulk_additional_annotations=pseudobulk_additional_annotations,
         pseudobulk_counts_layer=_parse_optional_layer(args.pseudobulk_counts_layer),
         pseudobulk_min_replicates=args.pseudobulk_min_replicates,
         pseudobulk_min_pct_expressed=args.pseudobulk_min_pct_expressed,
@@ -547,6 +592,7 @@ def _run_export_cli(argv=None):
         pseudobulk_padj_cutoff=args.pseudobulk_padj_cutoff,
         pseudobulk_log2fc_cutoff=args.pseudobulk_log2fc_cutoff,
         pseudobulk_deseq2_fit_type=args.pseudobulk_deseq2_fit_type,
+        interaction_markers=interaction_markers_mode,
         section_rotations=section_rotations,
         deconvolutions=deconvolutions,
         gene_correlation_top_n=args.gene_correlation_top_n,

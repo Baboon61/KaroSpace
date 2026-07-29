@@ -62,12 +62,12 @@ print(f"Detected modalities: {list(dataset.modalities.keys())}")
 # Note: marker_genes_groupby and other analytics columns will automatically
 # pick up precomputed values from adata.uns['karospace_companion'] if available.
 common_kwargs = dict(
-    color=PRIMARY_COLOR,
+    annotation=PRIMARY_COLOR,
     title="CosMx Multiomic Breast Cancer (Companion)",
     min_panel_size=150,
     spot_size="auto",
     downsample=None,
-    additional_colors=ADDITIONAL_COLORS,
+    additional_annotations=ADDITIONAL_COLORS,
     
     # Feature discovery
     genes=[],

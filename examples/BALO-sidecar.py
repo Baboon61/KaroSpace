@@ -50,13 +50,13 @@ ENABLE_ANALYTICS = True
 export_to_html(
     dataset,
     output_path="BALO.html",
-    color="leiden_2",
+    annotation="leiden_2",
     title="KaroSpace",
     min_panel_size=120,
     spot_size="auto",
     downsample=100000,
     outline_by=OUTLINE_BY,
-    additional_colors=[
+    additional_annotations=[
         'leiden_0.5',
     ],
     genes=[

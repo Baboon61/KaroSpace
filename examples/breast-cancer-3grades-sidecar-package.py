@@ -111,13 +111,13 @@ def extract_he_images(dataset, out_dir="breast-cancer-3grades-he"):
 SECTION_IMAGES = extract_he_images(dataset)
 
 common_kwargs = dict(
-    color=PRIMARY_COLOR,
+    annotation=PRIMARY_COLOR,
     title="Breast Cancer (3 grades)",
     min_panel_size=120,
     spot_size="auto",
     downsample=10_000_000,
     outline_by=None,
-    additional_colors=ADDITIONAL_COLORS,
+    additional_annotations=ADDITIONAL_COLORS,
     metadata_labels=METADATA_LABELS,
     section_images=SECTION_IMAGES,
     section_images_max_px=4096,

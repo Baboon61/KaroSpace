@@ -46,7 +46,7 @@ OUTLINE_BY = "course"
 export_to_html(
     dataset,
     output_path="skin-talbot.html",
-    color="cytetype_annotation_leiden_4",  # Initial color (categorical)
+    annotation="cytetype_annotation_leiden_4",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density
@@ -54,7 +54,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_colors=[
+    additional_annotations=[
        'leiden_0.5',
        'leiden_1', 'leiden_1.5', 'leiden_2', 'leiden_2.5', 'leiden_3',
        'leiden_3.5', 'leiden_4', 'cytetype_annotation_leiden_4',

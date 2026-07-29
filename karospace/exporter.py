@@ -6,6 +6,7 @@ for interactive visualization of spatial transcriptomics data.
 """
 
 import base64
+import html as _html
 import json
 import os
 import re
@@ -202,6 +203,9 @@ KAROSPACE_PACKAGE_LOADER_FILENAME = "karospace-package-loader.html"
 GENE_SIDECAR_FORMAT_BINARY = "binary"
 GENE_SIDECAR_BINARY_MAGIC = b"KSB1"
 GENE_SIDECAR_BINARY_VERSION = 1
+# Keep each JSON payload comfortably below browser string/parser limits.  Large
+# viewers split section fields across scripts and reassemble them at startup.
+EMBEDDED_VIEWER_DATA_SINGLE_SCRIPT_MAX_CHARS = 16 * 1024 * 1024
 
 
 def _load_logo_base64() -> Optional[str]:
@@ -523,7 +527,40 @@ def _extract_embedded_viewer_data(html_text: str) -> dict:
     )
     if not match:
         raise ValueError("embedded karospace-data script not found in HTML")
-    return json.loads(match.group(1).replace("<\\/", "</"))
+    data = json.loads(match.group(1).replace("<\\/", "</"))
+    section_pattern = re.compile(
+        r'<script type="application/json" '
+        r'data-karospace-section-index="(\d+)" '
+        r'data-karospace-section-key="([^"]*)"'
+        r'(?: data-karospace-section-child="([^"]*)")?'
+        r'>(.*?)</script>',
+        re.DOTALL,
+    )
+    section_matches = list(section_pattern.finditer(html_text))
+    if not section_matches:
+        return data
+
+    sections = data.get("sections")
+    if not isinstance(sections, list):
+        raise ValueError("fragmented viewer data has no sections list")
+    for section_match in section_matches:
+        section_index = int(section_match.group(1))
+        if section_index < 0 or section_index >= len(sections):
+            raise ValueError("fragmented viewer data contains an invalid section index")
+        key = _html.unescape(section_match.group(2))
+        child_key = section_match.group(3)
+        value = json.loads(section_match.group(4).replace("<\\/", "</"))
+        if not isinstance(sections[section_index], dict):
+            sections[section_index] = {}
+        section = sections[section_index]
+        if child_key is None:
+            section[key] = value
+        else:
+            child_key = _html.unescape(child_key)
+            if not isinstance(section.get(key), dict):
+                section[key] = {}
+            section[key][child_key] = value
+    return data
 
 
 def _extract_html_title(html_text: str) -> str:
@@ -957,6 +994,90 @@ def _escape_html_attr(value: object) -> str:
     )
 
 
+def _json_for_html_script(value: object) -> str:
+    """Serialize strict JSON that cannot terminate its enclosing script tag."""
+    return json.dumps(value, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
+
+
+def _serialize_embedded_viewer_data(data: Mapping[str, object]) -> Tuple[str, str]:
+    """Return the primary viewer payload and optional, small section fragments.
+
+    Some browsers cannot reliably parse a single JSON script node once it exceeds
+    a few hundred megabytes. Sections dominate large exports, so keep the normal
+    compact single-script format for ordinary viewers and split only large ones
+    into one payload per section field.
+    """
+    sanitized_data = _json_sanitize_nonfinite(data)
+    data_json = _json_for_html_script(sanitized_data)
+    if len(data_json) <= EMBEDDED_VIEWER_DATA_SINGLE_SCRIPT_MAX_CHARS:
+        return data_json, ""
+
+    sections = sanitized_data.get("sections") if isinstance(sanitized_data, dict) else None
+    if not isinstance(sections, list) or not sections:
+        return data_json, ""
+
+    # The main payload retains the section order but leaves their data to the
+    # fragment scripts below. This keeps the initial JSON parse small as well.
+    primary_data = dict(sanitized_data)
+    primary_data["sections"] = [None] * len(sections)
+    primary_json = _json_for_html_script(primary_data)
+    if len(primary_json) > EMBEDDED_VIEWER_DATA_SINGLE_SCRIPT_MAX_CHARS:
+        return data_json, ""
+
+    fragments: List[str] = []
+
+    def append_fragment(
+        section_index: int,
+        key: object,
+        value: object,
+        *,
+        child_key: Optional[object] = None,
+    ) -> None:
+        payload = _json_for_html_script(value)
+        attrs = (
+            'type="application/json" '
+            f'data-karospace-section-index="{section_index}" '
+            f'data-karospace-section-key="{_escape_html_attr(key)}"'
+        )
+        if child_key is not None:
+            attrs += f' data-karospace-section-child="{_escape_html_attr(child_key)}"'
+        fragments.append(f"<script {attrs}>{payload}</script>")
+
+    for section_index, section in enumerate(sections):
+        if not isinstance(section, dict):
+            raise ValueError(
+                "large viewer export requires each section payload to be a mapping"
+            )
+        for key, value in section.items():
+            payload = _json_for_html_script(value)
+            if len(payload) <= EMBEDDED_VIEWER_DATA_SINGLE_SCRIPT_MAX_CHARS:
+                append_fragment(section_index, key, value)
+                continue
+            if isinstance(value, dict):
+                # Dense dictionaries (for example encoded annotations or genes)
+                # can themselves be large; split their entries as well.
+                append_fragment(section_index, key, {})
+                for child_key, child_value in value.items():
+                    child_payload = _json_for_html_script(child_value)
+                    if len(child_payload) > EMBEDDED_VIEWER_DATA_SINGLE_SCRIPT_MAX_CHARS:
+                        raise ValueError(
+                            "large viewer export contains a section field that exceeds "
+                            f"{EMBEDDED_VIEWER_DATA_SINGLE_SCRIPT_MAX_CHARS // (1024 * 1024)} MB "
+                            f"even after splitting: section {section_index}, {key!r}, {child_key!r}. "
+                            "Use downsampling to reduce the exported cells per section."
+                        )
+                    append_fragment(section_index, key, child_value, child_key=child_key)
+                continue
+            raise ValueError(
+                "large viewer export contains a section field that exceeds "
+                f"{EMBEDDED_VIEWER_DATA_SINGLE_SCRIPT_MAX_CHARS // (1024 * 1024)} MB: "
+                f"section {section_index}, {key!r}. Use downsampling to reduce the "
+                "exported cells per section."
+            )
+
+    return primary_json, "\n    ".join(fragments)
+
+
 def _resolve_section_rotations(
     dataset: SpatialDataset,
     section_rotations: Optional[Mapping[str, Union[int, float]]],
@@ -1328,6 +1449,72 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
+        }}
+        .gene-module-form {{
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+            margin-bottom: 10px;
+        }}
+        .gene-module-form-actions,
+        .gene-module-section-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }}
+        .gene-module-form-actions {{
+            justify-content: flex-end;
+        }}
+        .gene-module-section-header {{
+            margin-bottom: 6px;
+        }}
+        .gene-module-section-header label {{
+            margin-bottom: 0;
+        }}
+        .gene-module-form input,
+        .gene-module-form textarea,
+        .gene-module-form select,
+        .gene-module-card input {{
+            width: 100%;
+            min-width: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 11px;
+            padding: 5px 7px;
+            box-sizing: border-box;
+        }}
+        .gene-module-form textarea {{
+            min-height: 58px;
+            resize: vertical;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }}
+        .gene-module-card {{
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.04);
+        }}
+        .gene-module-card + .gene-module-card {{
+            margin-top: 8px;
+        }}
+        .gene-module-actions {{
+            display: flex;
+            gap: 6px;
+            justify-content: flex-end;
+            flex-wrap: wrap;
+            margin-top: 7px;
+        }}
+        .gene-module-actions .legend-btn {{
+            flex: 0 0 28px;
+        }}
+        .gene-module-genes {{
+            margin-top: 6px;
+        }}
+        .gene-module-draft {{
+            min-height: 28px;
         }}
         .stats {{
             font-size: 11px;
@@ -1902,6 +2089,180 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             z-index: 55;
         }}
         .grid-side-toolbar.gene-open .gene-params-panel {{ display: block; }}
+        .focused-neighbor-panel {{
+            display: none;
+            min-width: 220px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            position: absolute;
+            left: calc(100% + 6px);
+            top: 88px;
+            z-index: 55;
+        }}
+        .grid-side-toolbar.neighbor-open .focused-neighbor-panel {{ display: block; }}
+        .focused-he-panel {{
+            display: none;
+            width: 250px;
+            max-width: min(360px, calc(100vw - 88px));
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            position: absolute;
+            left: calc(100% + 6px);
+            top: 126px;
+            z-index: 55;
+        }}
+        .grid-side-toolbar.he-open .focused-he-panel {{ display: block; }}
+        .focused-he-header {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-bottom: 7px;
+        }}
+        .focused-he-header .visual-params-title {{
+            margin-bottom: 0;
+        }}
+        .focused-he-row {{
+            display: grid;
+            grid-template-columns: 52px minmax(0, 1fr);
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            color: var(--muted-color);
+        }}
+        .focused-he-row.with-action {{
+            grid-template-columns: 52px minmax(0, 1fr) 28px;
+        }}
+        .focused-he-row + .focused-he-row {{
+            margin-top: 7px;
+        }}
+        .focused-he-row label {{
+            font-size: 11px;
+            color: var(--muted-color);
+        }}
+        .focused-he-row input[type="range"] {{
+            width: 100%;
+        }}
+        .focused-he-row input[type="number"],
+        .focused-he-row select {{
+            min-width: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 10px;
+            padding: 2px 4px;
+        }}
+        .focused-he-actions {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+            margin-top: 8px;
+        }}
+        .focused-he-actions .graph-toggle {{
+            font-size: 10px;
+            padding: 3px 6px;
+        }}
+        .focused-he-icon-btn {{
+            width: 28px;
+            height: 28px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .focused-he-icon-btn:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+        }}
+        .focused-he-icon-btn:disabled,
+        .focused-he-icon-btn:disabled:hover {{
+            opacity: 0.45;
+            cursor: not-allowed;
+            background: var(--input-bg);
+            border-color: var(--border-color);
+            color: var(--muted-color);
+        }}
+        .focused-he-icon-btn.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .focused-he-icon-btn svg {{
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
+        .focused-he-align-panel {{
+            display: none;
+            flex-direction: column;
+            gap: 7px;
+            margin-top: 8px;
+            padding: 7px;
+            border: 1px dashed var(--border-color);
+            border-radius: 6px;
+            background: var(--input-bg);
+        }}
+        .focused-he-align-panel.visible {{
+            display: flex;
+        }}
+        .focused-he-status {{
+            margin-top: 7px;
+            font-size: 10px;
+            line-height: 1.3;
+            color: var(--muted-color);
+        }}
+        .focused-neighbor-switch {{
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px;
+            margin: 8px 0;
+        }}
+        .focused-neighbor-mode-btn {{
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            padding: 5px 7px;
+            cursor: pointer;
+            font-size: 11px;
+        }}
+        .focused-neighbor-mode-btn.active {{
+            background: var(--accent-strong);
+            border-color: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .focused-neighbor-param-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-size: 11px;
+        }}
+        .focused-neighbor-param-row[hidden] {{
+            display: none;
+        }}
+        .focused-neighbor-param-row select {{
+            max-width: 112px;
+        }}
         .gene-params-panel #expression-scale-section {{
             gap: 6px;
         }}
@@ -2238,7 +2599,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .legend-resizer.hidden {{ display: none; }}
         body.legend-resizing {{ cursor: col-resize; user-select: none; }}
         .color-panel {{
-            width: 430px;
+            width: 452px;
             padding: 12px;
             background: var(--panel-bg);
             border-left: 1px solid var(--border-color);
@@ -2316,18 +2677,115 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 6px;
             flex-wrap: wrap;
         }}
-        .insights-top-tabs {{
+        .insights-tree {{
             display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 4px;
-        }}
-        .insights-top-tabs .color-tab {{
-            flex: 0 0 auto;
-            padding: 5px 4px;
-            white-space: nowrap;
+            grid-template-rows: auto 0fr;
+            width: 100%;
             overflow: hidden;
-            text-overflow: ellipsis;
-            overflow-wrap: normal;
+            transition: grid-template-rows 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }}
+        .insights-tree.is-open {{ grid-template-rows: auto 1fr; }}
+        .insights-tree-root,
+        .insights-tree-trigger {{
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            width: 100%;
+            box-sizing: border-box;
+            min-height: 29px;
+            padding: 6px 10px;
+            overflow: visible;
+            border-color: var(--muted-color);
+            background: var(--panel-bg);
+            color: var(--accent-strong);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.25;
+            text-align: left;
+            text-overflow: clip;
+            white-space: normal;
+            overflow-wrap: anywhere;
+        }}
+        .insights-tree-root {{
+            font-size: 12px;
+            font-weight: 700;
+        }}
+        .insights-tree-root:hover,
+        .insights-tree-trigger:hover {{
+            border-color: var(--accent-strong);
+            background: #F7B6DA;
+            color: var(--accent-strong);
+            transform: none;
+        }}
+        .insights-tree-root::after,
+        .insights-tree-trigger.has-children::after {{
+            content: ">";
+            justify-self: end;
+            margin-left: 12px;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            opacity: 0.8;
+        }}
+        .insights-tree.is-open > .insights-tree-root,
+        .insights-tree.has-selection > .insights-tree-root,
+        .insights-tree-node.is-open > .insights-tree-trigger,
+        .insights-tree-leaf.is-selected {{
+            border-color: var(--accent-strong);
+            background: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .insights-tree.is-open > .insights-tree-root::after,
+        .insights-tree-node.is-open > .insights-tree-trigger.has-children::after {{
+            content: "v";
+            opacity: 1;
+        }}
+        .insights-tree-panel,
+        .insights-tree-children {{
+            display: grid;
+            grid-template-rows: 0fr;
+            overflow: hidden;
+            transition: grid-template-rows 200ms cubic-bezier(0.2, 0.8, 0.2, 1), margin-top 200ms ease;
+        }}
+        .insights-tree.is-open > .insights-tree-panel,
+        .insights-tree-node.is-open > .insights-tree-children {{
+            grid-template-rows: 1fr;
+            margin-top: 5px;
+        }}
+        .insights-tree-panel-content,
+        .insights-tree-children-content {{
+            display: block;
+            min-height: 0;
+            overflow: hidden;
+            padding: 0;
+            opacity: 0;
+            transform: translateY(-4px);
+            transition: padding 200ms ease, opacity 140ms ease, transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1);
+        }}
+        .insights-tree-panel-content > * + *,
+        .insights-tree-children-content > * + * {{
+            margin-top: 4px;
+        }}
+        .insights-tree.is-open > .insights-tree-panel > .insights-tree-panel-content {{
+            padding: 1px 0 2px 10px;
+            opacity: 1;
+            transform: translateY(0);
+        }}
+        .insights-tree-node.is-open > .insights-tree-children > .insights-tree-children-content {{
+            padding: 0 0 1px 12px;
+            opacity: 1;
+            transform: translateY(0);
+        }}
+        .insights-tree-node {{
+            min-width: 0;
+        }}
+        .insights-tree-node.is-sibling-hidden,
+        .insights-tree-leaf.is-sibling-hidden {{
+            display: none;
+        }}
+        .insights-tree-leaf {{
+            min-height: 29px;
+            font-weight: 500;
         }}
         .insights-subtabs {{
             display: grid;
@@ -2357,8 +2815,92 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--accent);
             opacity: 0.7;
         }}
+        .compare-navigation {{
+            display: block;
+            min-height: 28px;
+            margin-top: 6px;
+        }}
+        .compare-mode-tabs {{
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 4px;
+        }}
+        .compare-navigation-group {{
+            display: none;
+        }}
+        .compare-navigation-group.active {{
+            display: block;
+            animation: insightsDropdownReveal 160ms ease both;
+        }}
+        .insights-menu-branch {{
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            animation: insightsMenuReveal 180ms ease both;
+        }}
+        .insights-menu-children {{
+            margin-left: 10px;
+            padding-left: 8px;
+            animation: insightsDropdownReveal 180ms ease both;
+        }}
+        .insights-menu-children .color-tabs {{
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }}
+        .compare-navigation-group .insights-subtabs {{
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+            gap: 8px;
+            align-items: end;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+        }}
+        #insights-exploration-panel > .color-tab-content.active {{
+            animation: insightsPanelReveal 180ms ease both;
+        }}
+        #insights-exploration-panel .color-tab:hover {{
+            transform: translateY(-1px);
+        }}
+        #insights-exploration-panel .color-tab {{
+            transition: background 160ms ease, border-color 160ms ease, color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+        }}
+        #insights-exploration-panel .color-tab.active {{
+            box-shadow: 0 2px 5px color-mix(in srgb, var(--accent-strong) 22%, transparent);
+        }}
+        #insights-exploration-panel .insights-tree .color-tab:hover {{
+            transform: none;
+        }}
+        #color-tab-overview-content > .insights-subtab-label,
+        #color-tab-overview-content > .insights-subtabs,
+        #color-tab-genes-content > .insights-subtab-label,
+        #color-tab-genes-content > .insights-subtabs,
+        #color-tab-neighbors-content > .insights-subtab-label,
+        #color-tab-neighbors-content > .insights-subtabs,
+        #color-tab-compare-content > .insights-subtab-label,
+        #color-tab-compare-content > .insights-menu-branch {{
+            display: none;
+        }}
+        @keyframes insightsMenuReveal {{
+            from {{ opacity: 0; transform: translateY(-3px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        @keyframes insightsDropdownReveal {{
+            from {{ opacity: 0; transform: translateY(-2px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        @keyframes insightsPanelReveal {{
+            from {{ opacity: 0.35; transform: translateY(2px); }}
+            to {{ opacity: 1; transform: translateY(0); }}
+        }}
+        @media (prefers-reduced-motion: reduce) {{
+            #insights-exploration-panel *,
+            #insights-exploration-panel *::before,
+            #insights-exploration-panel *::after {{
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                scroll-behavior: auto !important;
+                transition-duration: 0.01ms !important;
+            }}
+        }}
         .color-tab {{
-            flex: 1 1 96px;
             min-width: 0;
             padding: 4px 6px;
             font-size: 10px;
@@ -2612,28 +3154,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-color);
             font-size: 11px;
         }}
-        .marker-genes-export {{ display: flex; justify-content: flex-end; }}
-        .marker-group-title {{ font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border-radius: 3px; padding: 1px 3px; margin: -1px -3px; }}
-        .marker-group-title:hover {{ background: var(--hover-bg); }}
+        .marker-genes-export {{ display: flex; justify-content: flex-end; margin-top: 7px; }}
+        .marker-empty {{ font-size: 10px; color: var(--muted-color); line-height: 1.35; }}
+        .marker-group {{
+            padding: 7px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: #fffafd;
+        }}
+        .marker-group + .marker-group {{ margin-top: 7px; }}
+        .marker-group-title {{ font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border-radius: 3px; padding: 1px 3px; margin: -1px -3px 5px; }}
+        .marker-group-title:hover {{ background: color-mix(in srgb, var(--accent-strong) 6%, transparent); }}
         .marker-group-title.is-spotlit {{ background: color-mix(in srgb, var(--accent-color, #4a9eff) 15%, transparent); }}
-        .marker-group-label-editor {{
-            min-width: 0;
-            flex: 1 1 auto;
-            border: 1px solid transparent;
-            border-radius: 3px;
-            padding: 1px 4px;
-            font: inherit;
-            font-weight: 600;
-            color: var(--text-color);
-            background: transparent;
-            cursor: text;
-        }}
-        .marker-group-label-editor:hover {{ border-color: var(--border-color); }}
-        .marker-group-label-editor:focus {{
-            border-color: var(--accent-strong, var(--border-color));
-            background: var(--input-bg);
-            outline: none;
-        }}
         .marker-genes .gene-token-grid {{ gap: 4px; }}
         .marker-genes .gene-token-btn {{
             gap: 4px;
@@ -2676,12 +3208,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .agg-group {{
             padding: 6px;
             border-radius: 6px;
-            background: rgba(135, 0, 82, 0.06);
+            background: #fffafd;
             border: 1px solid var(--border-color);
+            color: #1a1a1a;
             min-width: 0;
             overflow: hidden;
         }}
-        .agg-group-title {{ font-weight: 600; margin-bottom: 4px; }}
+        .agg-group-title {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            font-weight: 600;
+            margin-bottom: 6px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border-color);
+            min-width: 0;
+        }}
         .agg-group-meta {{ font-size: 10px; color: var(--muted-color); margin-bottom: 4px; }}
         .agg-row {{
             display: flex;
@@ -2692,14 +3235,69 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .agg-row[data-target-cat], .agg-row[data-agg-cat] {{ cursor: pointer; border-radius: 3px; padding: 1px 3px; margin: 2px -3px; }}
         .agg-row[data-target-cat]:hover, .agg-row[data-agg-cat]:hover {{ background: var(--hover-bg); }}
         .agg-row[data-target-cat].is-active, .agg-row[data-agg-cat].is-active {{ background: color-mix(in srgb, var(--accent-color, #4a9eff) 15%, transparent); }}
-        .agg-dot {{
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            flex-shrink: 0;
+        .agg-label {{
+            flex: 1;
+            min-width: 0;
         }}
-        .agg-label {{ flex: 1; }}
-        .agg-value {{ font-variant-numeric: tabular-nums; }}
+        .agg-chip {{
+            display: inline-flex;
+            align-items: center;
+            min-width: 0;
+            max-width: 100%;
+            padding: 2px 7px;
+            border-radius: 999px;
+            color: var(--text-color);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .agg-group .agg-chip {{
+            color: #1a1a1a;
+        }}
+        .agg-group-title .agg-chip,
+        .agg-group-title.agg-chip {{
+            font-weight: 600;
+        }}
+        .agg-group-title-main {{
+            min-width: 0;
+            overflow: hidden;
+        }}
+        .agg-group-title-actions {{
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            flex: 0 0 auto;
+        }}
+        .agg-count-chip {{
+            background: var(--input-bg);
+            border: 1px solid var(--border-color);
+        }}
+        .agg-count-chip {{
+            flex: 0 0 auto;
+        }}
+        .agg-toggle-link {{
+            display: block;
+            margin: 5px auto 0 0;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: var(--accent-strong);
+            cursor: pointer;
+            font-size: 10px;
+            line-height: 1.3;
+            text-align: left;
+        }}
+        .agg-toggle-link:hover {{
+            text-decoration: underline;
+        }}
+        .agg-value {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 4px;
+            color: var(--muted-color);
+            font-variant-numeric: tabular-nums;
+        }}
         .comparison-stack {{
             display: flex;
             flex-direction: column;
@@ -3344,8 +3942,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 10px;
             line-height: 1.5;
             pointer-events: none;
-            white-space: nowrap;
-            z-index: 10;
+            white-space: normal;
+            overflow-wrap: anywhere;
+            max-width: min(240px, calc(100% - 12px));
+            z-index: 80;
             display: none;
             color: var(--text-color);
             box-shadow: 0 2px 6px rgba(0,0,0,0.15);
@@ -3353,7 +3953,102 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .volcano-axis-label {{ font-size: 9px; fill: var(--muted-color); font-family: inherit; }}
         .volcano-threshold-line {{ stroke: var(--border-color); stroke-width: 1; stroke-dasharray: 3 3; }}
         .samples-controls {{ display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }}
+        .samples-controls-row {{ display: flex; align-items: flex-end; gap: 6px; min-width: 0; }}
+        .samples-controls-row .cluster-de-select-row {{ flex: 1 1 auto; min-width: 0; }}
         .samples-view-toggle {{ display: flex; gap: 4px; }}
+        .samples-view-icon-toggle {{
+            flex: 0 0 auto;
+            gap: 0;
+            margin-left: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            overflow: hidden;
+            background: var(--input-bg);
+        }}
+        .samples-view-icon-toggle .legend-btn {{
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+        }}
+        .samples-view-icon-toggle .legend-btn.icon-only {{
+            flex: 0 0 34px;
+            width: 34px;
+            height: 30px;
+        }}
+        .samples-view-icon-toggle .legend-btn + .legend-btn {{
+            border-left: 1px solid var(--border-color);
+        }}
+        .samples-view-icon-toggle .legend-btn.active {{
+            background: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .gene-subtab-view-toggle {{
+            display: inline-flex;
+            gap: 0;
+            margin-bottom: 6px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            overflow: hidden;
+            background: var(--input-bg);
+        }}
+        .gene-subtab-view-toggle .legend-btn {{
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+        }}
+        .gene-subtab-view-toggle .legend-btn.active {{
+            background: var(--accent-strong);
+            color: #ffffff;
+        }}
+        .gene-subtab-action-row {{
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 6px;
+            margin: -2px 0 7px;
+        }}
+        .genes-warning {{
+            margin: 6px 0 8px;
+            padding: 7px 8px;
+            border: 1px solid color-mix(in srgb, #e2a400 38%, var(--border-color));
+            border-radius: 6px;
+            background: #fff8d8;
+            color: #5f4700;
+            font-size: 10px;
+            line-height: 1.35;
+        }}
+        .genes-warning + .genes-warning {{ margin-top: -2px; }}
+        .genes-warning .agg-chip {{
+            margin-left: 4px;
+            color: #1a1a1a;
+        }}
+        .marker-gene-search-wrap {{ display: flex; align-items: center; gap: 5px; }}
+        .marker-gene-search-wrap .marker-search {{ flex: 1 1 auto; min-width: 0; }}
+        .marker-gene-clear-btn {{
+            flex: 0 0 22px;
+            width: 22px;
+            height: 22px;
+            border: 0;
+            border-radius: 999px;
+            background: transparent;
+            color: #d94f4f;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .marker-gene-clear-btn:hover {{ background: color-mix(in srgb, #d94f4f 12%, transparent); }}
+        .gene-graph-panel {{
+            position: relative;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--input-bg);
+            padding: 8px;
+            overflow: auto;
+        }}
+        .gene-graph-svg {{ display: block; overflow: visible; }}
         .samples-chart-container {{ position: relative; overflow: auto; max-height: 440px; }}
         .samples-svg {{ display: block; }}
         .river-plot {{ margin-top: 8px; overflow-x: auto; }}
@@ -3794,6 +4489,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             opacity: 0.6;
         }}
         .modal-controls-toggle {{
+            display: none;
             padding: 4px 8px;
             border: 1px solid var(--border-color);
             border-radius: 999px;
@@ -3827,7 +4523,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             bottom: 12px;
             left: 50%;
             transform: translateX(-50%);
-            display: flex;
+            display: none;
             flex-wrap: wrap;
             justify-content: flex-start;
             align-items: stretch;
@@ -4331,8 +5027,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .selection-summary-title {{
             margin: 8px 0 6px;
-            padding-top: 6px;
-            border-top: 1px solid var(--border-color);
             font-size: 10px;
             text-transform: uppercase;
             letter-spacing: 0.04em;
@@ -4435,7 +5129,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: flex;
             align-items: center;
             gap: 5px;
-            margin-bottom: 3px;
+            margin-bottom: 8px;
         }}
         .selection-summary-expr-gene {{
             width: 80px;
@@ -4460,22 +5154,135 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: flex;
             flex-direction: column;
             gap: 1px;
+            min-width: 0;
+            overflow: hidden;
+        }}
+        .selection-summary-expr-stat {{
+            min-width: 0;
+            font-size: 10px;
+            color: var(--muted-color);
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }}
+        .selection-summary-welch-controls {{
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 6px;
+            margin-top: 5px;
+            margin-bottom: 10px;
+            font-size: 9px;
+            font-weight: 400;
+            color: var(--muted-color);
+            white-space: nowrap;
+        }}
+        .selection-summary-welch-controls input {{
+            width: 38px;
+            padding: 2px 4px;
+            font-size: 9px;
+        }}
+        .selection-summary-welch-controls input[type="range"] {{
+            width: 76px;
+            padding: 0;
+        }}
+        .selection-summary-welch-control-row {{
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }}
         .selection-summary-expr-bar {{
-            height: 4px;
+            position: relative;
+            height: 8px;
             border-radius: 2px;
             min-width: 1px;
+            max-width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            padding-right: 3px;
+            box-sizing: border-box;
+            color: #ffffff;
+            font-size: 8px;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
         }}
         .selection-summary-expr-bar.sel {{ background: var(--accent-strong); }}
         .selection-summary-expr-bar.rest {{ background: var(--muted-color); opacity: 0.5; }}
         .selection-summary-expr-bar.region-b {{ background: #4cc9f0; opacity: 0.85; }}
-        .selection-summary-expr-fc {{
-            width: 34px;
+        .selection-summary-expr-factor {{
             flex-shrink: 0;
             text-align: right;
             font-size: 10px;
             font-variant-numeric: tabular-nums;
             color: var(--muted-color);
+        }}
+        .selection-summary-expr-pct {{
+            width: 58px;
+            flex-shrink: 0;
+            text-align: right;
+            font-size: 9px;
+            color: var(--muted-color);
+            font-variant-numeric: tabular-nums;
+        }}
+        .selection-summary-find-markers {{
+            margin-top: 5px;
+        }}
+        .selection-summary-find-markers.loading {{ cursor: default; opacity: 0.7; }}
+        .selection-summary-find-markers svg {{
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }}
+        .selection-summary-find-markers-spinner {{
+            width: 15px;
+            height: 15px;
+            border: 2px solid color-mix(in srgb, var(--accent-strong) 25%, transparent);
+            border-top-color: var(--accent-strong);
+            border-radius: 50%;
+            animation: selectionMarkersSpin 0.75s linear infinite;
+        }}
+        @keyframes selectionMarkersSpin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        #insights-selection-panel.selection-main-summary .selection-summary-expr {{
+            display: none;
+        }}
+        #compare-selection-panel.selection-expression-only > :not(.selection-summary-expr) {{
+            display: none;
+        }}
+        .selection-summary-find-more {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            margin-top: 8px;
+            padding: 5px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--muted-color);
+            cursor: pointer;
+            font-size: 10px;
+        }}
+        .selection-summary-find-more:hover {{
+            background: var(--hover-bg);
+            color: var(--text-color);
+            border-color: var(--accent-strong);
+        }}
+        .selection-summary-find-more svg {{
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
         }}
         .selection-summary-compare-btn {{
             margin-top: 6px;
@@ -4489,14 +5296,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 11px;
         }}
         .selection-summary-compare-btn:hover {{ background: var(--hover-bg); }}
+        .selection-summary-compare-btn:disabled {{
+            opacity: 0.45;
+            cursor: not-allowed;
+        }}
+        .selection-summary-compare-btn:disabled:hover {{
+            background: var(--panel-bg);
+        }}
         .selection-summary-actions {{
             display: flex;
-            flex-direction: column;
+            flex-wrap: wrap;
             gap: 6px;
             margin-top: 6px;
         }}
         .selection-summary-actions .selection-summary-compare-btn {{
             margin-top: 0;
+        }}
+        .selection-summary-actions .selection-summary-compare-btn.icon-only,
+        .selection-summary-compare-btn.icon-only {{
+            flex: 0 0 30px;
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-strong);
+        }}
+        .selection-summary-actions .selection-summary-compare-btn.icon-only:hover,
+        .selection-summary-compare-btn.icon-only:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+            color: var(--accent-strong);
+        }}
+        .selection-summary-compare-btn.icon-only:disabled,
+        .selection-summary-compare-btn.icon-only:disabled:hover {{
+            background: var(--input-bg);
+            border-color: var(--border-color);
+            color: var(--muted-color);
         }}
         .selection-summary-compare-header {{
             display: flex;
@@ -4515,7 +5352,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .selection-summary-compare-label.region-b {{ background: #4cc9f0; color: #000; }}
         .selection-summary-compare-row {{
             display: grid;
-            grid-template-columns: minmax(72px, 1fr) 38px minmax(72px, 1fr);
+            grid-template-columns: minmax(72px, 1fr) 18px minmax(72px, 1fr);
             gap: 6px;
             align-items: center;
             font-size: 11px;
@@ -4525,24 +5362,34 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .selection-summary-compare-row[data-spotlight-cat]:hover {{ background: var(--hover-bg); }}
         .selection-summary-compare-row[data-spotlight-cat].is-active {{ background: color-mix(in srgb, var(--accent-color, #4a9eff) 15%, transparent); }}
         .selection-summary-compare-type {{
-            color: #ffffff;
-            font-weight: 700;
-            font-size: 10px;
-            line-height: 1.25;
-            width: 34px;
-            max-width: 34px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            width: 14px;
+            height: 14px;
+            max-width: 14px;
+            padding: 0;
             border-radius: 999px;
-            padding: 3px 4px;
             box-sizing: border-box;
             justify-self: center;
             display: inline-flex;
+        }}
+        .selection-summary-compare-legend {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+            margin: 6px 0 5px;
+        }}
+        .selection-summary-compare-legend-chip {{
+            display: inline-flex;
             align-items: center;
-            justify-content: center;
-            text-align: center;
-            box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.16);
+            max-width: 100%;
+            padding: 2px 5px;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            font-size: 9px;
+            color: #ffffff;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }}
         .selection-summary-compare-bar {{
             position: relative;
@@ -4561,7 +5408,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             position: relative;
             z-index: 1;
             padding: 0 6px;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
         }}
         .selection-summary-compare-fill {{
             position: absolute;
@@ -4699,7 +5545,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             width: 100%;
             min-height: 52px;
             margin-top: 4px;
-            padding: 6px 7px;
+            padding: 6px 28px 6px 7px;
             border: 1px solid var(--border-color);
             border-radius: 6px;
             background: var(--input-bg);
@@ -4709,12 +5555,87 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             resize: vertical;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
         }}
+        .selection-query-input-wrap {{
+            position: relative;
+            margin-top: 4px;
+        }}
+        .selection-query-input-wrap .selection-query-input {{
+            margin-top: 0;
+        }}
+        .selection-query-clear-input {{
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            width: 18px;
+            height: 18px;
+            padding: 0;
+            border: 0;
+            border-radius: 999px;
+            background: color-mix(in srgb, #c1121f 10%, transparent);
+            color: #c1121f;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            line-height: 1;
+        }}
+        .selection-query-clear-input:hover {{
+            background: color-mix(in srgb, #c1121f 18%, transparent);
+        }}
+        .selection-query-clear-input[hidden] {{
+            display: none;
+        }}
+        .selection-query-clear-input svg {{
+            width: 12px;
+            height: 12px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2.4;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
+        }}
         .selection-query-actions {{
             display: flex;
             flex-wrap: wrap;
             gap: 6px;
             margin-top: 6px;
             justify-content: flex-end;
+        }}
+        .selection-query-icon-btn {{
+            width: 30px;
+            height: 30px;
+            padding: 0;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }}
+        .selection-query-icon-btn:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+        }}
+        .selection-query-icon-btn:disabled,
+        .selection-query-icon-btn:disabled:hover {{
+            opacity: 0.45;
+            cursor: not-allowed;
+            background: var(--input-bg);
+            border-color: var(--border-color);
+            color: var(--muted-color);
+        }}
+        .selection-query-icon-btn svg {{
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            pointer-events: none;
         }}
         .selection-query-actions .selection-summary-compare-btn {{
             flex: 1 1 110px;
@@ -4781,7 +5702,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .modal-annotation-section.active {{
             display: block;
         }}
-        .modal-annotation-section:not(.annotation-has-items) .modal-annotation-actions {{
+        .modal-annotation-section:not(.annotation-has-items) .modal-annotation-actions [data-requires-annotations] {{
             display: none;
         }}
         .modal-annotation-actions {{
@@ -4794,6 +5715,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: flex;
             flex-direction: column;
             gap: 6px;
+            padding-right: 2px;
         }}
         .modal-annotation-empty {{
             font-size: 10px;
@@ -4811,6 +5733,81 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: color-mix(in srgb, var(--panel-bg) 85%, transparent);
             overflow: hidden;
         }}
+        .modal-annotation-row[draggable="true"] {{
+            cursor: grab;
+        }}
+        .modal-annotation-row[draggable="true"]:active {{
+            cursor: grabbing;
+        }}
+        .modal-annotation-row.dragging {{
+            opacity: 0.48;
+        }}
+        .modal-annotation-row.drag-over {{
+            border-color: var(--border-color);
+        }}
+        .modal-annotation-row.drag-before {{
+            border-top-color: var(--border-color);
+        }}
+        .modal-annotation-row.drag-after {{
+            border-bottom-color: var(--border-color);
+        }}
+        .modal-annotation-row.drag-inside {{
+            background: color-mix(in srgb, var(--panel-bg) 85%, transparent);
+        }}
+        .modal-annotation-drop-placeholder {{
+            min-height: 36px;
+            border: 1px dashed var(--accent-strong);
+            border-radius: 6px;
+            background: color-mix(in srgb, var(--accent-strong) 10%, transparent);
+            pointer-events: none;
+        }}
+        .modal-annotation-row.annotation-group > .modal-annotation-row-main .modal-annotation-label {{
+            font-weight: 600;
+        }}
+        .modal-annotation-row.annotation-child {{
+            margin-left: 18px;
+            border-left: 2px solid color-mix(in srgb, var(--border-color) 70%, transparent);
+        }}
+        .modal-annotation-group-wrap.annotation-child {{
+            margin-left: 18px;
+        }}
+        .modal-annotation-row[data-annotation-depth="2"],
+        .modal-annotation-group-wrap[data-annotation-depth="2"] {{
+            margin-left: 14px;
+        }}
+        .modal-annotation-row[data-annotation-depth="3"],
+        .modal-annotation-group-wrap[data-annotation-depth="3"] {{
+            margin-left: 10px;
+        }}
+        .modal-annotation-row[data-annotation-depth="4"],
+        .modal-annotation-group-wrap[data-annotation-depth="4"] {{
+            margin-left: 6px;
+        }}
+        .modal-annotation-group-wrap {{
+            border: 1px dashed color-mix(in srgb, var(--border-color) 78%, transparent);
+            border-radius: 7px;
+            padding: 5px;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }}
+        .modal-annotation-group-wrap.drag-inside {{
+            border-color: var(--accent-strong);
+            background: color-mix(in srgb, var(--accent-strong) 8%, transparent);
+        }}
+        .modal-annotation-group-wrap.drop-active > .modal-annotation-group-placeholder {{
+            display: none;
+        }}
+        .modal-annotation-group-placeholder {{
+            margin-left: 24px;
+            padding: 7px 9px;
+            border: 1px dashed color-mix(in srgb, var(--border-color) 82%, transparent);
+            border-radius: 5px;
+            color: var(--muted-color);
+            font-size: 10px;
+            line-height: 1.3;
+            background: color-mix(in srgb, var(--input-bg) 70%, transparent);
+        }}
         .modal-annotation-row.annotation-selected {{
             border-color: #4F0433;
         }}
@@ -4819,17 +5816,31 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .modal-annotation-row-main {{
             display: grid;
-            grid-template-columns: 78px 86px 62px;
-            gap: 8px;
+            grid-template-columns: 24px minmax(0, 1fr) auto;
+            gap: 6px;
             align-items: center;
-            justify-content: start;
             min-width: 0;
             max-width: 100%;
         }}
+        .modal-annotation-drag-handle {{
+            width: 24px;
+            height: 28px;
+            border: 0;
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--muted-color);
+            cursor: grab;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            line-height: 1;
+            user-select: none;
+        }}
+        .modal-annotation-drag-handle:active {{ cursor: grabbing; }}
         .modal-annotation-label {{
-            width: 78px;
+            width: 100%;
             min-width: 0;
-            max-width: 78px;
             border: 1px solid var(--border-color);
             border-radius: 4px;
             background: var(--input-bg);
@@ -4840,21 +5851,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             text-overflow: ellipsis;
         }}
         .modal-annotation-count {{
-            width: 62px;
+            grid-column: 2 / -1;
+            justify-self: end;
+            max-width: 100%;
+            min-width: 0;
             display: inline-flex;
             align-items: center;
             justify-content: center;
             padding: 2px 7px;
-            border: 1px solid transparent;
+            border: 0;
             border-radius: 999px;
             font-size: 10px;
             color: #ffffff;
             white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            background-clip: border-box;
+            background-repeat: no-repeat;
+            background-size: 100% 100%;
         }}
         .modal-annotation-row-actions {{
             display: flex;
             justify-content: flex-end;
-            gap: 6px;
+            gap: 4px;
+            min-width: 0;
         }}
         .modal-annotation-row-actions button {{
             flex: 0 0 28px;
@@ -4872,10 +5892,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             justify-content: center;
             transition: background 0.3s, border-color 0.3s, color 0.3s;
         }}
-        .modal-annotation-row-actions button[data-annotation-select],
         .modal-annotation-row-actions button.annotation-compare {{
-            flex-basis: 52px;
-            width: 52px;
+            flex-basis: 34px;
+            width: 34px;
         }}
         .modal-annotation-row-actions button:hover {{
             background: var(--icon-hover-bg);
@@ -4900,6 +5919,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-color: #4cc9f0;
             color: #4cc9f0;
         }}
+        .modal-annotation-row-actions button.annotation-group-toggle {{
+            color: var(--muted-color);
+        }}
         .modal-annotation-row-actions svg {{
             width: 14px;
             height: 14px;
@@ -4908,6 +5930,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             stroke-width: 2;
             stroke-linecap: round;
             stroke-linejoin: round;
+        }}
+        .modal-annotation-drag-handle svg {{
+            width: 14px;
+            height: 14px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
         }}
 
         .no-results {{
@@ -4966,6 +5996,63 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .help-tooltip.visible {{
             opacity: 1;
             transform: translateY(0);
+        }}
+        .calc-info-btn {{
+            width: 18px;
+            height: 18px;
+            min-width: 18px;
+            padding: 0;
+            margin-left: 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            background: var(--input-bg);
+            color: var(--accent-strong);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            vertical-align: middle;
+        }}
+        .calc-info-btn:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-strong);
+        }}
+        .calc-info-popover {{
+            position: fixed;
+            left: 0;
+            top: 0;
+            width: min(320px, calc(100vw - 16px));
+            padding: 10px 12px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
+            z-index: 2600;
+            display: none;
+            font-size: 11px;
+            line-height: 1.4;
+        }}
+        .calc-info-popover.visible {{ display: block; }}
+        .calc-info-popover-title {{
+            font-weight: 700;
+            margin-bottom: 4px;
+        }}
+        .calc-info-popover-body {{
+            color: var(--muted-color);
+        }}
+        .calc-info-popover-formula {{
+            margin-top: 7px;
+            padding: 6px 7px;
+            border-radius: 5px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 10px;
+            overflow-wrap: anywhere;
         }}
         :root.dark button {{
             color: #ffffff;
@@ -5067,6 +6154,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-color: var(--accent-strong);
             color: var(--accent-strong);
         }}
+        .visual-spatial-tools .umap-compare-btn {{
+            color: #4cc9f0;
+        }}
+        .visual-spatial-tools .umap-compare-btn:hover {{
+            background: var(--icon-blue-hover-bg);
+            border-color: #4cc9f0;
+            color: #4cc9f0;
+        }}
+        .visual-spatial-tools .umap-compare-btn.active {{
+            background: #4cc9f0;
+            border-color: #4cc9f0;
+            color: #ffffff;
+        }}
+        .visual-spatial-tools .umap-compare-btn:disabled,
+        .visual-spatial-tools .umap-compare-btn:disabled:hover {{
+            color: #4cc9f0;
+        }}
+        .umap-btn.icon-only:disabled {{
+            opacity: 0.45;
+            cursor: not-allowed;
+            color: var(--muted-color);
+        }}
+        .umap-btn.icon-only:disabled:hover {{
+            background: var(--input-bg);
+            border-color: transparent;
+            color: var(--muted-color);
+        }}
         #umap-params-toggle,
         #umap-params-toggle:hover,
         #umap-params-toggle.active {{
@@ -5076,23 +6190,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--accent-strong);
             color: white;
             border-color: var(--accent-strong);
-        }}
-        .visual-spatial-tools #umap-compare-toggle {{
-            color: #168aad;
-        }}
-        .visual-spatial-tools #umap-compare-toggle:hover {{
-            background: var(--icon-blue-hover-bg);
-            border-color: #4cc9f0;
-            color: #168aad;
-        }}
-        .visual-spatial-tools #umap-compare-toggle.active,
-        .visual-spatial-tools #umap-compare-toggle.compare-complete {{
-            background: #4cc9f0;
-            border-color: #4cc9f0;
-            color: #ffffff;
-        }}
-        .visual-spatial-tools #umap-compare-toggle.lasso-ready {{
-            border-color: #4cc9f0;
         }}
         .umap-btn:disabled {{
             opacity: 0.45;
@@ -5134,30 +6231,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .umap-params-panel.visible {{
             display: flex;
         }}
-        .umap-compare-hint {{
-            position: absolute;
-            left: 0;
-            bottom: calc(100% + 8px);
-            width: 210px;
-            padding: 8px 10px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--panel-bg);
-            color: var(--text-color);
-            box-shadow: 0 10px 24px rgba(0, 0, 0, 0.18);
-            display: none;
-            font-size: 11px;
-            line-height: 1.35;
-            z-index: 5;
-        }}
-        .umap-compare-hint.visible {{
-            display: block;
-        }}
-        .umap-btn.compare-complete {{
-            background: #4cc9f0;
-            border-color: #4cc9f0;
-            color: #000000;
-        }}
         .umap-selection-query-panel {{
             position: absolute;
             left: 0;
@@ -5179,7 +6252,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .visual-spatial-tools .umap-tool-wrap {{
             position: relative;
         }}
-        .visual-spatial-tools .umap-compare-hint,
         .visual-spatial-tools .umap-selection-query-panel {{
             left: calc(100% + 8px);
             top: 0;
@@ -5463,7 +6535,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <tr><td class="info-shortcuts-key"><kbd>T</kbd></td><td>Toggle theme.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>U</kbd></td><td>Toggle the UMAP panel.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>L</kbd></td><td>Toggle the legend panel.</td></tr>
-                            <tr><td class="info-shortcuts-key"><kbd>Space</kbd> + drag</td><td>Pan inside the modal even while Select or Annotate is active.</td></tr>
+                            <tr><td class="info-shortcuts-key"><kbd>Space</kbd> + drag</td><td>Pan inside the modal while Select is active.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>F</kbd></td><td>Fit the current modal section to view.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>+</kbd> <kbd>=</kbd></td><td>Zoom in inside the modal.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>-</kbd></td><td>Zoom out inside the modal.</td></tr>
@@ -5540,12 +6612,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         </div>
         <div class="visual-default-controls color-mode" id="visual-default-controls">
             <div class="visual-source-switch" role="group" aria-label="Default view source">
-                <button class="visual-source-btn active" id="default-source-color" type="button" data-default-source="color">Color</button>
+                <button class="visual-source-btn active" id="default-source-color" type="button" data-default-source="color">Annotation</button>
                 <button class="visual-source-btn" id="default-source-gene" type="button" data-default-source="gene">Gene</button>
             </div>
             <div class="visual-color-controls" id="visual-color-controls">
                 <div class="control-group">
-                    <label class="sr-only" for="color-select">Color</label>
+                    <label class="sr-only" for="color-select">Annotation</label>
                     <select id="color-select"></select>
                 </div>
             </div>
@@ -5647,12 +6719,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <button class="umap-btn icon-only" id="umap-lasso-btn" title="Select cells" aria-label="Select cells">
                             <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 22a5 5 0 0 1-2-4"></path><path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1"></path><path d="M5 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0"></path></svg>
                         </button>
-                        <div class="umap-tool-wrap" id="umap-compare-wrap">
-                            <button class="umap-btn icon-only" id="umap-compare-toggle" type="button" title="Compare with a second region" aria-label="Compare with a second region">
-                                <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>
-                            </button>
-                            <div class="umap-compare-hint" id="umap-compare-hint">Draw Region B with the lasso tool.</div>
-                        </div>
+                        <button class="umap-btn icon-only umap-compare-btn" id="umap-compare-btn" type="button" title="Compare with another cell selection" aria-label="Compare with another cell selection">
+                            <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg>
+                        </button>
+                        <button class="umap-btn icon-only" id="selection-create-annotation-btn" type="button" title="Create annotation from this lasso selection" aria-label="Create annotation from this lasso selection" hidden>
+                            <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+                        </button>
                         <div class="umap-tool-wrap" id="umap-query-wrap">
                             <button class="umap-btn icon-only" id="umap-query-toggle" type="button" title="Find cells by query" aria-label="Find cells by query">
                                 <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" x2="18" y1="12" y2="12"></line><line x1="6" x2="2" y1="12" y2="12"></line><line x1="12" x2="12" y1="6" y2="2"></line><line x1="12" x2="12" y1="22" y2="18"></line></svg>
@@ -5660,18 +6732,71 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <div class="umap-selection-query-panel" id="umap-selection-query-panel"></div>
                         </div>
                     </div>
-                    <button class="focused-modal-tool-toggle" id="focused-modal-annotation-toggle" type="button" title="Polygon annotation" aria-label="Polygon annotation" aria-expanded="false" aria-controls="modal-annotation-section">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="hexagon"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-                    </button>
                     <button class="focused-modal-tool-toggle hidden" id="focused-modal-neighbor-toggle" type="button" title="Neighbor hops" aria-label="Neighbor hops" data-modal-control-target="modal-neighbor-hover-toggle">
                         <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="bubbles"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg>
                     </button>
-                    <button class="focused-modal-tool-toggle hidden" id="focused-modal-graph-toggle" type="button" title="Graph edges" aria-label="Graph edges" data-modal-control-target="modal-graph-toggle">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="network" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="16" y="16" width="6" height="6" rx="1"></rect><rect x="2" y="16" width="6" height="6" rx="1"></rect><rect x="9" y="2" width="6" height="6" rx="1"></rect><path d="M5 16v-3a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v3"></path><path d="M12 12V8"></path></svg>
-                    </button>
+                    <div class="focused-neighbor-panel" id="focused-neighbor-panel">
+                        <div class="visual-params-title">Neighborhood</div>
+                        <div class="focused-neighbor-switch" role="group" aria-label="Neighborhood display">
+                            <button class="focused-neighbor-mode-btn" id="focused-neighbor-panel-graph" type="button">Graph</button>
+                            <button class="focused-neighbor-mode-btn" id="focused-neighbor-panel-neighbors" type="button">Neighbors</button>
+                        </div>
+                        <div class="focused-neighbor-param-row">
+                            <label for="focused-neighbor-hop-select">Neighbor hops</label>
+                            <select id="focused-neighbor-hop-select" title="Neighbor hop display">
+                                <option value="1">1-hop</option>
+                                <option value="2">2-hop</option>
+                                <option value="3">3-hop</option>
+                                <option value="all" selected>All hops</option>
+                            </select>
+                        </div>
+                    </div>
                     <button class="focused-modal-tool-toggle" id="focused-modal-he-toggle" type="button" title="H&amp;E options" aria-label="H&amp;E options" data-modal-control-target="he-overlay">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="microscope"><path d="M6 18h8"></path><path d="M3 22h18"></path><path d="M14 22a7 7 0 0 0 7-7h-4a3 3 0 0 1-3 3"></path><path d="M9 14h2"></path><path d="M8 6h4"></path><path d="M6 10h8"></path><path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"></path><path d="M6 10v4a2 2 0 0 0 2 2h3a2 2 0 0 0 2-2v-4"></path></svg>
+                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
                     </button>
+                    <div class="focused-he-panel" id="focused-he-panel">
+                        <div class="focused-he-header">
+                            <div class="visual-params-title">Image overlay</div>
+                            <button class="focused-he-icon-btn" id="focused-he-eye-btn" type="button" title="Show image" aria-label="Show image">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="eye"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>
+                            </button>
+                        </div>
+                        <div class="focused-he-row" id="focused-he-layer-row">
+                            <label for="focused-he-layer-select">Layer</label>
+                            <select id="focused-he-layer-select"></select>
+                        </div>
+                        <div class="focused-he-actions">
+                            <button class="focused-he-icon-btn" id="focused-he-load-btn" type="button" title="Load image" aria-label="Load image">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="image-up"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10"></path><path d="m14 19 3-3 3 3"></path><path d="M17 16v6"></path><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+                            </button>
+                            <button class="focused-he-icon-btn" id="focused-he-align-btn" type="button" title="Align image" aria-label="Align image" aria-expanded="false">
+                                <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="image-upscale"><path d="M16 3h5v5"></path><path d="m21 3-7 7"></path><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"></path><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+                            </button>
+                        </div>
+                        <div class="focused-he-align-panel" id="focused-he-align-panel">
+                            <div class="focused-he-row">
+                                <label for="focused-he-opacity">Opacity</label>
+                                <input type="range" id="focused-he-opacity" min="0" max="100" step="1" value="50">
+                            </div>
+                            <div class="focused-he-row">
+                                <label for="focused-he-scale">Scale</label>
+                                <input type="range" id="focused-he-scale" min="-100" max="100" step="1" value="0">
+                            </div>
+                            <div class="focused-he-row">
+                                <label for="focused-he-rotation">Rotate</label>
+                                <input type="range" id="focused-he-rotation" min="-180" max="180" step="1" value="0">
+                            </div>
+                            <div class="focused-he-actions">
+                                <button class="focused-he-icon-btn" id="focused-he-fliph-btn" type="button" title="Flip image horizontally" aria-label="Flip image horizontally">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="square-centerline-dashed-horizontal"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"></path><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"></path><path d="M12 20v2"></path><path d="M12 14v2"></path><path d="M12 8v2"></path><path d="M12 2v2"></path></svg>
+                                </button>
+                                <button class="focused-he-icon-btn" id="focused-he-export-btn" type="button" title="Download alignment JSON" aria-label="Download alignment JSON">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="download"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="focused-he-status" id="focused-he-status">No image loaded</div>
+                    </div>
                     <div class="gene-params-panel" id="gene-params-panel">
                         <div class="visual-params-title">Gene parameters</div>
                         <div class="gene-param-section">
@@ -5704,7 +6829,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             </div>
                         </div>
                         <div class="gene-param-section">
-                            <div class="gene-param-section-title">Color</div>
+                            <div class="gene-param-section-title">Annotation</div>
                             <div class="control-group" id="expression-color-section" style="display: none;">
                                 <select id="expr-colormap" title="Colormap used for gene expression and continuous metadata" style="font-size:11px; padding:3px 4px; border:1px solid var(--border-color); border-radius:4px; background:var(--input-bg); color:var(--text-color);"></select>
                             </div>
@@ -5778,7 +6903,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <tr><td class="info-shortcuts-key"><kbd>T</kbd></td><td>Toggle theme.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>U</kbd></td><td>Toggle the UMAP panel.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>L</kbd></td><td>Toggle the legend panel.</td></tr>
-                    <tr><td class="info-shortcuts-key"><kbd>Space</kbd> + drag</td><td>Pan inside the modal even while Select or Annotate is active.</td></tr>
+                    <tr><td class="info-shortcuts-key"><kbd>Space</kbd> + drag</td><td>Pan inside the modal while Select is active.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>F</kbd></td><td>Fit the current modal section to view.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>+</kbd> <kbd>=</kbd></td><td>Zoom in inside the modal.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>-</kbd></td><td>Zoom out inside the modal.</td></tr>
@@ -5794,13 +6919,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <div style="display: flex; align-items: center;">
                     <h2 id="modal-title">Section</h2>
                     <span class="modal-meta" id="modal-meta"></span>
-                    <span class="zoom-info" id="zoom-info">100%</span>
                 </div>
                 <div class="modal-header-actions">
                     <div class="modal-header-tool-group" aria-label="Modal view controls">
                         <button class="modal-header-icon" id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M11 8v6"></path><path d="M8 11h6"></path></svg>
                         </button>
+                        <span class="zoom-info" id="zoom-info">100%</span>
                         <button class="modal-header-icon" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M8 11h6"></path></svg>
                         </button>
@@ -5927,7 +7052,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                     </div>
                                     <button class="graph-toggle" id="modal-he-load-btn" type="button" title="Load an H&amp;E / histology image for this section">Load image</button>
                                     <button class="graph-toggle" id="modal-he-align-btn" type="button" title="Show alignment tools: drag to reposition, scale, rotate, flip" aria-expanded="false">Align ▾</button>
-                                    <input type="file" id="modal-he-upload-input" accept="image/*" style="display:none">
+                                    <input type="file" id="modal-he-upload-input" accept="image/png,image/jpeg,image/jpg,image/webp,image/tiff,.png,.jpg,.jpeg,.webp,.tif,.tiff" style="display:none">
                                 </div>
                                 <!-- Collapsible alignment panel: only shown while aligning. Opening it
                                      enables drag-to-reposition; closing it leaves align mode. -->
@@ -6060,8 +7185,51 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     </script>
 
     <script id="karospace-data" type="application/json">{data_json}</script>
+    {section_data_scripts}
     <script>
-    const DATA = JSON.parse(document.getElementById('karospace-data').textContent);
+    function parseEmbeddedViewerJson(node, label) {{
+        const text = String(node?.textContent || '').trim();
+        if (!text) {{
+            throw new Error(`KaroSpace ${{label}} data is missing. Re-export this viewer.`);
+        }}
+        try {{
+            return JSON.parse(text);
+        }} catch (error) {{
+            console.error(`Could not parse KaroSpace ${{label}} data.`, error);
+            throw new Error(
+                `KaroSpace ${{label}} data is incomplete or too large for this browser. ` +
+                'Re-export with the current KaroSpace version, or reduce cells per section.'
+            );
+        }}
+    }}
+    const DATA = parseEmbeddedViewerJson(document.getElementById('karospace-data'), 'viewer');
+    const sectionDataNodes = document.querySelectorAll('[data-karospace-section-index]');
+    if (sectionDataNodes.length) {{
+        if (!Array.isArray(DATA.sections)) {{
+            throw new Error('KaroSpace fragmented viewer data has no sections list. Re-export this viewer.');
+        }}
+        sectionDataNodes.forEach((node) => {{
+            const sectionIndex = Number(node.dataset.karospaceSectionIndex);
+            const key = node.dataset.karospaceSectionKey;
+            const childKey = node.dataset.karospaceSectionChild;
+            if (!Number.isInteger(sectionIndex) || sectionIndex < 0 || sectionIndex >= DATA.sections.length || !key) {{
+                throw new Error('KaroSpace fragmented viewer data is invalid. Re-export this viewer.');
+            }}
+            if (!DATA.sections[sectionIndex] || typeof DATA.sections[sectionIndex] !== 'object') {{
+                DATA.sections[sectionIndex] = {{}};
+            }}
+            const section = DATA.sections[sectionIndex];
+            const value = parseEmbeddedViewerJson(node, `section ${{sectionIndex + 1}}`);
+            if (childKey !== undefined) {{
+                if (!section[key] || typeof section[key] !== 'object' || Array.isArray(section[key])) {{
+                    section[key] = {{}};
+                }}
+                section[key][childKey] = value;
+            }} else {{
+                section[key] = value;
+            }}
+        }});
+    }}
     DATA.genes_meta = DATA.genes_meta || {{}};
     DATA.gene_encodings = DATA.gene_encodings || {{}};
     DATA.gene_value_encodings = DATA.gene_value_encodings || {{}};
@@ -6080,6 +7248,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         || (MODALITY_DESCRIPTORS.find(d => d && d.is_default)?.name)
         || (MODALITY_DESCRIPTORS[0]?.name)
         || 'rna';
+    const MODULE_MODALITY_NAME = 'module';
     let CURRENT_MODALITY = DEFAULT_MODALITY_NAME;
 
     function getActiveModalityDescriptor() {{
@@ -6117,6 +7286,59 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
     function getActiveFeatureList() {{
         return getAvailableFeaturesForModality(CURRENT_MODALITY);
+    }}
+    function isModuleModality(modality) {{
+        return String(modality || '').trim().toLowerCase() === MODULE_MODALITY_NAME;
+    }}
+    function getModalityDisplayLabel(modality) {{
+        if (isModuleModality(modality)) return 'Module';
+        const modDesc = MODALITY_DESCRIPTORS.find(m => m.name === modality);
+        return modDesc?.label || (modality === 'gene' ? 'Gene' : String(modality || 'Gene'));
+    }}
+    function getGeneInputFeatureList() {{
+        return uniqueSortedFeatures(getLoadedFeaturesForModality(CURRENT_MODALITY));
+    }}
+    function populateGeneInputDatalist() {{
+        const geneListEl = document.getElementById('gene-list');
+        if (!geneListEl) return;
+        const fragment = document.createDocumentFragment();
+        for (const feat of getGeneInputFeatureList()) {{
+            const opt = document.createElement('option');
+            opt.value = feat;
+            fragment.appendChild(opt);
+        }}
+        geneListEl.replaceChildren(fragment);
+        refreshLoadedGeneFilterDropdowns();
+    }}
+    function renderLoadedGeneSelectOptions(selected = '', placeholder = 'All loaded genes') {{
+        const features = getGeneInputFeatureList();
+        const selectedValue = String(selected || '');
+        const current = features.includes(selectedValue) ? selectedValue : '';
+        const emptySelected = current ? '' : ' selected';
+        const options = [`<option value=""${{emptySelected}}>${{escapeHtml(placeholder)}}</option>`];
+        features.forEach((gene) => {{
+            const isSelected = gene === current ? ' selected' : '';
+            options.push(`<option value="${{escapeHtml(gene)}}"${{isSelected}}>${{escapeHtml(gene)}}</option>`);
+        }});
+        return options.join('');
+    }}
+    function refreshLoadedGeneFilterDropdowns() {{
+        [
+            ['marker-gene-search', 'All loaded genes'],
+        ].forEach(([id, placeholder]) => {{
+            const select = document.getElementById(id);
+            if (!select) return;
+            select.innerHTML = renderLoadedGeneSelectOptions(select.value, placeholder);
+        }});
+    }}
+    function getInsightsSelectedGene() {{
+        const value = String(document.getElementById('marker-gene-search')?.value || '').trim();
+        return value ? (resolveCanonicalGeneName(value) || value) : '';
+    }}
+    function getFeatureDatalistValuesForModality(modality = CURRENT_MODALITY) {{
+        if (isModuleModality(modality)) return uniqueSortedFeatures(getGeneModuleDatalistValues());
+        const base = getLoadedFeaturesForModality(modality);
+        return uniqueSortedFeatures(base);
     }}
     function isActiveModalityIntensity() {{
         const desc = getActiveModalityDescriptor();
@@ -6192,17 +7414,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         CURRENT_MODALITY = name;
         _restoreModalityGeneState(CURRENT_MODALITY);
         rebuildActiveFeatureIndex();
-        // Repopulate datalist used by every gene input.
-        const geneListEl = document.getElementById('gene-list');
-        if (geneListEl) {{
-            const fragment = document.createDocumentFragment();
-            for (const feat of getActiveFeatureList()) {{
-                const opt = document.createElement('option');
-                opt.value = feat;
-                fragment.appendChild(opt);
-            }}
-            geneListEl.replaceChildren(fragment);
-        }}
+        populateGeneInputDatalist();
         // Clear any active gene selection so cells don't render with a feature
         // that doesn't exist in the new modality.
         if (typeof activateViewerGene === 'function') {{
@@ -6437,6 +7649,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function getOutlineColor(value) {{
         if (!value || !OUTLINE_BY) return null;
+        const metadataColor = getMetadataValueColor(OUTLINE_BY, value);
+        if (metadataColor) return metadataColor;
         if (OUTLINE_BY === 'course') {{
             if (OUTLINE_COLOR_OVERRIDES[value]) return OUTLINE_COLOR_OVERRIDES[value];
             const lowerValue = value.toLowerCase();
@@ -6505,8 +7719,130 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return `<span class="meta-color-tag" style="background: ${{bg}}">${{safe}}</span>`;
     }}
 
+    function renderAggChip(label, background = '') {{
+        const style = background ? ` style="background: ${{background}}"` : '';
+        return `<span class="agg-chip"${{style}}>${{escapeHtml(String(label ?? ''))}}</span>`;
+    }}
+
+    function renderAggMetricChip(label) {{
+        return `<span class="agg-value-text">${{escapeHtml(String(label ?? ''))}}</span>`;
+    }}
+
+    function renderAggPercentChip(percent) {{
+        const value = Number(percent);
+        const label = Number.isFinite(value) ? `${{value}}%` : '0%';
+        return renderAggMetricChip(label);
+    }}
+
+    function renderAggCountChip(count) {{
+        const value = Number(count || 0);
+        const label = `${{Number.isFinite(value) ? value.toLocaleString() : '0'}} cells`;
+        return `<span class="agg-chip agg-count-chip">${{escapeHtml(label)}}</span>`;
+    }}
+
+    function renderAggGroupTitle(titleHtml, total) {{
+        return `<div class="agg-group-title"><span class="agg-group-title-main">${{titleHtml}}</span><span class="agg-group-title-actions">${{renderAggCountChip(total)}}</span></div>`;
+    }}
+
+    function renderAggGroupTitleChip(groupKey, groupVal) {{
+        const label = `${{formatMetadataLabel(groupKey)}}: ${{String(groupVal ?? '')}}`;
+        return renderAggChip(label, getMetadataValueTagBg(groupKey, groupVal));
+    }}
+
+    function renderAggCategoryChip(colorCol, category, fallbackIndex = -1) {{
+        let color = colorCol ? getCategoryColorForValue(colorCol, category) : '';
+        if ((!color || color === '#999') && fallbackIndex >= 0) color = getCategoryColor(fallbackIndex, colorCol);
+        const bg = color ? `color-mix(in srgb, ${{color}} 24%, transparent)` : '';
+        return renderAggChip(formatCategoryLabel(colorCol, category), bg);
+    }}
+
+    const CALC_INFO = {{
+        selection_counts: {{
+            title: 'Selection counts',
+            body: 'Counts are computed from the selected cell IDs. Category rows count selected cells assigned to each active annotation category.',
+            formula: 'count(category) = number of selected cells with category'
+        }},
+        selection_expression: {{
+            title: 'Selection expression',
+            body: 'Genes are selected by a two-sided Welch test. The top positive and negative Welch T scores are displayed after the minimum-expression threshold. The value at the bar end is the mean expression followed by the percentage of cells expressing the gene. The factor is mean A divided by mean B.',
+            formula: 'Welch T = (mean A - mean B) / sqrt(variance A / n A + variance B / n B); the highest positive and lowest negative T scores are used; factor = mean A / mean B'
+        }},
+        selection_compare: {{
+            title: 'Region comparison',
+            body: 'Region A and B category percentages are computed independently from each region cell count.',
+            formula: 'percent = 100 * category cells / region cells'
+        }},
+        color_aggregation: {{
+            title: 'Per-color summary',
+            body: 'Summaries use the selected Exploration annotation across all cells, optionally aggregate by sample metadata. Categorical annotations show counts and percentages.',
+            formula: 'percent = 100 * category cells / cells in group'
+        }},
+        color_trend: {{
+            title: 'Per-color trend',
+            body: 'Each row summarizes how the selected Exploration annotation is distributed inside another categorical column.',
+            formula: 'percent = 100 * cells in category / cells in parent group'
+        }},
+        samples_composition: {{
+            title: 'Section composition',
+            body: 'Bars and heatmaps show the category composition of each section for the selected Exploration annotation.',
+            formula: 'fraction(section, category) = category cells in section / total cells in section'
+        }},
+        de_genes: {{
+            title: 'Pseudobulk DE genes',
+            body: 'Differential expression uses pseudobulk counts by replicate for a category versus the rest of the cells. The table values report log2 fold-change, p-values, adjusted p-values, DESeq2 score and rank, base_mean, and percent expressed. Percent expressed is the percentage of cells with expression above zero in the source or reference group.',
+            formula: 'mean(group) = average over replicates of aggregate counts / cells; log2FC = log2(mean(source)) - log2(mean(reference)); padj = multiple-testing adjusted p-value with the selected method'
+        }},
+        de_heatmap: {{
+            title: 'DE heatmap',
+            body: 'Tiles use aggregation of gene counts per category/replicate and calculate the mean of each category across replicates, then z-score against the full DE heatmap table before applying the visible gene filter. Genes are selected if found DE versus the rest. A star marks genes found DE versus the rest.',
+            formula: 'category mean = mean over replicates of (category gene counts / category cells); z = (category mean - full table mean) / full table SD'
+        }},
+        spatial_moran: {{
+            title: 'Spatial Moran index',
+            body: 'Moran index measures whether nearby cells have similar expression values for a gene.',
+            formula: 'I = (n / W) * sum_i sum_j w_ij (x_i - mean(x))(x_j - mean(x)) / sum_i (x_i - mean(x))^2'
+        }},
+        distribution: {{
+            title: 'Gene distribution',
+            body: 'List of values and figures are computed from per-cell expression values in each Exploration annotation category. Selection can be restricted to subcategories',
+            formula: 'mean = sum(values) / n; Q1/Q3 = 25th/75th percentile; % Expr = 100 * cells with value > 0 / n'
+        }},
+        means: {{
+            title: 'Pseudobulk category means',
+            body: 'Means are computed from replicate-level pseudobulk aggregates for each selected Exploration annotation category. For each category, counts are divided by the number of category cells inside each replicate, then averaged across replicates. The background mean is calculated per replicate across all cells, then averaged across replicates. The graph shows each category relative to that background mean.',
+            formula: 'category mean = mean over samples of (sample category counts / sample category cells); background = mean over samples of (sample total counts / sample total cells); delta = category mean - background'
+        }},
+        group_de: {{
+            title: 'Group differential expression',
+            body: 'Quick group DE compares currently loaded gene values between two selected cell groups using per-cell means, variance, percent expressed, and a Welch-style score.',
+            formula: 'score = (meanA - meanB) / sqrt(varA/nA + varB/nB + 1e-12); log2FC = log2(meanA + tiny) - log2(meanB + tiny)'
+        }},
+        neighbor_stats: {{
+            title: 'Neighbor statistics',
+            body: 'Neighbor summaries count graph edges between source and target categories and compare observed edges with permutation-based expectations when available.',
+            formula: 'share = target edges / all source edges; z = (observed - permutation mean) / permutation SD'
+        }},
+        dispersion: {{
+            title: 'Spatial dispersion',
+            body: 'Dispersion summarizes how spread out each category is in spatial coordinates using centroid distance and nearest-neighbor spacing.',
+            formula: 'mean radius = mean distance from category cells to their centroid'
+        }},
+        module: {{
+            title: 'Gene module score',
+            body: 'Each gene expression is scaled from 0 to 1 across cells before module aggregation.',
+            formula: 'module score = mean(scaled expression of selected genes)'
+        }}
+    }};
+
+    function renderCalcInfoButton(key, label = 'Calculation details') {{
+        if (!CALC_INFO[key]) return '';
+        return `<button class="calc-info-btn" type="button" data-calc-info="${{escapeHtml(key)}}" title="${{escapeHtml(label)}}" aria-label="${{escapeHtml(label)}}">!</button>`;
+    }}
+
     // State
     let currentColor = DATA.initial_color;
+    let explorationColorCol = DATA.initial_color;
+    const SECTION_METADATA_COLOR_PREFIX = '__section_metadata__';
     let currentGene = null;
     let overviewGeneRenderMode = 'cells';
     const geneScaleOverrides = {{}};
@@ -6577,13 +7913,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let groupDeRenderToken = 0;
     let groupDeRenderDepth = 0;
     let samplesView = 'bars';
-    let samplesColorCol = '';
     let samplesMetaSortBy = '';
     let insightsTopLevelTab = 'overview';
     let insightsOverviewTab = 'summary';
     let insightsGenesTab = 'de-genes';
+    const geneSubtabViews = {{
+        'de-genes': 'list',
+        spatial: 'list',
+        distribution: 'list',
+        means: 'list',
+    }};
     let insightsCompareTab = 'groups';
+    let insightsCompareMode = 'quick';
     let insightsNeighborsTab = 'enrichment';
+    let insightsTreeOpen = false;
+    let insightsTreeOpenBranch = null;
+    let insightsTreeOpenCompareBranch = null;
+    let insightsTreeSelectedLeaf = null;
     let insightsMode = 'exploration';
     let riverLeftColumn = null;
     let riverRightColumn = null;
@@ -6613,6 +7959,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let geneDiscoveryActiveIndex = -1;
     let recentGenes = [];
     let savedGenePanels = [];
+    let geneModules = [];
+    let geneModuleDraftGenes = [];
 
     // Modal state
     let modalSection = null;
@@ -6632,10 +7980,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let modalMagicWandActive = false;
     let isDrawingModalLasso = false;
     let modalLassoPath = [];  // Array of {{x, y}} points in modal canvas space
-    let modalAnnotationModeActive = false;
-    let isDrawingModalAnnotation = false;
-    let modalAnnotationPath = [];  // Array of {{x, y}} points in modal canvas space
     let modalAnnotations = [];
+    let collapsedModalAnnotationGroupIds = new Set();
+    let draggedModalAnnotationId = null;
     let modalNextAnnotationId = 1;
     let updateModalCanvasCursor = () => {{}};
     let modalBlendEnabled = false;
@@ -6741,8 +8088,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let selectedCellsFromModalLasso = false;
     let selectedCellsBFromModalLasso = false;
     let selectedCellsFromAnnotation = false;
+    let selectedCellsFromQuery = false;
     let selectedAnnotationId = null;
     let selectedAnnotationBId = null;
+    let selectionRevision = 0;
+    let annotationCreatedForSelectionRevision = null;
     let selectedAnnotationSelectionColor = '#4F0433';
     let selectedModalLassoSectionId = null;
     let selectedModalLassoSectionIdB = null;
@@ -6756,6 +8106,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let selectionSummaryExpanded = false;
     let selectionSectionSummaryExpanded = false;
     let selectionSummaryMinimized = false;
+    let selectionWelchTopN = 3;
+    let selectionWelchMinPct = 0;
+    let selectionWelchRevision = 0;
+    let selectionWelchRunRequested = false;
+    let selectionWelchRunning = false;
+    let selectionWelchButtonHidden = false;
+    const selectionWelchCache = new Map();
     const MAX_SELECTION_QUERY_MATCHES = 150000;
     let selectionQueryExpanded = false;
     let selectionQueryText = '';
@@ -7525,6 +8882,104 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         window.addEventListener('blur', stopDragging);
     }}
 
+    function updateFocusedNeighborPanelState() {{
+        const graphBtn = document.getElementById('focused-neighbor-panel-graph');
+        const neighborBtn = document.getElementById('focused-neighbor-panel-neighbors');
+        const hopSelect = document.getElementById('focused-neighbor-hop-select');
+        const hopRow = hopSelect?.closest?.('.focused-neighbor-param-row');
+        const panel = document.getElementById('focused-neighbor-panel');
+        const toggle = document.getElementById('focused-modal-neighbor-toggle');
+        if (panel && toggle) panel.style.top = `${{toggle.offsetTop}}px`;
+        if (graphBtn) graphBtn.classList.toggle('active', !!showGraph);
+        if (neighborBtn) neighborBtn.classList.toggle('active', !!neighborHoverEnabled);
+        if (hopRow) hopRow.hidden = !neighborHoverEnabled;
+        if (hopSelect) {{
+            hopSelect.value = neighborHopMode;
+            hopSelect.disabled = !neighborHoverEnabled;
+        }}
+    }}
+
+    function getLucideInlineSvg(icon) {{
+        const icons = {{
+            eye: '<svg viewBox="0 0 24 24" aria-hidden="true" data-icon="eye"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg>',
+            eyeOff: '<svg viewBox="0 0 24 24" aria-hidden="true" data-icon="eye-off"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path><path d="m2 2 20 20"></path></svg>',
+        }};
+        return icons[icon] || '';
+    }}
+
+    function syncFocusedInputPair(sourceId, targetRangeId, targetNumId = null) {{
+        const source = document.getElementById(sourceId);
+        const targetRange = document.getElementById(targetRangeId);
+        const targetNum = targetNumId ? document.getElementById(targetNumId) : null;
+        if (!source || !targetRange) return;
+        targetRange.value = source.value;
+        targetRange.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        if (targetNum) {{
+            targetNum.value = source.value;
+            targetNum.dispatchEvent(new Event('input', {{ bubbles: true }}));
+        }}
+        updateFocusedHePanelState();
+    }}
+
+    function updateFocusedHePanelState() {{
+        const panel = document.getElementById('focused-he-panel');
+        const toggle = document.getElementById('focused-modal-he-toggle');
+        if (panel && toggle) panel.style.top = `${{toggle.offsetTop}}px`;
+        const heState = modalSection ? sectionImageStates[modalSection.id] : null;
+        const hasHeImage = !!(heState && heState.layers && heState.layers.length);
+
+        const layerSource = document.getElementById('modal-he-layer-select');
+        const layerTarget = document.getElementById('focused-he-layer-select');
+        const layerRow = document.getElementById('focused-he-layer-row');
+        if (layerTarget && layerSource) {{
+            layerTarget.innerHTML = layerSource.innerHTML;
+            layerTarget.value = layerSource.value;
+            const visible = layerSource.style.display !== 'none' && layerSource.options.length > 0;
+            if (layerRow) layerRow.style.display = visible ? 'grid' : 'none';
+        }}
+
+        const copyVal = (fromId, toId) => {{
+            const from = document.getElementById(fromId);
+            const to = document.getElementById(toId);
+            if (from && to) to.value = from.value;
+        }};
+        copyVal('modal-he-opacity', 'focused-he-opacity');
+        copyVal('modal-he-scale', 'focused-he-scale');
+        copyVal('modal-he-rotation', 'focused-he-rotation');
+
+        const eyeSource = document.getElementById('modal-he-eye-btn');
+        const eyeTarget = document.getElementById('focused-he-eye-btn');
+        if (eyeTarget && eyeSource) {{
+            const visible = eyeSource.style.display !== 'none';
+            const shown = eyeSource.classList.contains('active');
+            eyeTarget.style.display = visible ? '' : 'none';
+            eyeTarget.innerHTML = getLucideInlineSvg(shown ? 'eye' : 'eyeOff');
+            eyeTarget.classList.toggle('active', shown);
+            const title = eyeSource.title || (shown ? 'Hide image' : 'Show image');
+            eyeTarget.title = title;
+            eyeTarget.setAttribute('aria-label', title);
+        }}
+
+        const alignPanel = document.getElementById('focused-he-align-panel');
+        const alignBtn = document.getElementById('focused-he-align-btn');
+        if (alignPanel) alignPanel.classList.toggle('visible', hasHeImage && !!heAlignModeActive);
+        if (alignBtn) {{
+            alignBtn.disabled = !hasHeImage;
+            alignBtn.classList.toggle('active', hasHeImage && !!heAlignModeActive);
+            alignBtn.title = !hasHeImage
+                ? 'Load an image before aligning'
+                : heAlignModeActive
+                    ? 'Hide alignment tools'
+                    : 'Align image';
+            alignBtn.setAttribute('aria-label', alignBtn.title);
+            alignBtn.setAttribute('aria-expanded', hasHeImage && heAlignModeActive ? 'true' : 'false');
+        }}
+
+        const statusSource = document.getElementById('modal-he-status');
+        const statusTarget = document.getElementById('focused-he-status');
+        if (statusTarget) statusTarget.textContent = statusSource?.textContent || 'No image loaded';
+    }}
+
     function updateModalToolbarState() {{
         const controls = getModalControlsElement();
         if (!controls) return;
@@ -7539,7 +8994,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const config = getColorConfig();
         const blendActive = !!getModalBlendRuntimes(modalSection);
-        const typeSelectionDisabled = !modalSection || config.is_continuous || blendActive || modalAnnotationModeActive;
+        const typeSelectionDisabled = !modalSection || config.is_continuous || blendActive;
         if (typeSelectionDisabled) {{
             modalSelectedCategory = null;
             modalTypeSelectEnabled = false;
@@ -7549,23 +9004,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const modalGraphBtn = document.getElementById('modal-graph-toggle');
         const modalNeighborBtn = document.getElementById('modal-neighbor-hover-toggle');
-        const focusedAnnotationBtn = document.getElementById('focused-modal-annotation-toggle');
         const focusedNeighborBtn = document.getElementById('focused-modal-neighbor-toggle');
-        const focusedGraphBtn = document.getElementById('focused-modal-graph-toggle');
         const focusedHeBtn = document.getElementById('focused-modal-he-toggle');
         const heGroup = controls.querySelector('[data-modal-group="he-overlay"]');
         const modalHopSelect = document.getElementById('modal-neighbor-hop-select');
         if (modalGraphBtn) modalGraphBtn.hidden = !DATA.has_neighbors;
         if (modalNeighborBtn) modalNeighborBtn.hidden = !DATA.has_neighbors;
-        if (focusedGraphBtn) {{
-            focusedGraphBtn.classList.toggle('hidden', !DATA.has_neighbors || !modalInlineActive);
-            focusedGraphBtn.classList.toggle('active', !!showGraph);
-        }}
         if (focusedNeighborBtn) {{
             focusedNeighborBtn.classList.toggle('hidden', !DATA.has_neighbors || !modalInlineActive);
-            focusedNeighborBtn.classList.toggle('active', !!neighborHoverEnabled);
+            focusedNeighborBtn.classList.toggle('active', !!neighborHoverEnabled || !!showGraph || document.getElementById('grid-side-toolbar')?.classList.contains('neighbor-open'));
         }}
-        if (focusedAnnotationBtn) focusedAnnotationBtn.classList.toggle('active', !!modalAnnotationModeActive);
         if (focusedHeBtn) focusedHeBtn.classList.toggle('active', !!modalHeOptionsVisible);
         if (heGroup) heGroup.hidden = !modalHeOptionsVisible;
         if (modalHopSelect) {{
@@ -7573,6 +9021,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             modalHopSelect.hidden = !showHopSelect;
             modalHopSelect.disabled = !showHopSelect;
         }}
+        updateFocusedNeighborPanelState();
+        updateFocusedHePanelState();
         const hasVisibleModalGroup = Array.from(controls.querySelectorAll('.modal-control-group'))
             .some((group) => !group.hidden);
         controls.classList.toggle('hidden', modalControlsCollapsed || !hasVisibleModalGroup);
@@ -8180,7 +9630,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         let config;
         try {{ config = getColorConfig(); }} catch (e) {{ return; }}
         if (!config) return;
-        const label = currentGene || currentColor || '';
+        const label = getGeneDisplayLabel(currentGene) || currentColor || '';
         if (!label) return;
         const dark = currentTheme === 'dark';
         const panelBg = dark ? 'rgba(24,24,28,0.82)' : 'rgba(255,255,255,0.88)';
@@ -8521,7 +9971,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         Object.entries(palettes).forEach(([colorCol, paletteState]) => {{
             const meta = DATA.colors_meta?.[colorCol];
             if (!meta || meta.is_continuous || !Array.isArray(meta.categories)) {{
-                errors.push(`"${{colorCol}}" is not a categorical color column in this viewer.`);
+                errors.push(`"${{colorCol}}" is not a categorical annotation column in this viewer.`);
                 return;
             }}
             const importedCategories = Array.isArray(paletteState?.categories) ? paletteState.categories : [];
@@ -8713,7 +10163,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         Object.entries(columns).forEach(([colorCol, rows]) => {{
             const meta = ensureColorColumnCategoryState(colorCol);
             if (!meta) {{
-                errors.push(`"${{colorCol}}" is not a categorical color column in this viewer.`);
+                errors.push(`"${{colorCol}}" is not a categorical annotation column in this viewer.`);
                 return;
             }}
             if (!Array.isArray(rows)) {{
@@ -8865,6 +10315,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return Math.max(0, Math.min(1, v));
     }}
 
+    function clampPercent(v) {{
+        if (!Number.isFinite(v)) return 0;
+        return Math.max(0, Math.min(100, Math.round(v)));
+    }}
+
     function formatMetadataLabel(key) {{
         return METADATA_LABELS[key] || key.replace(/_/g, ' ');
     }}
@@ -8877,6 +10332,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getGeneScaleRange(gene, modality = null, options = {{}}) {{
+        if (getGeneModuleByToken(gene)) {{
+            const overrideScale = options.includeOverrides === false ? null : geneScaleOverrides[gene];
+            let vmin = Number.isFinite(overrideScale?.vmin) ? overrideScale.vmin : 0;
+            let vmax = Number.isFinite(overrideScale?.vmax) ? overrideScale.vmax : 1;
+            if (!(vmax > vmin)) {{
+                if (vmax === vmin) {{
+                    vmin -= 1e-6;
+                    vmax += 1e-6;
+                }} else {{
+                    const lo = Math.min(vmin, vmax);
+                    const hi = Math.max(vmin, vmax);
+                    vmin = lo;
+                    vmax = hi;
+                }}
+            }}
+            return {{ vmin, vmax }};
+        }}
         const targetModality = modality || CURRENT_MODALITY;
         const isCurrent = targetModality === CURRENT_MODALITY;
         const manifest = isCurrent ? DATA : (MODALITY_GENE_STATE[targetModality] || DATA);
@@ -8906,7 +10378,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     // Get current color config
     function getColorConfig() {{
-        if (currentGene && DATA.genes_meta[currentGene]) {{
+        if (currentGene && (DATA.genes_meta[currentGene] || getGeneModuleByToken(currentGene))) {{
             const scale = getGeneScaleRange(currentGene);
             return {{
                 is_continuous: true,
@@ -8994,6 +10466,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function computeGenePercentiles(gene, pmin = GENE_SCALE_PMIN, pmax = GENE_SCALE_PMAX, modality = null) {{
+        if (getGeneModuleByToken(gene)) return {{ vmin: 0, vmax: 1, pmin, pmax }};
         const targetModality = modality || CURRENT_MODALITY;
         const isCurrent = targetModality === CURRENT_MODALITY;
         
@@ -9361,6 +10834,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getSectionColorValues(section, color) {{
+        if (String(color || '').startsWith(SECTION_METADATA_COLOR_PREFIX)) {{
+            const metadataColumn = String(color).slice(SECTION_METADATA_COLOR_PREFIX.length);
+            const categories = Array.isArray(DATA.metadata_filters?.[metadataColumn])
+                ? DATA.metadata_filters[metadataColumn].map((value) => String(value))
+                : [];
+            const value = String(section?.metadata?.[metadataColumn] ?? 'unknown');
+            const categoryIndex = categories.indexOf(value);
+            const count = section?.x?.length || section?.umap_x?.length || 0;
+            section._colorCache = section._colorCache || {{}};
+            if (!section._colorCache[color] || section._colorCache[color].length !== count) {{
+                section._colorCache[color] = new Float32Array(count).fill(categoryIndex >= 0 ? categoryIndex : -1);
+            }}
+            return section._colorCache[color];
+        }}
         const dense = section.colors?.[color];
         if (dense) return dense;
         const b64 = section.colors_b64?.[color];
@@ -9444,6 +10931,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getSectionGeneValues(section, gene, modality = null) {{
+        const module = getGeneModuleByToken(gene);
+        if (module) {{
+            const key = `${{section.id}}::module::${{module.id}}::${{module.genes.join('|')}}`;
+            const cached = geneDenseCache.get(key);
+            if (cached) return cached;
+            const n = section.n_cells ?? section.x?.length ?? 0;
+            const out = new Float32Array(n);
+            const counts = new Uint16Array(n);
+            module.genes.forEach((moduleGene) => {{
+                const vals = getSectionGeneValues(section, moduleGene, CURRENT_MODALITY);
+                if (!vals) return;
+                const scale = getGeneScaleRange(moduleGene, CURRENT_MODALITY);
+                const denom = Math.max(1e-12, scale.vmax - scale.vmin);
+                const m = Math.min(n, vals.length);
+                for (let i = 0; i < m; i++) {{
+                    const raw = vals[i];
+                    if (!Number.isFinite(raw)) continue;
+                    out[i] += clamp01((raw - scale.vmin) / denom);
+                    counts[i] += 1;
+                }}
+            }});
+            for (let i = 0; i < n; i++) {{
+                out[i] = counts[i] > 0 ? out[i] / counts[i] : 0;
+            }}
+            geneDenseCache.set(key, out);
+            return out;
+        }}
         const targetModality = modality || CURRENT_MODALITY;
         const isCurrent = targetModality === CURRENT_MODALITY;
         
@@ -10034,6 +11548,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const isCurrent = targetModality === CURRENT_MODALITY;
 
         if (!token) return false;
+        const module = getGeneModuleByToken(token);
+        if (module) return await ensureGeneModuleAvailable(module, options);
         
         // Check if already in current DATA or MODALITY_GENE_STATE
         const currentMeta = (isCurrent || (targetModality === 'gene' && CURRENT_MODALITY === 'rna'))
@@ -10086,6 +11602,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!hydrated && showErrors) {{
             alert(`Gene "${{token}}" is listed in the dataset but was not found in the auxiliary gene file.`);
         }}
+        if (hydrated && isCurrent) {{
+            populateGeneInputDatalist();
+        }}
         return hydrated;
     }}
 
@@ -10105,11 +11624,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const token = String(gene || '').trim();
         const key = `${{targetModality}}::${{token}}`;
         if (!token || modalBlendGeneLoads.has(key)) return;
-        
-        const meta = (targetModality === CURRENT_MODALITY || (targetModality === 'gene' && CURRENT_MODALITY === 'rna'))
-            ? DATA.genes_meta
-            : (MODALITY_GENE_STATE[targetModality]?.genes_meta);
-        if (meta && meta[token]) return;
+        if (isModuleModality(targetModality)) return;
+        if (isFeatureLoadedForModality(token, targetModality)) return;
 
         modalBlendGeneLoads.add(key);
         runAsyncUIAction(`Modal split gene load (${{token}})`, async () => {{
@@ -10134,7 +11650,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         if (input) {{
             if (!geneDiscoveryOpen) {{
-                input.value = currentGene || '';
+                input.value = getGeneDisplayLabel(currentGene);
             }}
             input.setAttribute('aria-expanded', geneDiscoveryOpen ? 'true' : 'false');
         }}
@@ -10142,20 +11658,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function renderGeneTokenButton(gene, options = {{}}) {{
         const rawToken = String(gene || '').trim();
-        const token = resolveCanonicalGeneName(rawToken);
+        const token = resolveViewerFeatureToken(rawToken);
         if (!token && options.allowUnknown !== true) return '';
-        const label = token || rawToken;
+        const module = getGeneModuleByToken(token);
+        const label = module ? getGeneDisplayLabel(token) : (token || rawToken);
         if (!label) return '';
         const canActivate = !!token;
         const classes = ['gene-token-btn'];
         if (options.isActive) classes.push('active');
         if (options.isSearchActive) classes.push('search-active');
         if (!canActivate) classes.push('disabled');
-        else if (!DATA.genes_meta?.[token]) classes.push('unloaded');
+        else if (!module && !DATA.genes_meta?.[token]) classes.push('unloaded');
         const showMeta = options.showMeta !== false;
         const metaLabel = options.metaLabel !== undefined
             ? options.metaLabel
-            : (!canActivate ? 'name only' : (DATA.genes_meta?.[token] ? 'loaded' : 'sidecar'));
+            : (!canActivate ? 'name only' : (module ? `${{module.genes.length}} genes` : (DATA.genes_meta?.[token] ? 'loaded' : 'sidecar')));
         const metaHtml = showMeta && metaLabel
             ? `<span class="gene-token-meta">${{escapeHtml(metaLabel)}}</span>`
             : '';
@@ -10243,6 +11760,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             `);
         }}
 
+        if (geneModules.length) {{
+            const moduleMatches = query
+                ? geneModules.filter((module) => {{
+                    const haystack = `${{getGeneModuleDisplayValue(module)}} ${{module.name}} ${{module.genes.join(' ')}}`.toLowerCase();
+                    return haystack.includes(query.toLowerCase());
+                }})
+                : geneModules;
+            if (query && moduleMatches.length) {{
+                sections.push(`
+                    <div class="gene-discovery-section">
+                        <div class="gene-discovery-label">Module results</div>
+                        <div class="gene-token-grid">${{moduleMatches.map((module) => renderGeneTokenButton(getGeneModuleToken(module), {{
+                            isActive: currentGene === getGeneModuleToken(module),
+                            metaLabel: `${{module.genes.length}} genes`,
+                            title: 'Load module assay',
+                        }})).join('')}}</div>
+                    </div>
+                `);
+            }}
+        }}
+
         const recentRows = recentGenes.length
             ? `<div class="gene-token-grid">${{recentGenes.map((gene) => renderGeneTokenButton(gene, {{
                 isActive: gene === currentGene,
@@ -10256,7 +11794,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         `);
 
-        if (currentGene && DATA.gene_correlations?.[currentGene]?.length) {{
+        const currentGeneModule = getGeneModuleByToken(currentGene);
+        if (currentGene && !currentGeneModule && DATA.gene_correlations?.[currentGene]?.length) {{
             const corrData = DATA.gene_correlations[currentGene];
             const corrRows = `<div class="gene-token-grid">${{corrData.map(({{gene, r}}) =>
                 renderGeneTokenButton(gene, {{
@@ -10271,7 +11810,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     ${{corrRows}}
                 </div>
             `);
-        }} else if (currentGene && !DATA.gene_correlations?.[currentGene]?.length) {{
+        }} else if (currentGene && !currentGeneModule && !DATA.gene_correlations?.[currentGene]?.length) {{
             const originallyEmbedded = Array.isArray(DATA.embedded_genes) && DATA.embedded_genes.includes(currentGene);
             const emptyText = DATA.gene_aux_url && !originallyEmbedded
                 ? 'No precomputed correlations for this sidecar-loaded gene.'
@@ -10326,6 +11865,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         `);
 
+        if (geneModules.length) {{
+            const moduleRows = `<div class="gene-token-grid">${{geneModules.map((module) => renderGeneTokenButton(getGeneModuleToken(module), {{
+                isActive: currentGene === getGeneModuleToken(module),
+                metaLabel: `${{module.genes.length}} genes`,
+                title: 'Load module assay',
+            }})).join('')}}</div>`;
+            sections.push(`
+                <div class="gene-discovery-section">
+                    <div class="gene-discovery-label">Gene modules</div>
+                    ${{moduleRows}}
+                </div>
+            `);
+        }}
+
         const panelRows = savedGenePanels.length
             ? savedGenePanels.map((panel) => `
                 <div class="gene-panel-card">
@@ -10360,7 +11913,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     async function activateViewerGene(gene, options = {{}}) {{
         const rawToken = String(gene || '').trim();
-        const token = resolveCanonicalGeneName(rawToken);
+        const token = resolveViewerFeatureToken(rawToken);
         const showErrors = options.showErrors !== false;
         const geneInput = document.getElementById('gene-input');
 
@@ -10369,6 +11922,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             invalidateGeneDensityCaches();
             hiddenCategories.clear();
             if (geneInput) geneInput.value = '';
+            document.getElementById('visual-default-controls')?.classList.add('color-mode');
+            document.getElementById('visual-default-controls')?.classList.remove('gene-mode');
+            document.getElementById('default-source-color')?.classList.add('active');
+            document.getElementById('default-source-gene')?.classList.remove('active');
             updateExpressionScaleUI();
             renderLegend('legend');
             renderLegend('modal-legend');
@@ -10391,7 +11948,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return false;
         }}
 
-        if (geneInput) geneInput.value = token;
+        if (geneInput) geneInput.value = getGeneDisplayLabel(token);
         const ok = await runAsyncUIAction('Gene selection', async () => {{
             if (!(await ensureGeneAvailable(token, {{ showErrors }}))) {{
                 return false;
@@ -10413,6 +11970,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return true;
         }});
         if (ok) {{
+            document.getElementById('visual-default-controls')?.classList.remove('color-mode');
+            document.getElementById('visual-default-controls')?.classList.add('gene-mode');
+            document.getElementById('default-source-color')?.classList.remove('active');
+            document.getElementById('default-source-gene')?.classList.add('active');
             recordRecentGene(token);
             geneDiscoveryResults = [];
             geneDiscoveryActiveIndex = -1;
@@ -10438,10 +11999,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!spec || spec.kind === 'cell') return null;
         const gene = String(spec.gene || '').trim();
         if (!gene) return null;
-        const meta = (spec.kind === CURRENT_MODALITY || (spec.kind === 'gene' && CURRENT_MODALITY === 'rna'))
-            ? DATA.genes_meta
-            : (MODALITY_GENE_STATE[spec.kind]?.genes_meta);
-        if (meta && meta[gene]) return {{ gene, modality: spec.kind, side }};
+        if (isFeatureLoadedForModality(gene, spec.kind)) return {{ gene, modality: spec.kind, side }};
         return null;
     }}
 
@@ -10490,7 +12048,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getGeneParameterTarget() {{
-        return currentGene ? {{ gene: currentGene, modality: CURRENT_MODALITY, side: null }} : null;
+        if (!currentGene) return null;
+        return {{
+            gene: currentGene,
+            modality: getGeneModuleByToken(currentGene) ? MODULE_MODALITY_NAME : CURRENT_MODALITY,
+            side: null,
+        }};
     }}
 
     function updateSplitExpressionScaleUI() {{
@@ -10566,6 +12129,59 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return cols;
     }}
 
+    function getExplorationColorOptions() {{
+        const metadata = Object.entries(DATA.metadata_filters || {{}})
+            .filter(([, values]) => Array.isArray(values) && values.length)
+            .map(([column]) => {{
+                ensureSectionMetadataColorColumn(column);
+                return {{
+                value: SECTION_METADATA_COLOR_PREFIX + column,
+                label: formatMetadataLabel(column),
+                group: 'Section metadata',
+                }};
+            }});
+        const annotations = getCategoricalColorColumns().map((column) => ({{
+            value: column,
+            label: formatMetadataLabel(column),
+            group: 'Cell annotations',
+        }}));
+        return {{ metadata, annotations }};
+    }}
+
+    function ensureSectionMetadataColorColumn(column) {{
+        const key = SECTION_METADATA_COLOR_PREFIX + String(column || '');
+        if (!key || key === SECTION_METADATA_COLOR_PREFIX) return key;
+        const categories = (DATA.metadata_filters?.[column] || []).map((value) => String(value));
+        DATA.colors_meta = DATA.colors_meta || {{}};
+        if (!DATA.colors_meta[key]) DATA.colors_meta[key] = {{ is_continuous: false, categories, palette: [] }};
+        DATA.colors_meta[key].categories = categories;
+        ensureColorColumnPalette(key);
+        return key;
+    }}
+
+    function getExplorationColorOptionValue(colorCol) {{
+        return String(colorCol || '').startsWith(SECTION_METADATA_COLOR_PREFIX)
+            ? String(colorCol)
+            : String(colorCol || '');
+    }}
+
+    function getAnnotationColumnLabel(column) {{
+        const value = String(column || '');
+        return formatMetadataLabel(value.startsWith(SECTION_METADATA_COLOR_PREFIX)
+            ? value.slice(SECTION_METADATA_COLOR_PREFIX.length)
+            : value);
+    }}
+
+    function renderGroupedAnnotationOptions(selectedValue = '', includeNone = false) {{
+        const options = getExplorationColorOptions();
+        const renderGroup = (label, entries) => entries.length
+            ? `<optgroup label="${{escapeHtml(label)}}">${{entries.map((entry) => `<option value="${{escapeHtml(entry.value)}}"${{entry.value === selectedValue ? ' selected' : ''}}>${{escapeHtml(entry.label)}}</option>`).join('')}}</optgroup>`
+            : '';
+        return (includeNone ? '<option value="">None</option>' : '')
+            + renderGroup('Section metadata', options.metadata)
+            + renderGroup('Cell annotations', options.annotations);
+    }}
+
     function setSelectOptions(selectEl, values, selectedValue) {{
         if (!selectEl) return;
         selectEl.innerHTML = '';
@@ -10582,7 +12198,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
+    function getBlendKindOptions() {{
+        const kindOptions = [{{ value: 'cell', label: 'Cell type' }}];
+        if (MODALITY_DESCRIPTORS.length > 0) {{
+            for (const mod of MODALITY_DESCRIPTORS) {{
+                kindOptions.push({{ value: mod.name, label: mod.label || mod.name }});
+            }}
+        }} else {{
+            kindOptions.push({{ value: 'gene', label: 'Gene' }});
+        }}
+        kindOptions.push({{ value: MODULE_MODALITY_NAME, label: 'Module' }});
+        return kindOptions;
+    }}
+
     function getCategoriesForColorColumn(colorCol) {{
+        if (String(colorCol || '').startsWith(SECTION_METADATA_COLOR_PREFIX)) {{
+            const column = String(colorCol).slice(SECTION_METADATA_COLOR_PREFIX.length);
+            return (DATA.metadata_filters?.[column] || []).map((value) => String(value));
+        }}
         const meta = ensureColorColumnCategoryState(colorCol);
         if (!meta) return [];
         return meta.categories;
@@ -10683,11 +12316,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!spec) return 'Unknown';
         if (spec.kind !== 'cell') {{
             const modName = spec.kind;
-            const modDesc = MODALITY_DESCRIPTORS.find(m => m.name === modName);
-            const modLabel = modDesc?.label || (modName === 'gene' ? 'Gene' : modName);
+            const modLabel = getModalityDisplayLabel(modName);
             const isGene = ['RNA', 'rna', 'Gene', 'gene'].includes(modLabel);
             const featureLabel = isGene ? 'Gene' : modLabel;
-            return spec.gene ? `${{featureLabel}}: ${{spec.gene}}` : featureLabel;
+            const displayLabel = getGeneDisplayLabel(spec.gene);
+            return spec.gene
+                ? (isModuleModality(modName) ? displayLabel : `${{featureLabel}}: ${{displayLabel}}`)
+                : featureLabel;
         }}
         const colLabel = spec.color ? formatMetadataLabel(spec.color) : 'Cell type';
         if (spec.category === BLEND_ALL_CATEGORIES) return `${{colLabel}}: All`;
@@ -10702,11 +12337,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         if (spec.kind !== 'cell') {{
             const modName = spec.kind;
-            const modDesc = MODALITY_DESCRIPTORS.find(m => m.name === modName);
-            const modLabel = modDesc?.label || (modName === 'gene' ? 'Gene' : modName);
+            const modLabel = getModalityDisplayLabel(modName);
             const isGene = ['RNA', 'rna', 'Gene', 'gene'].includes(modLabel);
             const featureTypeLabel = isGene ? 'Gene' : modLabel;
-            const featureLabel = spec.gene ? `${{featureTypeLabel}}: ${{spec.gene}}` : featureTypeLabel;
+            const displayLabel = getGeneDisplayLabel(spec.gene);
+            const featureLabel = spec.gene
+                ? (isModuleModality(modName) ? displayLabel : `${{featureTypeLabel}}: ${{displayLabel}}`)
+                : featureTypeLabel;
             
             const scale = (typeof scaleResolver === 'function' ? scaleResolver(side, spec) : null)
                 || getGeneScaleRange(spec.gene, modName);
@@ -10782,11 +12419,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!gene) return null;
             
             const modName = spec.kind;
-            const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
-                ? DATA.genes_meta
-                : (MODALITY_GENE_STATE[modName]?.genes_meta);
-            
-            if (!meta || !meta[gene]) {{
+            if (!isFeatureLoadedForModality(gene, modName)) {{
                 requestModalBlendGene(gene, modName);
                 return null;
             }}
@@ -10835,18 +12468,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return {{ a, b }};
     }}
 
-    function requestOverviewBlendGene(gene) {{
+    function requestOverviewBlendGene(gene, modality = CURRENT_MODALITY) {{
         const token = String(gene || '').trim();
-        if (!token || DATA.genes_meta?.[token] || modalBlendGeneLoads.has(token)) return;
-        modalBlendGeneLoads.add(token);
+        const key = `${{modality}}::${{token}}`;
+        if (!token || isModuleModality(modality) || isFeatureLoadedForModality(token, modality) || modalBlendGeneLoads.has(key)) return;
+        modalBlendGeneLoads.add(key);
         runAsyncUIAction(`Overview split gene load (${{token}})`, async () => {{
-            const ok = await ensureGeneAvailable(token, {{ showErrors: false }});
+            const ok = await ensureGeneAvailable(token, {{ showErrors: false, modality }});
             if (ok) {{
-                ensureGeneAutoScale(token);
+                ensureGeneAutoScale(token, modality);
                 renderAllSections();
             }}
         }}).finally(() => {{
-            modalBlendGeneLoads.delete(token);
+            modalBlendGeneLoads.delete(key);
         }});
     }}
 
@@ -11152,6 +12786,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function clearRegionBSelection() {{
+        selectionWelchRevision += 1;
+        selectionWelchCache.clear();
+        selectionWelchRunRequested = false;
+        selectionWelchButtonHidden = false;
         selectedCellsB.clear();
         selectedLassoPathB = [];
         selectedCellsBFromGridLasso = false;
@@ -11242,63 +12880,154 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return summary;
     }}
 
-    function computeSelectionMeanExpression(summary) {{
-        // Prefer cluster-means lookup: covers all genes including sidecar ones.
-        const clusterMeansData = DATA.cluster_gene_means;
-        if (clusterMeansData && summary?.typeColumn) {{
-            const colData = clusterMeansData.columns?.[summary.typeColumn];
-            if (colData && summary.types.length) {{
-                const genes = clusterMeansData.genes;
-                const n = genes.length;
-                const selMeans = new Float64Array(n);
-                const totalSelected = summary.total - summary.missingTypeValues;
-                if (totalSelected > 0) {{
-                    for (const [cat, count] of summary.types) {{
-                        const catMeans = colData.means[cat];
-                        if (!catMeans) continue;
-                        const weight = count / totalSelected;
-                        for (let i = 0; i < n; i++) {{
-                            selMeans[i] += catMeans[i] * weight;
-                        }}
-                    }}
-                }}
-                const bgMeans = colData.background;
-                const result = genes.map((gene, i) => ({{
-                    gene,
-                    meanSel: selMeans[i],
-                    meanRest: bgMeans[i],
-                }}));
-                result.sort((a, b) => b.meanSel - a.meanSel);
-                return result;
-            }}
-        }}
+    function logGamma(value) {{
+        const coefficients = [
+            676.5203681218851, -1259.1392167224028, 771.32342877765313,
+            -176.61502916214059, 12.507343278686905, -0.13857109526572012,
+            9.9843695780195716e-6, 1.5056327351493116e-7,
+        ];
+        if (value < 0.5) return Math.log(Math.PI) - Math.log(Math.sin(Math.PI * value)) - logGamma(1 - value);
+        let x = 0.9999999999998099;
+        const z = value - 1;
+        for (let i = 0; i < coefficients.length; i++) x += coefficients[i] / (z + i + 1);
+        const t = z + coefficients.length - 0.5;
+        return 0.5 * Math.log(2 * Math.PI) + (z + 0.5) * Math.log(t) - t + Math.log(x);
+    }}
 
-        // Fallback: compute directly from loaded gene vectors (exact, embedded genes only).
-        const loadedGenes = Object.keys(DATA.genes_meta || {{}});
-        if (!loadedGenes.length || !summary.total) return [];
-        // Rebuild cell set from summary sections for O(1) lookup
-        const cellSetKeys = summary._cells || selectedCells;
+    function betaContinuedFraction(a, b, x) {{
+        const maxIterations = 120;
+        const epsilon = 3e-14;
+        const tiny = 1e-300;
+        let qab = a + b;
+        let qap = a + 1;
+        let qam = a - 1;
+        let c = 1;
+        let d = 1 - qab * x / qap;
+        d = Math.abs(d) < tiny ? tiny : d;
+        d = 1 / d;
+        let h = d;
+        for (let m = 1; m <= maxIterations; m++) {{
+            const m2 = 2 * m;
+            let aa = m * (b - m) * x / ((qam + m2) * (a + m2));
+            d = 1 + aa * d;
+            d = Math.abs(d) < tiny ? tiny : d;
+            c = 1 + aa / c;
+            c = Math.abs(c) < tiny ? tiny : c;
+            d = 1 / d;
+            h *= d * c;
+            aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2));
+            d = 1 + aa * d;
+            d = Math.abs(d) < tiny ? tiny : d;
+            c = 1 + aa / c;
+            c = Math.abs(c) < tiny ? tiny : c;
+            d = 1 / d;
+            const delta = d * c;
+            h *= delta;
+            if (Math.abs(delta - 1) < epsilon) break;
+        }}
+        return h;
+    }}
+
+    function regularizedBeta(x, a, b) {{
+        if (x <= 0) return 0;
+        if (x >= 1) return 1;
+        const logBeta = logGamma(a) + logGamma(b) - logGamma(a + b);
+        const front = Math.exp(a * Math.log(x) + b * Math.log1p(-x) - logBeta);
+        if (x < (a + 1) / (a + b + 2)) return front * betaContinuedFraction(a, b, x) / a;
+        return 1 - front * betaContinuedFraction(b, a, 1 - x) / b;
+    }}
+
+    function welchTwoSidedP(tStatistic, degreesOfFreedom) {{
+        if (!Number.isFinite(tStatistic) || !Number.isFinite(degreesOfFreedom) || degreesOfFreedom <= 0) return 1;
+        const x = degreesOfFreedom / (degreesOfFreedom + tStatistic * tStatistic);
+        return Math.min(1, Math.max(0, regularizedBeta(x, degreesOfFreedom / 2, 0.5)));
+    }}
+
+    function formatPValue(value) {{
+        if (!Number.isFinite(value)) return '—';
+        if (value < 0.001) return value.toExponential(1);
+        return value.toFixed(3);
+    }}
+
+    function formatCompactNumber(value) {{
+        if (!Number.isFinite(value)) return '—';
+        if (Math.abs(value) >= 1000) return value.toExponential(1);
+        return value.toFixed(2);
+    }}
+
+    function computeSelectionWelchExpression(groupA, groupB = null) {{
+        const genes = Object.keys(DATA.genes_meta || {{}});
+        if (!genes.length || !groupA?.size) return [];
+        const allCells = groupB === null;
         const result = [];
-        for (const gene of loadedGenes) {{
-            let selSum = 0, selCount = 0, restSum = 0, restCount = 0;
+        for (const gene of genes) {{
+            let sumA = 0, sumSqA = 0, nA = 0;
+            let sumB = 0, sumSqB = 0, nB = 0;
+            let expressedA = 0, expressedB = 0;
             for (const section of (DATA.sections || [])) {{
-                const vals = getSectionGeneValues(section, gene);
-                if (!vals) continue;
-                for (let i = 0; i < vals.length; i++) {{
-                    const v = vals[i] ?? 0;
-                    if (cellSetKeys.has(`${{section.id}}:${{i}}`)) {{
-                        selSum += v; selCount++;
-                    }} else {{
-                        restSum += v; restCount++;
-                    }}
+                const values = getSectionGeneValues(section, gene);
+                if (!values) continue;
+                for (let i = 0; i < values.length; i++) {{
+                    const value = Number(values[i] ?? 0);
+                    if (!Number.isFinite(value)) continue;
+                    const key = `${{section.id}}:${{i}}`;
+                    if (groupA.has(key)) {{ sumA += value; sumSqA += value * value; nA += 1; if (value > 0) expressedA += 1; }}
+                    if (allCells ? true : groupB.has(key)) {{ sumB += value; sumSqB += value * value; nB += 1; if (value > 0) expressedB += 1; }}
                 }}
             }}
-            const meanSel = selCount > 0 ? selSum / selCount : 0;
-            const meanRest = restCount > 0 ? restSum / restCount : 0;
-            result.push({{ gene, meanSel, meanRest }});
+            if (nA < 2 || nB < 2) continue;
+            const meanA = sumA / nA;
+            const meanB = sumB / nB;
+            const varianceA = Math.max(0, (sumSqA - nA * meanA * meanA) / (nA - 1));
+            const varianceB = Math.max(0, (sumSqB - nB * meanB * meanB) / (nB - 1));
+            const standardErrorSquared = varianceA / nA + varianceB / nB;
+            const t = standardErrorSquared > 0 ? (meanA - meanB) / Math.sqrt(standardErrorSquared) : 0;
+            const denominator = Math.pow(varianceA / nA, 2) / (nA - 1) + Math.pow(varianceB / nB, 2) / (nB - 1);
+            const df = denominator > 0 ? Math.pow(standardErrorSquared, 2) / denominator : nA + nB - 2;
+            result.push({{ gene, meanA, meanB, t, p: welchTwoSidedP(t, df), df, nA, nB,
+                pctA: 100 * expressedA / nA, pctB: 100 * expressedB / nB }});
         }}
-        result.sort((a, b) => b.meanSel - a.meanSel);
+        result.sort((a, b) => a.p - b.p || Math.abs(b.t) - Math.abs(a.t));
         return result;
+    }}
+
+    // Compatibility helper for the annotation comparison view, which still plots means.
+    function computeSelectionMeanExpression(summary) {{
+        const cells = summary?._cells || selectedCells;
+        return computeSelectionWelchExpression(cells, null).map((entry) => ({{
+            gene: entry.gene,
+            meanSel: entry.meanA,
+            meanRest: entry.meanB,
+        }}));
+    }}
+
+    function getCachedSelectionWelchExpression(groupA, groupB = null) {{
+        if (!selectionWelchRunRequested) return [];
+        const key = `${{groupB === null ? 'all' : 'region-b'}}:${{selectionRevision}}:${{selectionWelchRevision}}`;
+        if (selectionWelchCache.has(key)) return selectionWelchCache.get(key);
+        const result = computeSelectionWelchExpression(groupA, groupB);
+        selectionWelchCache.set(key, result);
+        return result;
+    }}
+
+    function getWelchTopResults(results) {{
+        const topN = Math.max(1, Math.min(20, Number(selectionWelchTopN) || 3));
+        const minPct = Math.max(0, Math.min(100, Number(selectionWelchMinPct) || 0));
+        const eligible = results.filter((entry) => entry.pctA >= minPct || entry.pctB >= minPct);
+        const positive = [...eligible].filter((entry) => entry.t >= 0).sort((a, b) => b.t - a.t || a.p - b.p).slice(0, topN);
+        const negative = [...eligible].filter((entry) => entry.t < 0).sort((a, b) => a.t - b.t || a.p - b.p).slice(0, topN);
+        return [...positive, ...negative];
+    }}
+
+    function renderWelchTopNControl() {{
+        return `<div class="selection-summary-welch-controls"><div class="selection-summary-welch-control-row"><label>Top N per direction</label><input type="number" min="1" max="20" step="1" value="${{selectionWelchTopN}}" data-welch-top-n aria-label="Number of top positive and negative genes selected by Welch test"></div><div class="selection-summary-welch-control-row"><label>Min expressed %</label><input type="range" min="0" max="100" step="1" value="${{selectionWelchMinPct}}" data-welch-min-pct aria-label="Minimum percentage of expressing cells in at least one group"><output data-welch-min-pct-value>${{selectionWelchMinPct}}%</output></div></div>`;
+    }}
+
+    function renderFindMarkersButton() {{
+        if (selectionWelchButtonHidden && !selectionWelchRunning) return '';
+        return selectionWelchRunning
+            ? '<div class="selection-query-icon-btn selection-summary-find-markers loading" role="status" aria-label="Finding markers"><span class="selection-summary-find-markers-spinner"></span></div>'
+            : '<button class="selection-query-icon-btn selection-summary-find-markers" type="button" data-find-welch-markers title="Find markers" aria-label="Find markers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></button>';
     }}
 
     function getLoadedGenesForSection(section) {{
@@ -11378,7 +13107,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!loadedGenes.length) return [];
         const selectedSet = new Set(selectedCellIndices);
         const scored = [];
-        const epsilon = 1e-6;
+        const epsilon = Number.MIN_VALUE;
 
         loadedGenes.forEach((gene) => {{
             const values = getSectionGeneValues(section, gene);
@@ -11444,7 +13173,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const entries = Array.from(merged.values()).map((entry) => {{
             const markerComponent = Number(entry.markerScore || 0) * 6;
             const exprComponent = Number.isFinite(entry.exprScore)
-                ? Math.max(0, Math.log2(Math.max(entry.exprScore, 1e-6)))
+                ? Math.max(0, Math.log2(Math.max(entry.exprScore, Number.MIN_VALUE)))
                 : 0;
             return {{
                 ...entry,
@@ -11577,14 +13306,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getAnnotationCellSet(annotation) {{
-        const cells = new Set();
-        if (!annotation || !annotation.sectionId) return cells;
-        (annotation.localCellIndices || []).forEach((idx) => {{
-            if (Number.isInteger(idx) && idx >= 0) {{
-                cells.add(`${{annotation.sectionId}}:${{idx}}`);
-            }}
-        }});
-        return cells;
+        return collectAnnotationCellSet(annotation);
+    }}
+
+    function getAnnotationSingleSectionRegion(annotation) {{
+        const grouped = getSelectionLocalIndicesBySection(getAnnotationCellSet(annotation));
+        if (grouped.size !== 1) return null;
+        const [sectionId, indices] = Array.from(grouped.entries())[0];
+        return {{
+            sectionId,
+            indices: Array.from(new Set(indices.filter((idx) => Number.isInteger(idx) && idx >= 0))),
+        }};
+    }}
+
+    function refreshSelectionFromSelectedAnnotation() {{
+        if (!selectedCellsFromAnnotation || !Number.isFinite(Number(selectedAnnotationId))) return false;
+        const annotation = getModalAnnotationById(selectedAnnotationId);
+        if (!annotation) {{
+            selectedCells.clear();
+            clearRegionBSelection();
+            selectedCellsFromAnnotation = false;
+            selectedAnnotationId = null;
+            updateSelectionInfo();
+            return true;
+        }}
+        selectedCells = getAnnotationCellSet(annotation);
+        updateSelectionInfo();
+        return true;
     }}
 
     function getAnnotationDisplayLabel(annotation) {{
@@ -11635,6 +13383,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             sections,
             nCells,
         }};
+    }}
+
+    function log2RatioWithTinyPseudocount(numerator, denominator) {{
+        const tiny = Number.MIN_VALUE;
+        const a = Math.max(0, Number(numerator) || 0) + tiny;
+        const b = Math.max(0, Number(denominator) || 0) + tiny;
+        return Math.log2(a) - Math.log2(b);
     }}
 
     function buildSingleSectionCellGroup(sectionId, indices, meta = {{}}) {{
@@ -11749,7 +13504,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const pctB = statsB.nnz / nB;
         const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
         const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
-        const log2fc = Math.log2((meanA + 1e-6) / (meanB + 1e-6));
+        const log2fc = log2RatioWithTinyPseudocount(meanA, meanB);
         // Two-sided: keep genes enriched in EITHER group; direction is encoded by
         // the sign of score / log2fc and resolved later by selectTwoSidedTopN.
         return {{
@@ -12024,10 +13779,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return {{ available: false, reason: 'same_annotation', results: [] }};
         }}
 
-        const sectionA = sectionById.get(annotationA.sectionId);
-        const sectionB = sectionById.get(annotationB.sectionId);
-        const indicesA = Array.from(new Set((annotationA.localCellIndices || []).filter((idx) => Number.isInteger(idx) && idx >= 0)));
-        const indicesB = Array.from(new Set((annotationB.localCellIndices || []).filter((idx) => Number.isInteger(idx) && idx >= 0)));
+        const regionA = getAnnotationSingleSectionRegion(annotationA);
+        const regionB = getAnnotationSingleSectionRegion(annotationB);
+        const sectionA = regionA ? sectionById.get(regionA.sectionId) : null;
+        const sectionB = regionB ? sectionById.get(regionB.sectionId) : null;
+        const indicesA = regionA?.indices || [];
+        const indicesB = regionB?.indices || [];
+        if (!regionA || !regionB) {{
+            return {{
+                available: false,
+                reason: 'multi_section_region',
+                nA: indicesA.length,
+                nB: indicesB.length,
+                results: [],
+            }};
+        }}
         if (!sectionA || !sectionB || !indicesA.length || !indicesB.length) {{
             return {{
                 available: false,
@@ -12052,10 +13818,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }};
         }}
 
-        const sameSection = annotationA.sectionId === annotationB.sectionId;
+        const sameSection = regionA.sectionId === regionB.sectionId;
         const results = [];
-        const eps = 1e-6;
-
         loadedGenes.forEach((gene) => {{
             const valsA = getSectionGeneValues(sectionA, gene);
             const valsB = sameSection ? valsA : getSectionGeneValues(sectionB, gene);
@@ -12097,7 +13861,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const pctB = nnzB / nB;
             const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
             const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
-            const log2fc = Math.log2((meanA + eps) / (meanB + eps));
+            const log2fc = log2RatioWithTinyPseudocount(meanA, meanB);
             // Two-sided: keep genes enriched in either region (see selectTwoSidedTopN).
 
             results.push({{
@@ -12305,7 +14069,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const pctB = statsB.nnz / nB;
         const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
         const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
-        const log2fc = Math.log2((meanA + 1e-6) / (meanB + 1e-6));
+        const log2fc = log2RatioWithTinyPseudocount(meanA, meanB);
         // Two-sided: keep genes enriched in EITHER group; direction is encoded by
         // the sign of score / log2fc and resolved later by selectTwoSidedTopN.
 
@@ -12355,14 +14119,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
         renderAnnotationComparison();
 
-        const regionA = {{
-            sectionId: annotationA.sectionId,
-            indices: Array.from(new Set((annotationA.localCellIndices || []).filter((idx) => Number.isInteger(idx) && idx >= 0))),
-        }};
-        const regionB = {{
-            sectionId: annotationB.sectionId,
-            indices: Array.from(new Set((annotationB.localCellIndices || []).filter((idx) => Number.isInteger(idx) && idx >= 0))),
-        }};
+        const regionA = getAnnotationSingleSectionRegion(annotationA);
+        const regionB = getAnnotationSingleSectionRegion(annotationB);
+        if (!regionA || !regionB) {{
+            annotationDeFullRun = {{
+                token,
+                running: false,
+                key,
+                error: 'Full Region DE currently requires each selected annotation group to resolve to one section.',
+            }};
+            renderAnnotationComparison();
+            return;
+        }}
         regionA.indexSet = new Set(regionA.indices);
         regionB.indexSet = new Set(regionB.indices);
 
@@ -12611,19 +14379,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function buildMarkerGenesCsv(colorCol) {{
-        const markers = DATA.marker_genes || {{}};
-        const groupMarkers = markers[colorCol];
-        if (!groupMarkers || Object.keys(groupMarkers).length === 0) return '';
-        const colorMeta = DATA.colors_meta?.[colorCol];
-        const categories = (colorMeta && colorMeta.categories) || Object.keys(groupMarkers);
-        const rows = [['color_column', 'cluster', 'rank', 'gene']];
-        categories.forEach((cat) => {{
-            const key = String(cat);
-            const genes = getMarkerGenesForColorCategory(colorCol, key) || [];
-            genes.forEach((gene, idx) => {{
-                const g = String(gene || '').trim();
-                if (!g) return;
-                rows.push([colorCol, key, idx + 1, g]);
+        const byColor = (DATA.pseudobulk_de || {{}})[colorCol] || null;
+        if (!byColor || typeof byColor !== 'object') return '';
+        const rows = [['color_column', 'category', 'reference', 'rank', 'gene', 'base_mean', 'log2fc', 'pvalue', 'padj', 'score', 'pct_source', 'pct_reference']];
+        Object.entries(byColor).forEach(([sourceCategory, bucket]) => {{
+            if (String(sourceCategory).startsWith('_') || !bucket || typeof bucket !== 'object') return;
+            const comparisons = bucket.__rest__
+                ? [['rest', bucket.__rest__]]
+                : Object.entries(bucket).filter(([reference, result]) => !String(reference).startsWith('_') && result && typeof result === 'object');
+            comparisons.forEach(([reference, result]) => {{
+                const entries = getClusterDETableEntries(result);
+                entries.forEach((entry, idx) => {{
+                    rows.push([
+                        colorCol,
+                        sourceCategory,
+                        reference,
+                        idx + 1,
+                        entry.gene,
+                        csvFormatNumber(entry.baseMean),
+                        csvFormatNumber(entry.log2fc),
+                        csvFormatNumber(entry.pvalue),
+                        csvFormatNumber(entry.padj),
+                        csvFormatNumber(entry.score),
+                        csvFormatNumber(entry.pctSource),
+                        csvFormatNumber(entry.pctReference),
+                    ]);
+                }});
             }});
         }});
         if (rows.length <= 1) return '';
@@ -12632,15 +14413,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             .join('\\n');
     }}
 
-    function exportMarkerGenesCsv() {{
-        const csvText = buildMarkerGenesCsv(currentColor);
+    function exportMarkerGenesCsv(colorCol = currentColor) {{
+        const csvText = buildMarkerGenesCsv(colorCol);
         if (!csvText) {{
-            alert('No pseudobulk DE genes are available for this color to export.');
+            alert('No pseudobulk DE genes are available for this annotation to export.');
             return;
         }}
-        const colorLabel = sanitizeFilenamePart(currentColor || 'color');
+        const colorLabel = sanitizeFilenamePart(colorCol || 'color');
         const filename = `karospace-pseudobulk-de-genes-${{colorLabel}}-${{getScreenshotTimestamp()}}.csv`;
         downloadTextFile(csvText, filename, 'text/csv;charset=utf-8');
+    }}
+
+    function getGeneGraphSvgText(containerId) {{
+        const container = document.getElementById(containerId);
+        const svg = container?.querySelector?.('.gene-graph-svg');
+        if (!svg) return null;
+        const clone = svg.cloneNode(true);
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        return new XMLSerializer().serializeToString(clone);
+    }}
+
+    function downloadGeneGraphSvg(containerId, filenameStem, emptyMessage = 'No graph is available to export.') {{
+        const text = getGeneGraphSvgText(containerId);
+        if (!text) {{
+            alert(emptyMessage);
+            return;
+        }}
+        downloadTextFile(text, `${{filenameStem}}-${{getScreenshotTimestamp()}}.svg`, 'image/svg+xml;charset=utf-8');
     }}
 
     function formatSelectionQueryLiteral(value) {{
@@ -12774,21 +14573,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 `).join('')}}
                             </div>
                         ` : ''}}
-                        <textarea
-                            class="selection-query-input"
-                            data-selection-query-input
-                            rows="2"
-                            placeholder="${{escapeHtml(getSelectionQueryPlaceholder())}}"
-                        >${{escapeHtml(selectionQueryText)}}</textarea>
+                        <div class="selection-query-input-wrap">
+                            <textarea
+                                class="selection-query-input"
+                                data-selection-query-input
+                                rows="2"
+                                placeholder="${{escapeHtml(getSelectionQueryPlaceholder())}}"
+                            >${{escapeHtml(selectionQueryText)}}</textarea>
+                            <button
+                                class="selection-query-clear-input"
+                                type="button"
+                                data-selection-query-clear
+                                title="Clear query"
+                                aria-label="Clear query"
+                                ${{selectionQueryText ? '' : 'hidden'}}
+                                ${{selectionQueryRunning ? ' disabled' : ''}}
+                            >
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+                            </button>
+                        </div>
                         <div class="selection-query-actions">
-                            <button class="selection-summary-compare-btn" type="button" data-selection-query-run${{selectionQueryRunning ? ' disabled' : ''}}>
-                                ${{selectionQueryRunning ? 'Running…' : 'Replace selection'}}
-                            </button>
-                            <button class="selection-summary-compare-btn" type="button" data-selection-query-add${{selectionQueryRunning ? ' disabled' : ''}}>
-                                ${{selectionQueryRunning ? 'Working…' : 'Add to selection'}}
-                            </button>
-                            <button class="selection-summary-compare-btn" type="button" data-selection-query-clear${{selectionQueryRunning ? ' disabled' : ''}}>
-                                Clear
+                            <button class="selection-query-icon-btn" type="button" data-selection-query-run title="Search cells" aria-label="Search cells"${{selectionQueryRunning ? ' disabled' : ''}}>
+                                <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="search"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
                             </button>
                         </div>
                         <div class="${{getSelectionQueryStatusClassName()}}" data-selection-query-status${{selectionQueryStatus ? '' : ' hidden'}}>
@@ -12826,42 +14632,42 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const pB = summaryB.total > 0 ? Math.round(100 * cB / summaryB.total) : 0;
                 const isActive = linkedSpotlightEnabled && spotlightPinnedCategory === label;
                 const chipColor = getCategoryColorForValue(summaryA.typeColumn, label);
-                const chipFontSize = label.length > 14 ? '8px' : (label.length > 10 ? '9px' : '10px');
                 html += `<div class="selection-summary-compare-row${{isActive ? ' is-active' : ''}}" data-spotlight-cat="${{escapeHtml(label)}}" title="Click to spotlight ${{escapeHtml(label)}} in the viewer">
                     <div class="selection-summary-compare-bar selection-summary-compare-a" title="Region A: ${{cA.toLocaleString()}} cells (${{pA}}%)">
                         <div class="selection-summary-compare-fill" style="width:${{pA}}%;"></div>
                         <span>${{cA.toLocaleString()}} (${{pA}}%)</span>
                     </div>
-                    <span class="selection-summary-compare-type" style="background:${{chipColor}};font-size:${{chipFontSize}};">${{escapeHtml(label)}}</span>
+                    <span class="selection-summary-compare-type" style="background:${{chipColor}};" title="${{escapeHtml(label)}}" aria-label="${{escapeHtml(label)}}"></span>
                     <div class="selection-summary-compare-bar selection-summary-compare-b" title="Region B: ${{cB.toLocaleString()}} cells (${{pB}}%)">
                         <div class="selection-summary-compare-fill" style="width:${{pB}}%;"></div>
                         <span>${{cB.toLocaleString()}} (${{pB}}%)</span>
                     </div>
                 </div>`;
             }}
+            html += '<div class="selection-summary-compare-legend">';
+            for (const label of allTypes) {{
+                const legendColor = getCategoryColorForValue(summaryA.typeColumn, label);
+                html += `<span class="selection-summary-compare-legend-chip" style="background:${{legendColor}};" title="${{escapeHtml(label)}}">${{escapeHtml(label)}}</span>`;
+            }}
+            html += '</div>';
         }}
 
-        // Gene expression A vs B
-        const exprA = computeSelectionMeanExpression(summaryA);
-        const exprB = computeSelectionMeanExpression(summaryB);
-        if (exprA.length && exprB.length) {{
-            const mapB = new Map(exprB.map(e => [e.gene, e.meanSel]));
-            const top = exprA.slice(0, 6);
-            const vmax = Math.max(top[0].meanSel || 1, ...top.map(e => mapB.get(e.gene) || 0));
+        // Welch test for gene expression A vs B.
+        const expr = getCachedSelectionWelchExpression(selectedCells, selectedCellsB);
+        if (selectedCells.size > 0 && selectedCellsB.size > 0) {{
+            const top = getWelchTopResults(expr);
             html += '<div class="selection-summary-expr">';
-            html += '<div class="selection-summary-title">Gene expression: A (pink) vs B (blue)</div>';
-            top.forEach(({{gene, meanSel}}) => {{
-                const meanB = mapB.get(gene) || 0;
-                const pA = Math.round(100 * meanSel / vmax);
-                const pB = Math.round(100 * meanB / vmax);
-                const fc = meanB > 0 ? (meanSel / meanB).toFixed(1) + 'x' : '—';
+            html += `<div class="selection-summary-title">Gene expression — Region A vs Region B${{renderCalcInfoButton('selection_expression')}}</div>${{selectionWelchRunRequested && !selectionWelchRunning ? renderWelchTopNControl() : ''}}${{renderFindMarkersButton()}}`;
+            top.forEach(({{gene, meanA, meanB, pctA, pctB}}) => {{
+                const vmax = Math.max(1e-12, meanA || 0, meanB || 0);
+                const factor = meanB > 0 ? (meanA / meanB).toFixed(1) + 'x' : '—';
                 html += `<div class="selection-summary-expr-row">
                     <span class="selection-summary-expr-gene" data-gene-activate="${{escapeHtml(gene)}}" title="Load ${{escapeHtml(gene)}} into the viewer">${{escapeHtml(gene)}}</span>
                     <div class="selection-summary-expr-bars">
-                        <div class="selection-summary-expr-bar sel" style="width:${{pA}}%"></div>
-                        <div class="selection-summary-expr-bar region-b" style="width:${{pB}}%"></div>
+                        <div class="selection-summary-expr-bar sel" style="width:${{clampPercent(100 * meanA / vmax)}}%;" title="Region A mean: ${{formatCompactNumber(meanA)}}">${{formatCompactNumber(meanA)}} (${{pctA.toFixed(0)}}%)</div>
+                        <div class="selection-summary-expr-bar region-b" style="width:${{clampPercent(100 * meanB / vmax)}}%;" title="Region B mean: ${{formatCompactNumber(meanB)}}">${{formatCompactNumber(meanB)}} (${{pctB.toFixed(0)}}%)</div>
                     </div>
-                    <span class="selection-summary-expr-fc">${{fc}}</span>
+                    <span class="selection-summary-expr-factor" title="Mean A / mean B">${{factor}}</span>
                 </div>`;
             }});
             html += '</div>';
@@ -12907,7 +14713,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const icon = selectionSummaryMinimized ? '▢' : '–';
         const title = selectionSummaryMinimized ? 'Expand selection panel' : 'Minimize selection panel';
         return `<div class="selection-summary-header">
-            <span class="selection-summary-header-title">${{label}}</span>
+            <span class="selection-summary-header-title">${{label}}${{renderCalcInfoButton('selection_counts')}}</span>
             <button class="selection-summary-minimize" type="button" data-selection-minimize title="${{title}}" aria-label="${{title}}">${{icon}}</button>
         </div>`;
     }}
@@ -12953,23 +14759,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             html += '<div class="selection-summary-meta">No categorical annotation is available for type counts.</div>';
         }}
 
-        const exprData = computeSelectionMeanExpression(summary);
-        if (exprData.length) {{
-            const top = exprData.slice(0, 6);
-            const vmax = top[0].meanSel || 1;
+        const exprData = getCachedSelectionWelchExpression(selectedCells, null);
+        if (selectedCells.size > 0) {{
+            const top = getWelchTopResults(exprData);
             html += '<div class="selection-summary-expr">';
-            html += '<div class="selection-summary-title">Mean expression — selection (pink) vs rest (grey)</div>';
-            top.forEach(({{gene, meanSel, meanRest}}) => {{
-                const pctSel = Math.round(100 * meanSel / vmax);
-                const pctRest = Math.round(100 * meanRest / vmax);
-                const fc = meanRest > 0 ? (meanSel / meanRest).toFixed(1) + 'x' : '—';
+            html += `<div class="selection-summary-title">Gene expression — selected cells vs all cells${{renderCalcInfoButton('selection_expression')}}</div>${{selectionWelchRunRequested && !selectionWelchRunning ? renderWelchTopNControl() : ''}}${{renderFindMarkersButton()}}`;
+            top.forEach(({{gene, meanA, meanB, pctA, pctB}}) => {{
+                const vmax = Math.max(1e-12, meanA || 0, meanB || 0);
+                const factor = meanB > 0 ? (meanA / meanB).toFixed(1) + 'x' : '—';
                 html += `<div class="selection-summary-expr-row">
                     <span class="selection-summary-expr-gene" data-gene-activate="${{escapeHtml(gene)}}" title="Load ${{escapeHtml(gene)}} into the viewer">${{escapeHtml(gene)}}</span>
                     <div class="selection-summary-expr-bars">
-                        <div class="selection-summary-expr-bar sel" style="width:${{pctSel}}%"></div>
-                        <div class="selection-summary-expr-bar rest" style="width:${{pctRest}}%"></div>
+                        <div class="selection-summary-expr-bar sel" style="width:${{clampPercent(100 * meanA / vmax)}}%;" title="Selected mean: ${{formatCompactNumber(meanA)}}">${{formatCompactNumber(meanA)}} (${{pctA.toFixed(0)}}%)</div>
+                        <div class="selection-summary-expr-bar rest" style="width:${{clampPercent(100 * meanB / vmax)}}%;" title="All cells mean: ${{formatCompactNumber(meanB)}}">${{formatCompactNumber(meanB)}} (${{pctB.toFixed(0)}}%)</div>
                     </div>
-                    <span class="selection-summary-expr-fc">${{fc}}</span>
+                    <span class="selection-summary-expr-factor" title="Mean selected / mean all">${{factor}}</span>
                 </div>`;
             }});
             html += '</div>';
@@ -13002,6 +14806,47 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function bindSelectionSummaryInteractions(container) {{
         if (!container) return;
         bindGeneActivateButtons(container, updateSelectionInfo);
+        container.querySelectorAll('[data-welch-top-n]').forEach((input) => {{
+            input.addEventListener('change', () => {{
+                const value = Math.max(1, Math.min(20, Math.round(Number(input.value) || 3)));
+                selectionWelchTopN = value;
+                updateSelectionInfo();
+            }});
+        }});
+        container.querySelectorAll('[data-welch-min-pct]').forEach((input) => {{
+            input.addEventListener('input', () => {{
+                const value = Math.max(0, Math.min(100, Math.round(Number(input.value) || 0)));
+                const output = container.querySelector('[data-welch-min-pct-value]');
+                if (output) output.textContent = `${{value}}%`;
+            }});
+            input.addEventListener('change', () => {{
+                selectionWelchMinPct = Math.max(0, Math.min(100, Math.round(Number(input.value) || 0)));
+                updateSelectionInfo();
+            }});
+        }});
+        container.querySelectorAll('[data-find-welch-markers]').forEach((button) => {{
+            button.addEventListener('click', (event) => {{
+                event.preventDefault();
+                event.stopPropagation();
+                if (selectionWelchRunning || selectedCells.size === 0) return;
+                selectionWelchRunning = true;
+                selectionWelchButtonHidden = true;
+                updateSelectionInfo();
+                window.setTimeout(() => {{
+                    selectionWelchRunRequested = true;
+                    selectionWelchRunning = false;
+                    updateSelectionInfo();
+                }}, 30);
+            }});
+        }});
+        container.querySelectorAll('[data-selection-find-more]').forEach((button) => {{
+            button.addEventListener('click', (event) => {{
+                event.preventDefault();
+                event.stopPropagation();
+                setInsightsMode('exploration');
+                activateInsightsTopLevelTab('compare', 'selection');
+            }});
+        }});
         container.querySelectorAll('[data-spotlight-cat]').forEach(row => {{
             row.addEventListener('click', (e) => {{
                 e.preventDefault();
@@ -13101,6 +14946,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (queryInput) {{
             queryInput.addEventListener('input', () => {{
                 selectionQueryText = queryInput.value;
+                syncSelectionQueryUi();
             }});
             queryInput.addEventListener('keydown', (e) => {{
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {{
@@ -13235,7 +15081,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ctx.globalAlpha = 1;
         }}
 
-        // Second pass: draw visible categories with full color
+        // Second pass: draw visible categories with full color. When a lasso
+        // selection exists, use a second layer so selected cells are always
+        // painted after every unselected cell, including cells from later sections.
+        const selectionLayers = hasSelectionFocus ? [false, true] : [null];
+        selectionLayers.forEach((selectedLayer) => {{
         filteredSections.forEach(section => {{
             ensureSectionUMAP(section);
             if (!section.umap_x || !section.umap_y) return;
@@ -13279,6 +15129,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
                 const isSelectedCell = isCellSelected(section.id, i);
                 const isSelectedCellB = selectedCellsB.has(`${{section.id}}:${{i}}`);
+                if (selectedLayer !== null && (isSelectedCell || isSelectedCellB) !== selectedLayer) continue;
                 if (hasSelectionFocus && !isSelectedCell && !isSelectedCellB) {{
                     ctx.fillStyle = '#bbbbbb';
                     ctx.globalAlpha = 0.1 * umapAlpha;
@@ -13307,6 +15158,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }}
 
             }}
+        }});
         }});
         ctx.globalAlpha = 1;
 
@@ -13415,6 +15267,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (lassoModeB) {{
             selectedCellsB = newCells;
+            selectionWelchRevision += 1;
+            selectionWelchCache.clear();
+            selectionWelchRunRequested = false;
+            selectionWelchButtonHidden = false;
             selectedLassoPathB = completedLassoPath;
             selectedCellsBFromGridLasso = false;
             selectedGridLassoSectionIdB = null;
@@ -13433,6 +15289,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             updateUMAPLassoButtonState();
         }} else {{
             selectedCells = newCells;
+            markPrimarySelectionChanged();
             clearRegionBSelection();
             selectedLassoPath = completedLassoPath;
             selectedCellsFromGridLasso = false;
@@ -13442,13 +15299,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             selectedModalLassoSectionId = null;
             selectedModalLassoPath = [];
             selectedCellsFromAnnotation = false;
+            selectedCellsFromQuery = false;
             selectedAnnotationId = null;
             hideModalGeneDiscoveryPanel();
         }}
 
         selectionSummaryExpanded = false;
         selectionSectionSummaryExpanded = false;
-        updateSelectionInfo();
+        openInsightsMode('selection');
         renderUMAP();
         renderAllSections();
         if (modalSection) renderModalSection();
@@ -13508,6 +15366,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (lassoModeB) {{
             selectedCellsB = newCells;
+            selectionWelchRevision += 1;
+            selectionWelchCache.clear();
+            selectionWelchRunRequested = false;
+            selectionWelchButtonHidden = false;
             selectedLassoPathB = [];
             selectedCellsBFromGridLasso = true;
             selectedGridLassoSectionIdB = section.id;
@@ -13522,6 +15384,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             setUMAPCompareHintVisible(false);
         }} else {{
             selectedCells = newCells;
+            markPrimarySelectionChanged();
             clearRegionBSelection();
             selectedLassoPath = [];
             selectedCellsFromGridLasso = true;
@@ -13531,13 +15394,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             selectedModalLassoSectionId = null;
             selectedModalLassoPath = [];
             selectedCellsFromAnnotation = false;
+            selectedCellsFromQuery = false;
             selectedAnnotationId = null;
             hideModalGeneDiscoveryPanel();
         }}
 
         selectionSummaryExpanded = false;
         selectionSectionSummaryExpanded = false;
-        updateSelectionInfo();
+        openInsightsMode('selection');
         updateUMAPCursor();
         renderUMAP();
         renderAllSections();
@@ -13587,6 +15451,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!text) return '';
         if (AVAILABLE_GENE_SET.has(text)) return text;
         return GENE_NAME_BY_LOWER.get(text.toLowerCase()) || '';
+    }}
+
+    function resolveFeatureTokenForModality(value, modality = CURRENT_MODALITY) {{
+        if (isModuleModality(modality)) return resolveGeneModuleToken(value);
+        return resolveCanonicalGeneName(value);
+    }}
+
+    function resolveViewerFeatureToken(value) {{
+        const text = String(value || '').trim();
+        const lower = text.toLowerCase();
+        if (lower.startsWith(`${{MODULE_MODALITY_NAME}}:`)) {{
+            return resolveGeneModuleToken(text) || '';
+        }}
+        return resolveCanonicalGeneName(text);
+    }}
+
+    function isFeatureLoadedForModality(feature, modality = CURRENT_MODALITY) {{
+        const token = String(feature || '').trim();
+        if (!token) return false;
+        if (isModuleModality(modality)) return !!getGeneModuleByToken(token);
+        const meta = (modality === CURRENT_MODALITY || (modality === 'gene' && CURRENT_MODALITY === 'rna'))
+            ? DATA.genes_meta
+            : (MODALITY_GENE_STATE[modality]?.genes_meta);
+        return !!(meta && meta[token]);
     }}
 
     function resolveCanonicalColorName(token) {{
@@ -14007,7 +15895,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         document.querySelectorAll('[data-selection-query-run]').forEach((btn) => {{
             btn.disabled = selectionQueryRunning;
-            btn.textContent = selectionQueryRunning ? 'Running…' : 'Replace selection';
+            btn.classList.toggle('working', selectionQueryRunning);
+            btn.title = selectionQueryRunning ? 'Searching cells...' : 'Search cells';
+            btn.setAttribute('aria-label', btn.title);
         }});
         document.querySelectorAll('[data-selection-query-add]').forEach((btn) => {{
             btn.disabled = selectionQueryRunning;
@@ -14015,6 +15905,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         document.querySelectorAll('[data-selection-query-clear]').forEach((btn) => {{
             btn.disabled = selectionQueryRunning;
+            btn.hidden = !selectionQueryText;
         }});
         document.querySelectorAll('[data-selection-query-status]').forEach((statusEl) => {{
             statusEl.className = getSelectionQueryStatusClassName();
@@ -14100,6 +15991,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
 
             selectedCells = nextSelection;
+            markPrimarySelectionChanged();
             clearRegionBSelection();
             lassoModeB = false;
             selectedLassoPath = [];
@@ -14110,6 +16002,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             selectedModalLassoSectionId = null;
             selectedModalLassoPath = [];
             selectedCellsFromAnnotation = false;
+            selectedCellsFromQuery = matchedCount > 0;
             selectedAnnotationId = null;
             selectionSummaryExpanded = false;
             selectionSectionSummaryExpanded = false;
@@ -14188,6 +16081,144 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         writeViewerJsonStorage(GENE_PANELS_STORAGE_KEY, savedGenePanels);
     }}
 
+    function getGeneModuleToken(module) {{
+        const id = String(module?.id || '').trim();
+        return id ? `module:${{id}}` : '';
+    }}
+
+    function getGeneModuleDisplayValue(module) {{
+        const name = String(module?.name || '').trim() || 'Module';
+        return `Module: ${{name}}`;
+    }}
+
+    function getGeneModuleByToken(token) {{
+        const text = String(token || '').trim();
+        if (!text.startsWith('module:')) return null;
+        const id = text.slice('module:'.length);
+        return geneModules.find((module) => String(module.id) === id) || null;
+    }}
+
+    function resolveGeneModuleToken(value) {{
+        const text = String(value || '').trim();
+        if (!text) return '';
+        if (text.startsWith('module:') && getGeneModuleByToken(text)) return text;
+        const lower = text.toLowerCase();
+        const prefixed = lower.startsWith('module:') ? lower.slice('module:'.length).trim() : lower;
+        const found = geneModules.find((module) => {{
+            const name = String(module.name || '').trim();
+            return name && (name.toLowerCase() === lower || name.toLowerCase() === prefixed);
+        }});
+        return found ? getGeneModuleToken(found) : '';
+    }}
+
+    function getGeneModuleDatalistValues() {{
+        return geneModules.map(getGeneModuleDisplayValue).filter(Boolean);
+    }}
+
+    function getGeneDisplayLabel(token) {{
+        const module = getGeneModuleByToken(token);
+        return module ? getGeneModuleDisplayValue(module) : String(token || '');
+    }}
+
+    function loadGeneModules() {{
+        return [];
+    }}
+
+    function normalizeGeneModules(entries) {{
+        if (!Array.isArray(entries)) return [];
+        return entries.map((entry, index) => {{
+            const id = String(entry?.id || `m${{Date.now()}}-${{index}}`).trim();
+            const name = String(entry?.name || `Module ${{index + 1}}`).trim() || `Module ${{index + 1}}`;
+            const genes = Array.isArray(entry?.genes)
+                ? entry.genes.map(resolveCanonicalGeneName).filter(gene => gene && !gene.startsWith('module:'))
+                : [];
+            return {{ id, name, genes: [...new Set(genes)] }};
+        }}).filter(module => module.id && module.name);
+    }}
+
+    function buildGeneModulesExport() {{
+        return {{
+            format: 'karospace-gene-modules-v1',
+            created_at: new Date().toISOString(),
+            n_modules: geneModules.length,
+            modules: geneModules.map(module => ({{
+                id: module.id,
+                name: module.name,
+                genes: module.genes.slice(),
+            }})),
+        }};
+    }}
+
+    function downloadGeneModulesJson() {{
+        if (!geneModules.length) return;
+        downloadJsonFile(buildGeneModulesExport(), `karospace-gene-modules-${{getScreenshotTimestamp()}}.json`);
+    }}
+
+    function applyGeneModulesImport(payload) {{
+        const entries = Array.isArray(payload?.modules)
+            ? payload.modules
+            : (Array.isArray(payload) ? payload : []);
+        const modules = normalizeGeneModules(entries).filter(module => module.genes.length);
+        if (!modules.length) return 0;
+        const existingIds = new Set(geneModules.map(module => String(module.id)));
+        modules.forEach((module) => {{
+            let id = String(module.id || '').trim();
+            if (!id || existingIds.has(id)) {{
+                id = `m${{Date.now().toString(36)}}${{Math.random().toString(36).slice(2, 7)}}`;
+            }}
+            existingIds.add(id);
+            geneModules.push({{ ...module, id }});
+        }});
+        refreshAfterGeneModuleChange();
+        renderGeneModulePanel();
+        return modules.length;
+    }}
+
+    function loadGeneModulesFromFile(file) {{
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {{
+            try {{
+                const payload = JSON.parse(String(reader.result || ''));
+                const count = applyGeneModulesImport(payload);
+                if (!count) alert('No valid gene modules found in this JSON file.');
+            }} catch (error) {{
+                alert(`Could not parse gene modules JSON: ${{error.message || error}}`);
+            }}
+        }};
+        reader.onerror = () => alert('Could not read the selected gene modules file.');
+        reader.readAsText(file);
+    }}
+
+    function createGeneModule(name, genes) {{
+        const cleanGenes = Array.isArray(genes) ? genes.filter(Boolean) : [];
+        if (!cleanGenes.length) return null;
+        const id = `m${{Date.now().toString(36)}}${{Math.random().toString(36).slice(2, 7)}}`;
+        const module = {{
+            id,
+            name: String(name || '').trim() || `Module ${{geneModules.length + 1}}`,
+            genes: [...new Set(cleanGenes)],
+        }};
+        geneModules.push(module);
+        populateGeneInputDatalist();
+        return module;
+    }}
+
+    async function ensureGeneModuleAvailable(module, options = {{}}) {{
+        if (!module || !Array.isArray(module.genes) || !module.genes.length) return false;
+        const loaded = [];
+        for (const gene of module.genes) {{
+            const ok = await ensureGeneAvailable(gene, {{ showErrors: options.showErrors !== false }});
+            if (ok) {{
+                loaded.push(gene);
+                ensureGeneAutoScale(gene);
+            }}
+        }}
+        module.genes = [...new Set(loaded)];
+        populateGeneInputDatalist();
+        return module.genes.length > 0;
+    }}
+
     function getGenePanelSeedToken() {{
         const fromCurrent = resolveCanonicalGeneName(currentGene);
         if (fromCurrent) return fromCurrent;
@@ -14249,7 +16280,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function getGeneSearchResults(query, limit = GENE_DISCOVERY_MAX_RESULTS) {{
         const token = String(query || '').trim();
         if (!token) return [];
-        return getActiveFeatureList()
+        return getGeneInputFeatureList()
             .map((gene) => {{
                 const match = fuzzyGeneMatchScore(gene, token);
                 if (!match) return null;
@@ -14277,6 +16308,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             .filter(([, groups]) => groups && typeof groups === 'object' && Object.keys(groups).length > 0)
             .map(([color]) => color)
             .sort((a, b) => a.localeCompare(b));
+    }}
+
+    function getAvailablePseudobulkDEColors() {{
+        return Object.entries(DATA.pseudobulk_de || {{}})
+            .filter(([, groups]) => groups && typeof groups === 'object' && Object.keys(groups).some((key) => !String(key).startsWith('_')))
+            .map(([color]) => color)
+            .sort((a, b) => a.localeCompare(b));
+    }}
+
+    function renderGenesDetailsWarnings() {{
+        const container = document.getElementById('genes-details-warnings');
+        if (!container) return;
+        const colorCol = explorationColorCol || currentColor;
+        const deForColor = colorCol ? (DATA.pseudobulk_de || {{}})[colorCol] : null;
+        const availableColors = getAvailablePseudobulkDEColors();
+        const chips = availableColors.length
+            ? availableColors.map((color) => renderAggChip(formatMetadataLabel(color), 'color-mix(in srgb, #e2a400 18%, #ffffff)')).join('')
+            : renderAggChip('none', 'color-mix(in srgb, #e2a400 18%, #ffffff)');
+        const warnings = [];
+        if (colorCol && (!deForColor || !Object.keys(deForColor).some((key) => !String(key).startsWith('_')))) {{
+            warnings.push(`<div class="genes-warning">No pseudobulk DE genes available for this color. Available DE for: ${{chips}}</div>`);
+        }}
+        if (insightsGenesTab === 'de-genes') {{
+            warnings.push('<div class="genes-warning"><strong>Double dipping warning.</strong> When unsupervised cell clustering is used as category, the genes contributing to that clustering are inherently likely to be identified as differentially expressed. False positive differentially expressed genes are expected, which could lead to false determination of cell types.</div>');
+        }}
+        container.innerHTML = warnings.join('');
     }}
 
     function getMarkerGenesForColorCategory(colorCol, category) {{
@@ -14445,7 +16502,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!config || config.is_continuous) {{
             return {{
                 title: 'Suggestions unavailable',
-                subtitle: 'Switch to a categorical color to use pseudobulk DE gene suggestions.',
+                subtitle: 'Switch to a categorical annotation to use pseudobulk DE gene suggestions.',
                 groups: [],
                 hiddenCount: 0,
             }};
@@ -14662,13 +16719,131 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getSectionAnnotations(sectionId) {{
-        return modalAnnotations.filter(annotation => annotation.sectionId === sectionId);
+        return modalAnnotations.filter(annotation => !annotation.isGroup && annotation.sectionId === sectionId);
     }}
 
     function getModalAnnotationById(annotationId) {{
         const target = Number(annotationId);
         if (!Number.isFinite(target)) return null;
         return modalAnnotations.find(annotation => annotation.id === target) || null;
+    }}
+
+    function normalizeAnnotationParentId(parentId) {{
+        if (parentId === null || parentId === undefined || parentId === '') return null;
+        const value = Number(parentId);
+        return Number.isFinite(value) ? value : null;
+    }}
+
+    function getAnnotationChildren(parentId) {{
+        const target = normalizeAnnotationParentId(parentId);
+        if (target === null) return [];
+        return modalAnnotations.filter(annotation => normalizeAnnotationParentId(annotation.parentId) === target);
+    }}
+
+    function isAnnotationDescendantOf(annotationId, possibleParentId) {{
+        const childId = normalizeAnnotationParentId(annotationId);
+        let parentId = normalizeAnnotationParentId(possibleParentId);
+        const visited = new Set();
+        while (parentId !== null && !visited.has(parentId)) {{
+            if (parentId === childId) return true;
+            visited.add(parentId);
+            const parent = getModalAnnotationById(parentId);
+            parentId = parent ? normalizeAnnotationParentId(parent.parentId) : null;
+        }}
+        return false;
+    }}
+
+    function sanitizeAnnotationParents() {{
+        const ids = new Set(modalAnnotations.map(annotation => Number(annotation.id)).filter(Number.isFinite));
+        modalAnnotations.forEach((annotation) => {{
+            const parentId = normalizeAnnotationParentId(annotation.parentId);
+            if (parentId === null || parentId === Number(annotation.id) || !ids.has(parentId) || isAnnotationDescendantOf(annotation.id, parentId)) {{
+                annotation.parentId = null;
+            }} else {{
+                annotation.parentId = parentId;
+            }}
+        }});
+    }}
+
+    function collectAnnotationCellSet(annotation, cells = new Set(), visited = new Set()) {{
+        if (!annotation || !Number.isFinite(Number(annotation.id)) || visited.has(Number(annotation.id))) return cells;
+        visited.add(Number(annotation.id));
+        if (Array.isArray(annotation.cellKeys)) {{
+            annotation.cellKeys.forEach((key) => {{
+                const text = String(key || '');
+                if (text.includes(':')) cells.add(text);
+            }});
+        }}
+        if (annotation.sectionId) {{
+            (annotation.localCellIndices || []).forEach((idx) => {{
+                if (Number.isInteger(idx) && idx >= 0) {{
+                    cells.add(`${{annotation.sectionId}}:${{idx}}`);
+                }}
+            }});
+        }}
+        getAnnotationChildren(annotation.id).forEach((child) => collectAnnotationCellSet(child, cells, visited));
+        return cells;
+    }}
+
+    function getAnnotationCellCount(annotation) {{
+        if (!annotation) return 0;
+        if (annotation.isGroup) return collectAnnotationCellSet(annotation).size;
+        if (Array.isArray(annotation.cellKeys) && annotation.cellKeys.length) return annotation.cellKeys.length;
+        return Array.isArray(annotation.localCellIndices) ? annotation.localCellIndices.length : 0;
+    }}
+
+    function getAnnotationDisplayColor(annotation) {{
+        if (!annotation || annotation.isGroup) return '';
+        return annotation.color || getAnnotationColorById(annotation.id);
+    }}
+
+    function getAnnotationColorWeights(annotation, visited = new Set()) {{
+        if (!annotation || !Number.isFinite(Number(annotation.id)) || visited.has(Number(annotation.id))) return [];
+        visited.add(Number(annotation.id));
+        if (!annotation.isGroup) {{
+            const color = getAnnotationDisplayColor(annotation);
+            const count = getAnnotationCellCount(annotation);
+            return color && count > 0 ? [{{ color, count }}] : [];
+        }}
+        const byColor = new Map();
+        getAnnotationChildren(annotation.id).forEach((child) => {{
+            getAnnotationColorWeights(child, visited).forEach((entry) => {{
+                byColor.set(entry.color, (byColor.get(entry.color) || 0) + entry.count);
+            }});
+        }});
+        return Array.from(byColor.entries()).map(([color, count]) => ({{ color, count }}));
+    }}
+
+    function getAnnotationCountChipStyle(annotation) {{
+        if (!annotation?.isGroup) {{
+            return `background: ${{getAnnotationDisplayColor(annotation) || '#777777'}}`;
+        }}
+        const weights = getAnnotationColorWeights(annotation).filter(entry => entry.count > 0);
+        const total = weights.reduce((sum, entry) => sum + entry.count, 0);
+        if (!weights.length || total <= 0) {{
+            return 'background: var(--muted-color)';
+        }}
+        let offset = 0;
+        const stops = [];
+        weights.forEach((entry, index) => {{
+            const next = index === weights.length - 1 ? 100 : offset + (entry.count / total) * 100;
+            stops.push(`${{entry.color}} ${{offset.toFixed(2)}}%`);
+            stops.push(`${{entry.color}} ${{next.toFixed(2)}}%`);
+            offset = next;
+        }});
+        stops.push(`${{weights[weights.length - 1].color}} 100%`);
+        return `background: linear-gradient(90deg, ${{stops.join(', ')}})`;
+    }}
+
+    function getAnnotationDropPosition(row, event) {{
+        const target = row.querySelector?.(':scope > .modal-annotation-row-main') || row;
+        const rect = target.getBoundingClientRect();
+        const y = event.clientY - rect.top;
+        const targetAnnotation = getModalAnnotationById(row.dataset.annotationId);
+        if (!targetAnnotation?.isGroup) return y < rect.height * 0.5 ? 'before' : 'after';
+        if (y < rect.height * 0.28) return 'before';
+        if (y > rect.height * 0.72) return 'after';
+        return 'inside';
     }}
 
     function computeCellsInsideDataPolygon(section, polygonData) {{
@@ -14696,33 +16871,279 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return {{ localIndices, globalIndices }};
     }}
 
-    function createModalAnnotationFromPath() {{
-        if (!modalSection || modalAnnotationPath.length < 3) return false;
-        const container = document.getElementById('modal-canvas-container');
-        if (!container) return false;
-        const rect = container.getBoundingClientRect();
-        const transform = getModalViewTransform(rect);
-        if (!transform) return false;
+    function getSelectionLocalIndicesBySection(cellSet = selectedCells) {{
+        const grouped = new Map();
+        (cellSet || new Set()).forEach((key) => {{
+            const text = String(key || '');
+            const sep = text.lastIndexOf(':');
+            if (sep <= 0) return;
+            const sectionId = text.slice(0, sep);
+            const cellIdx = Number(text.slice(sep + 1));
+            if (!sectionId || !Number.isInteger(cellIdx) || cellIdx < 0) return;
+            const values = grouped.get(sectionId) || [];
+            values.push(cellIdx);
+            grouped.set(sectionId, values);
+        }});
+        return grouped;
+    }}
 
-        const polygonData = modalAnnotationPath.map((point) => screenPointToModalData(point.x, point.y, transform));
-        const cells = computeCellsInsideDataPolygon(modalSection, polygonData);
+    function buildPaddedPolygonFromBounds(bounds, section) {{
+        if (!bounds) return [];
+        const sectionPoints = [];
+        const xs = section?.x || [];
+        const ys = section?.y || [];
+        for (let i = 0; i < xs.length; i++) {{
+            sectionPoints.push({{ x: xs[i], y: ys[i] }});
+        }}
+        const sectionBounds = getBoundsFromPoints(sectionPoints);
+        const sectionSpan = sectionBounds
+            ? Math.max(sectionBounds.xmax - sectionBounds.xmin, sectionBounds.ymax - sectionBounds.ymin)
+            : 1;
+        const pad = Math.max(sectionSpan * 0.01, 1e-6);
+        return [
+            {{ x: bounds.xmin - pad, y: bounds.ymin - pad }},
+            {{ x: bounds.xmax + pad, y: bounds.ymin - pad }},
+            {{ x: bounds.xmax + pad, y: bounds.ymax + pad }},
+            {{ x: bounds.xmin - pad, y: bounds.ymax + pad }},
+        ];
+    }}
+
+    function computeConvexHull(points) {{
+        const sorted = (points || [])
+            .filter((point) => point && Number.isFinite(point.x) && Number.isFinite(point.y))
+            .sort((a, b) => a.x - b.x || a.y - b.y);
+        const unique = [];
+        sorted.forEach((point) => {{
+            const prev = unique[unique.length - 1];
+            if (!prev || prev.x !== point.x || prev.y !== point.y) unique.push(point);
+        }});
+        if (unique.length < 3) return unique;
+        const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+        const lower = [];
+        unique.forEach((point) => {{
+            while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], point) <= 0) lower.pop();
+            lower.push(point);
+        }});
+        const upper = [];
+        for (let i = unique.length - 1; i >= 0; i--) {{
+            const point = unique[i];
+            while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], point) <= 0) upper.pop();
+            upper.push(point);
+        }}
+        upper.pop();
+        lower.pop();
+        return lower.concat(upper);
+    }}
+
+    function buildAnnotationPolygonFromSelectedCells(section, localIndices) {{
+        if (!section || !Array.isArray(localIndices) || !localIndices.length) return [];
+        ensureSectionXY(section);
+        const points = [];
+        localIndices.forEach((idx) => {{
+            const x = section.x?.[idx];
+            const y = section.y?.[idx];
+            if (Number.isFinite(x) && Number.isFinite(y)) points.push({{ x, y }});
+        }});
+        if (!points.length) return [];
+        const hull = computeConvexHull(points);
+        if (hull.length >= 3) return hull;
+        return buildPaddedPolygonFromBounds(getBoundsFromPoints(points), section);
+    }}
+
+    function getSelectionAnnotationCandidate() {{
+        if (!selectedCells || selectedCells.size === 0 || selectedCellsB.size > 0) return null;
+
+        if (selectedCellsFromQuery) {{
+            const grouped = getSelectionLocalIndicesBySection();
+            const entries = Array.from(grouped.entries());
+            const sectionId = entries.length === 1 ? entries[0][0] : null;
+            const section = sectionId ? sectionById.get(sectionId) : null;
+            return {{
+                section,
+                sectionId,
+                polygonData: [],
+                localIndices: sectionId ? (grouped.get(sectionId) || []) : [],
+                cellKeys: Array.from(selectedCells),
+                fromSelectedCells: true,
+                sourceType: 'query',
+            }};
+        }}
+
+        if (selectedCellsFromModalLasso && selectedModalLassoSectionId && selectedModalLassoPath.length >= 3) {{
+            const section = sectionById.get(selectedModalLassoSectionId);
+            const localIndices = getSelectionLocalIndicesBySection().get(selectedModalLassoSectionId) || [];
+            return section ? {{ section, polygonData: selectedModalLassoPath, localIndices }} : null;
+        }}
+        if (selectedCellsFromGridLasso && selectedGridLassoSectionId && selectedGridLassoPath.length >= 3) {{
+            const section = sectionById.get(selectedGridLassoSectionId);
+            const localIndices = getSelectionLocalIndicesBySection().get(selectedGridLassoSectionId) || [];
+            return section ? {{ section, polygonData: selectedGridLassoPath, localIndices }} : null;
+        }}
+
+        const grouped = getSelectionLocalIndicesBySection();
+        if (grouped.size !== 1) return null;
+        const [sectionId, localIndices] = Array.from(grouped.entries())[0];
+        const section = sectionById.get(sectionId);
+        if (!section || !localIndices.length) return null;
+        const polygonData = buildAnnotationPolygonFromSelectedCells(section, localIndices);
+        return polygonData.length >= 3 ? {{ section, polygonData, localIndices, fromSelectedCells: true }} : null;
+    }}
+
+    function canCreateAnnotationFromSelection() {{
+        if (!selectedCells || selectedCells.size === 0 || selectedCellsB.size > 0) return false;
+        if (selectedCellsFromModalLasso && selectedModalLassoSectionId && selectedModalLassoPath.length >= 3) return true;
+        if (selectedCellsFromGridLasso && selectedGridLassoSectionId && selectedGridLassoPath.length >= 3) return true;
+        return getSelectionLocalIndicesBySection().size === 1;
+    }}
+
+    function markPrimarySelectionChanged() {{
+        selectionRevision += 1;
+        annotationCreatedForSelectionRevision = null;
+        selectionWelchCache.clear();
+        selectionWelchRunRequested = false;
+        selectionWelchButtonHidden = false;
+    }}
+
+    function annotationAlreadyCreatedForCurrentSelection() {{
+        return annotationCreatedForSelectionRevision === selectionRevision;
+    }}
+
+    function hasLassoDerivedAnnotationSelection() {{
+        if (!selectedCells || selectedCells.size === 0 || selectedCellsB.size > 0) return false;
+        return (
+            (selectedCellsFromModalLasso && selectedModalLassoSectionId && selectedModalLassoPath.length >= 3) ||
+            (selectedCellsFromGridLasso && selectedGridLassoSectionId && selectedGridLassoPath.length >= 3) ||
+            selectedLassoPath.length >= 3
+        );
+    }}
+
+    function updateSelectionCreateAnnotationButtonState() {{
+        const btn = document.getElementById('selection-create-annotation-btn');
+        if (!btn) return;
+        const alreadyCreated = annotationAlreadyCreatedForCurrentSelection();
+        const canCreateFromLasso = hasLassoDerivedAnnotationSelection() && canCreateAnnotationFromSelection();
+        const canCreateFromQuery = selectedCellsFromQuery && selectedCells.size > 0;
+        const visible = alreadyCreated || canCreateFromLasso || selectedCellsFromQuery;
+        const canCreate = canCreateFromLasso || canCreateFromQuery;
+        btn.hidden = !visible;
+        btn.disabled = alreadyCreated || !canCreate;
+        const title = alreadyCreated
+            ? 'Annotation already created for this selection'
+            : canCreate
+                ? 'Create annotation from this selection'
+                : 'Search cells to create an annotation';
+        btn.title = title;
+        btn.setAttribute('aria-label', title);
+    }}
+
+    function createModalAnnotationFromSelection() {{
+        if (annotationAlreadyCreatedForCurrentSelection()) return false;
+        const candidate = getSelectionAnnotationCandidate();
+        if (!candidate) {{
+            alert('Create an annotation from a single-section selection first.');
+            return false;
+        }}
+        const {{ section, polygonData }} = candidate;
+        let cells = {{ localIndices: [], globalIndices: [] }};
+        if (candidate.sourceType === 'query') {{
+            const grouped = getSelectionLocalIndicesBySection(new Set(candidate.cellKeys || []));
+            const localIndices = [];
+            const globalIndices = [];
+            grouped.forEach((indices, sectionId) => {{
+                const querySection = sectionById.get(sectionId);
+                if (!querySection) return;
+                ensureSectionObsIndices(querySection);
+                indices.forEach((idx) => {{
+                    if (!Number.isInteger(idx) || idx < 0 || idx >= (querySection.x?.length || querySection.n_cells || 0)) return;
+                    if (candidate.sectionId === sectionId) localIndices.push(idx);
+                    const rawGlobal = querySection.obs_idx?.[idx];
+                    if (Number.isFinite(rawGlobal)) globalIndices.push(Number(rawGlobal));
+                }});
+            }});
+            cells = {{ localIndices, globalIndices }};
+        }} else {{
+            cells = computeCellsInsideDataPolygon(section, polygonData);
+        }}
+        if (candidate.sourceType !== 'query' && candidate.fromSelectedCells && Array.isArray(candidate.localIndices)) {{
+            ensureSectionObsIndices(section);
+            const localIndices = candidate.localIndices
+                .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < (section.x?.length || 0));
+            const globalIndices = [];
+            localIndices.forEach((idx) => {{
+                const rawGlobal = section.obs_idx?.[idx];
+                if (Number.isFinite(rawGlobal)) globalIndices.push(Number(rawGlobal));
+            }});
+            cells = {{ localIndices, globalIndices }};
+        }}
+        const selectedCellCount = candidate.sourceType === 'query'
+            ? (candidate.cellKeys || []).length
+            : cells.localIndices.length;
+        if (!selectedCellCount) {{
+            alert('The selected region does not contain cells.');
+            return false;
+        }}
+        invalidateAnnotationDEState();
         const annotationId = getNextModalAnnotationId();
         modalNextAnnotationId = annotationId + 1;
         const annotation = {{
             id: annotationId,
-            sectionId: modalSection.id,
+            sectionId: candidate.sectionId || section?.id || null,
             label: `Annotation ${{annotationId}}`,
             color: getAnnotationColorById(annotationId),
+            parentId: null,
             createdAt: new Date().toISOString(),
+            sourceType: candidate.sourceType || 'polygon',
             vertices: polygonData,
             localCellIndices: cells.localIndices,
             globalCellIndices: cells.globalIndices,
+            cellKeys: candidate.sourceType === 'query' ? (candidate.cellKeys || []).slice() : [],
+        }};
+        modalAnnotations.push(annotation);
+        annotationCreatedForSelectionRevision = selectionRevision;
+        selectedCellsFromAnnotation = true;
+        selectedAnnotationId = annotation.id;
+        selectedAnnotationSelectionColor = '#4F0433';
+        selectedLassoPath = [];
+        selectedCellsFromGridLasso = false;
+        selectedGridLassoSectionId = null;
+        selectedGridLassoPath = [];
+        selectedCellsFromModalLasso = false;
+        selectedModalLassoSectionId = null;
+        selectedModalLassoPath = [];
+        selectedCellsFromQuery = false;
+        setModalAnnotationPanelOpen(true);
+        renderModalAnnotationPanel();
+        updateSelectionInfo();
+        updateAnnotationComparisonTabVisibility();
+        renderAllSections();
+        if (umapVisible) renderUMAP();
+        if (modalSection) renderModalSection();
+        if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
+        updateSelectionCreateAnnotationButtonState();
+        return true;
+    }}
+
+    function createModalAnnotationGroup() {{
+        invalidateAnnotationDEState();
+        const annotationId = getNextModalAnnotationId();
+        modalNextAnnotationId = annotationId + 1;
+        const annotation = {{
+            id: annotationId,
+            isGroup: true,
+            sectionId: null,
+            label: `Group ${{annotationId}}`,
+            color: null,
+            parentId: null,
+            createdAt: new Date().toISOString(),
+            sourceType: 'group',
+            vertices: [],
+            localCellIndices: [],
+            globalCellIndices: [],
+            cellKeys: [],
         }};
         modalAnnotations.push(annotation);
         renderModalAnnotationPanel();
-        setModalAnnotationPanelOpen(true);
         updateAnnotationComparisonTabVisibility();
-        renderAllSections();
         if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
         return true;
     }}
@@ -14731,7 +17152,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const target = Number(annotationId);
         if (!Number.isFinite(target)) return;
         invalidateAnnotationDEState();
+        const removedSelectedAnnotation = selectedCellsFromAnnotation && selectedAnnotationId === target;
         modalAnnotations = modalAnnotations.filter(annotation => annotation.id !== target);
+        collapsedModalAnnotationGroupIds.delete(target);
+        modalAnnotations.forEach((annotation) => {{
+            if (normalizeAnnotationParentId(annotation.parentId) === target) annotation.parentId = null;
+        }});
         if (selectedCellsFromAnnotation && selectedAnnotationId === target) {{
             selectedCells.clear();
             clearRegionBSelection();
@@ -14747,6 +17173,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             setUMAPCompareHintVisible(false);
             updateSelectionInfo();
         }}
+        if (!removedSelectedAnnotation) refreshSelectionFromSelectedAnnotation();
         getNextModalAnnotationId();
         renderModalAnnotationPanel();
         updateAnnotationComparisonTabVisibility();
@@ -14763,6 +17190,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             annotation => annotation.sectionId === sectionId && annotation.id === selectedAnnotationBId
         );
         modalAnnotations = modalAnnotations.filter(annotation => annotation.sectionId !== sectionId);
+        sanitizeAnnotationParents();
         if (removedSelectedAnnotation) {{
             selectedCells.clear();
             clearRegionBSelection();
@@ -14778,6 +17206,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             setUMAPCompareHintVisible(false);
             updateSelectionInfo();
         }}
+        if (!removedSelectedAnnotation) refreshSelectionFromSelectedAnnotation();
         getNextModalAnnotationId();
         renderModalAnnotationPanel();
         updateAnnotationComparisonTabVisibility();
@@ -14789,6 +17218,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function clearAllModalAnnotations() {{
         invalidateAnnotationDEState();
         modalAnnotations = [];
+        collapsedModalAnnotationGroupIds.clear();
         modalNextAnnotationId = 1;
         if (selectedCellsFromAnnotation) {{
             selectedCells.clear();
@@ -14809,12 +17239,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function selectCellsFromAnnotation(annotationId) {{
         const annotation = getModalAnnotationById(annotationId);
         if (!annotation) return;
-        selectedCells.clear();
-        (annotation.localCellIndices || []).forEach((cellIdx) => {{
-            if (Number.isInteger(cellIdx) && cellIdx >= 0) {{
-                selectedCells.add(`${{annotation.sectionId}}:${{cellIdx}}`);
-            }}
-        }});
+        selectedCells = getAnnotationCellSet(annotation);
         clearRegionBSelection();
         lassoModeB = false;
         selectedLassoPath = [];
@@ -14825,12 +17250,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         selectedModalLassoSectionId = null;
         selectedModalLassoPath = [];
         selectedCellsFromAnnotation = true;
+        selectedCellsFromQuery = false;
         selectedAnnotationId = annotation.id;
         selectedAnnotationSelectionColor = '#4F0433';
         selectionSummaryExpanded = false;
         selectionSectionSummaryExpanded = false;
         hideModalGeneDiscoveryPanel();
-        updateSelectionInfo();
+        openInsightsMode('selection');
         renderAllSections();
         if (umapVisible) renderUMAP();
         if (modalSection) renderModalSection();
@@ -14841,12 +17267,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function selectCellsFromAnnotationAsRegionB(annotationId) {{
         const annotation = getModalAnnotationById(annotationId);
         if (!annotation || !selectedCellsFromAnnotation || selectedAnnotationId === annotation.id || selectedCells.size === 0) return;
-        selectedCellsB.clear();
-        (annotation.localCellIndices || []).forEach((cellIdx) => {{
-            if (Number.isInteger(cellIdx) && cellIdx >= 0) {{
-                selectedCellsB.add(`${{annotation.sectionId}}:${{cellIdx}}`);
-            }}
-        }});
+        selectedCellsB = getAnnotationCellSet(annotation);
+        selectionWelchRevision += 1;
+        selectionWelchCache.clear();
+        selectionWelchRunRequested = false;
+        selectionWelchButtonHidden = false;
         selectedLassoPathB = [];
         selectedCellsBFromGridLasso = false;
         selectedGridLassoSectionIdB = null;
@@ -14884,22 +17309,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }});
             return {{
                 id: annotation.id,
+                type: annotation.isGroup ? 'group' : (annotation.sourceType === 'query' ? 'cell-list' : 'polygon'),
+                is_group: !!annotation.isGroup,
                 label: annotation.label || `Annotation ${{annotation.id}}`,
-                color: annotation.color || getAnnotationColorById(annotation.id),
+                color: annotation.isGroup ? null : (annotation.color || getAnnotationColorById(annotation.id)),
+                parent_id: normalizeAnnotationParentId(annotation.parentId),
                 created_at: annotation.createdAt || null,
+                source_type: annotation.sourceType || (annotation.isGroup ? 'group' : 'polygon'),
                 section_id: annotation.sectionId,
                 n_vertices: vertices.length,
                 vertices,
-                n_cells: (annotation.localCellIndices || []).length,
+                n_cells: getAnnotationCellCount(annotation),
                 cell_local_indices: (annotation.localCellIndices || []).slice(),
                 cell_global_indices: (annotation.globalCellIndices || []).slice(),
+                cell_keys: Array.isArray(annotation.cellKeys) ? annotation.cellKeys.slice() : [],
             }};
         }});
         return {{
-            format: 'karospace-polygon-annotations-v1',
+            format: 'karospace-annotations-v2',
             created_at: new Date().toISOString(),
             groupby: DATA.groupby || null,
-            n_polygons: polygons.length,
+            n_annotations: polygons.length,
+            n_polygons: polygons.filter(entry => entry.type === 'polygon').length,
             polygons,
         }};
     }}
@@ -14966,8 +17397,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             linked_spotlight_enabled: !!linkedSpotlightEnabled,
             spotlight_pinned_category: spotlightPinnedCategory || null,
             samples_view: samplesView || null,
-            samples_color_col: samplesColorCol || null,
+            exploration_color_col: explorationColorCol || null,
             samples_meta_sort_by: samplesMetaSortBy || null,
+            gene_modules: geneModules.map(module => ({{
+                id: module.id,
+                name: module.name,
+                genes: module.genes.slice(),
+            }})),
             section_rotations: sectionRotations,
             cell_opacity: cellOpacity,
             he_alignment: buildSessionHeAlignment(),
@@ -14994,8 +17430,64 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         let restored = 0, skipped = 0;
         invalidateAnnotationDEState();
         modalAnnotations = [];
+        collapsedModalAnnotationGroupIds.clear();
         let maxId = 0;
         payload.polygons.forEach((poly) => {{
+            const id = Number.isFinite(Number(poly.id)) ? Number(poly.id) : (maxId + 1);
+            if (id > maxId) maxId = id;
+            if (poly.type === 'group' || poly.is_group === true) {{
+                modalAnnotations.push({{
+                    id,
+                    isGroup: true,
+                    sectionId: null,
+                    label: poly.label || `Group ${{id}}`,
+                    color: null,
+                    parentId: normalizeAnnotationParentId(poly.parent_id),
+                    createdAt: poly.created_at || new Date().toISOString(),
+                    sourceType: 'group',
+                    vertices: [],
+                    localCellIndices: [],
+                    globalCellIndices: [],
+                    cellKeys: [],
+                }});
+                restored++;
+                return;
+            }}
+            if (poly.type === 'cell-list' || poly.source_type === 'query' || Array.isArray(poly.cell_keys)) {{
+                const cellKeys = Array.isArray(poly.cell_keys)
+                    ? poly.cell_keys.map(key => String(key || '')).filter(key => key.includes(':'))
+                    : [];
+                const grouped = getSelectionLocalIndicesBySection(new Set(cellKeys));
+                const sectionIds = Array.from(grouped.keys());
+                const sectionId = sectionIds.length === 1 ? sectionIds[0] : (poly.section_id || null);
+                const localCellIndices = sectionId && grouped.has(sectionId) ? grouped.get(sectionId).slice() : [];
+                const globalCellIndices = [];
+                grouped.forEach((indices, sid) => {{
+                    const section = sectionById.get(sid);
+                    if (!section) return;
+                    ensureSectionObsIndices(section);
+                    indices.forEach((idx) => {{
+                        const rawGlobal = section.obs_idx?.[idx];
+                        if (Number.isFinite(rawGlobal)) globalCellIndices.push(Number(rawGlobal));
+                    }});
+                }});
+                modalAnnotations.push({{
+                    id,
+                    isGroup: false,
+                    sectionId,
+                    label: poly.label || `Annotation ${{id}}`,
+                    color: poly.color || getAnnotationColorById(id),
+                    parentId: normalizeAnnotationParentId(poly.parent_id),
+                    createdAt: poly.created_at || new Date().toISOString(),
+                    sourceType: 'query',
+                    vertices: [],
+                    localCellIndices,
+                    globalCellIndices,
+                    cellKeys,
+                }});
+                restored++;
+                return;
+            }}
             const sectionId = poly.section_id;
             const section = sectionId != null ? sectionById.get(sectionId) : null;
             if (!section) {{ skipped++; return; }}
@@ -15006,20 +17498,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 : [];
             if (vertices.length < 3) {{ skipped++; return; }}
             const cells = computeCellsInsideDataPolygon(section, vertices);
-            const id = Number.isFinite(Number(poly.id)) ? Number(poly.id) : (maxId + 1);
-            if (id > maxId) maxId = id;
             modalAnnotations.push({{
                 id,
+                isGroup: false,
                 sectionId,
                 label: poly.label || `Annotation ${{id}}`,
                 color: poly.color || getAnnotationColorById(id),
+                parentId: normalizeAnnotationParentId(poly.parent_id),
                 createdAt: poly.created_at || new Date().toISOString(),
+                sourceType: poly.source_type || 'polygon',
                 vertices,
                 localCellIndices: cells.localIndices,
                 globalCellIndices: cells.globalIndices,
+                cellKeys: [],
             }});
             restored++;
         }});
+        sanitizeAnnotationParents();
         getNextModalAnnotationId();
         return {{ restored, skipped }};
     }}
@@ -15037,6 +17532,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         let rotationsApplied = 0;
         const labelUpdatesApplied = applySessionCategoryLabelState(state.category_labels);
         const paletteUpdatesApplied = applySessionPaletteState(state.color_palettes);
+        if (Array.isArray(state.gene_modules)) {{
+            geneModules = normalizeGeneModules(state.gene_modules).filter(module => module.genes.length);
+            populateGeneInputDatalist();
+        }}
         if (state.section_rotations && typeof state.section_rotations === 'object') {{
             Object.entries(state.section_rotations).forEach(([sectionId, deg]) => {{
                 const section = sectionById.get(sectionId);
@@ -15075,7 +17574,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         spotlightHoverCategory = null;
 
         if (state.samples_view) samplesView = state.samples_view;
-        if (state.samples_color_col) samplesColorCol = state.samples_color_col;
+        if (state.exploration_color_col) explorationColorCol = state.exploration_color_col;
         if (typeof state.samples_meta_sort_by === 'string') samplesMetaSortBy = state.samples_meta_sort_by;
 
         // Restore global cell opacity (syncs both sliders; finalize() repaints).
@@ -15609,7 +18108,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function exportModalAnnotations() {{
         if (!modalAnnotations.length) {{
-            alert('No polygon annotations to export yet.');
+            alert('No annotations to export yet.');
             return;
         }}
         const payload = buildModalAnnotationExport();
@@ -15631,62 +18130,323 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return `${{base}}-${{suffix}}`;
     }}
 
+    function reorderModalAnnotation(sourceId, targetId) {{
+        return moveModalAnnotation(sourceId, targetId, 'before');
+    }}
+
+    function moveModalAnnotation(sourceId, targetId, position = 'before') {{
+        const source = Number(sourceId);
+        const target = Number(targetId);
+        if (!Number.isFinite(source) || !Number.isFinite(target) || source === target) return false;
+        const from = modalAnnotations.findIndex((annotation) => Number(annotation.id) === source);
+        const to = modalAnnotations.findIndex((annotation) => Number(annotation.id) === target);
+        if (from < 0 || to < 0 || from === to) return false;
+        if (isAnnotationDescendantOf(source, target)) return false;
+        invalidateAnnotationDEState();
+        const [moved] = modalAnnotations.splice(from, 1);
+        const targetAfterRemoval = modalAnnotations.findIndex((annotation) => Number(annotation.id) === target);
+        if (targetAfterRemoval < 0) return false;
+        const targetAnnotation = modalAnnotations[targetAfterRemoval];
+        const resolvedPosition = (position === 'inside' && !targetAnnotation.isGroup) ? 'after' : position;
+        if (resolvedPosition === 'inside') {{
+            moved.parentId = target;
+            modalAnnotations.splice(targetAfterRemoval + 1, 0, moved);
+        }} else {{
+            moved.parentId = normalizeAnnotationParentId(targetAnnotation.parentId);
+            const insertAt = resolvedPosition === 'after' ? targetAfterRemoval + 1 : targetAfterRemoval;
+            modalAnnotations.splice(insertAt, 0, moved);
+        }}
+        sanitizeAnnotationParents();
+        refreshSelectionFromSelectedAnnotation();
+        renderModalAnnotationPanel();
+        updateAnnotationComparisonTabVisibility();
+        renderAllSections();
+        if (umapVisible) renderUMAP();
+        if (modalSection) renderModalSection();
+        if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
+        return true;
+    }}
+
+    function moveModalAnnotationToParentLevel(sourceId, targetId = null, position = 'after') {{
+        const source = Number(sourceId);
+        if (!Number.isFinite(source)) return false;
+        const from = modalAnnotations.findIndex((annotation) => Number(annotation.id) === source);
+        if (from < 0) return false;
+        invalidateAnnotationDEState();
+        const [moved] = modalAnnotations.splice(from, 1);
+        const target = Number(targetId);
+        const targetIndex = Number.isFinite(target)
+            ? modalAnnotations.findIndex((annotation) => Number(annotation.id) === target)
+            : -1;
+        if (targetIndex >= 0) {{
+            const targetAnnotation = modalAnnotations[targetIndex];
+            moved.parentId = normalizeAnnotationParentId(targetAnnotation.parentId);
+            const insertAt = position === 'before' ? targetIndex : targetIndex + 1;
+            modalAnnotations.splice(insertAt, 0, moved);
+        }} else {{
+            moved.parentId = null;
+            modalAnnotations.push(moved);
+        }}
+        refreshSelectionFromSelectedAnnotation();
+        renderModalAnnotationPanel();
+        updateAnnotationComparisonTabVisibility();
+        renderAllSections();
+        if (umapVisible) renderUMAP();
+        if (modalSection) renderModalSection();
+        if (insightsTopLevelTab === 'compare' && insightsCompareTab === 'regions') renderAnnotationComparison();
+        return true;
+    }}
+
+    function moveModalAnnotationToRoot(sourceId) {{
+        return moveModalAnnotationToParentLevel(sourceId, null, 'after');
+    }}
+
     function renderModalAnnotationPanel() {{
         const listEl = document.getElementById('modal-annotation-list');
         const sectionEl = document.getElementById('modal-annotation-section');
         if (!listEl) return;
-        const visibleAnnotations = modalAnnotations
-            .slice()
-            .sort((a, b) => {{
-                const labelA = String(a.label || `Annotation ${{a.id}}`).toLocaleLowerCase();
-                const labelB = String(b.label || `Annotation ${{b.id}}`).toLocaleLowerCase();
-                const byLabel = labelA.localeCompare(labelB, undefined, {{ numeric: true, sensitivity: 'base' }});
-                return byLabel || Number(a.id || 0) - Number(b.id || 0);
-            }});
-        if (!visibleAnnotations.length) {{
+        sanitizeAnnotationParents();
+        const rootAnnotations = modalAnnotations.filter(annotation => normalizeAnnotationParentId(annotation.parentId) === null);
+        if (!rootAnnotations.length) {{
             if (sectionEl) sectionEl.classList.remove('annotation-has-items');
-            listEl.innerHTML = '<div class="modal-annotation-empty">Draw a region with Annote polygon to annotation cells.</div>';
+            listEl.innerHTML = '<div class="modal-annotation-empty">Create regions from lasso selection in the Tools panel.</div>';
             layoutModalAnnotationPanel();
             return;
         }}
         if (sectionEl) sectionEl.classList.add('annotation-has-items');
 
-        listEl.innerHTML = visibleAnnotations.map((annotation) => {{
-            const count = Number(annotation.localCellIndices?.length || 0).toLocaleString();
+        const renderAnnotationRow = (annotation, depth = 0) => {{
+            const id = Number(annotation?.id);
+            const children = getAnnotationChildren(annotation.id);
+            const annotationCellCount = getAnnotationCellSet(annotation).size;
+            const count = annotationCellCount.toLocaleString();
             const label = escapeHtml(annotation.label || `Annotation ${{annotation.id}}`);
-            const annotationColor = annotation.color || getAnnotationColorById(annotation.id);
+            const annotationColor = getAnnotationDisplayColor(annotation);
+            const labelStyle = annotationColor ? ` style="border-color: ${{annotationColor}}"` : '';
+            const countStyle = getAnnotationCountChipStyle(annotation);
             const isSelectedAnnotation = selectedCellsFromAnnotation && selectedAnnotationId === annotation.id;
             const isComparedAnnotation = selectedAnnotationBId === annotation.id;
             const hasComparedRegion = selectedCellsB.size > 0;
             const hasActiveRegionA = selectedCells.size > 0;
-            const canShowCompareAction = selectedCellsFromAnnotation && selectedAnnotationId !== annotation.id && hasActiveRegionA;
-            const selectDisabled = isSelectedAnnotation || (hasActiveRegionA && hasComparedRegion);
+            const canShowCompareAction = hasActiveRegionA && selectedAnnotationId !== annotation.id;
             const compareDisabled = hasComparedRegion;
             const rowClasses = [
                 'modal-annotation-row',
                 isSelectedAnnotation ? 'annotation-selected' : '',
                 isComparedAnnotation ? 'annotation-compared' : '',
+                annotation.isGroup ? 'annotation-group' : '',
+                depth > 0 ? 'annotation-child' : '',
             ].filter(Boolean).join(' ');
             const primaryAction = canShowCompareAction
                 ? `<button class="annotation-compare" type="button" data-annotation-compare="${{annotation.id}}" title="Use as compared region" aria-label="Use annotation as compared region"${{compareDisabled ? ' disabled' : ''}}>${{UMAP_COMPARE_ICON}}</button>`
-                : `<button type="button" data-annotation-select="${{annotation.id}}" title="Select cells" aria-label="Select annotation cells"${{selectDisabled ? ' disabled' : ''}}>
-                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="22" x2="18" y1="12" y2="12"></line><line x1="6" x2="2" y1="12" y2="12"></line><line x1="12" x2="12" y1="6" y2="2"></line><line x1="12" x2="12" y1="22" y2="18"></line></svg>
-                            </button>`;
+                : '';
+            const isCollapsedGroup = annotation.isGroup && collapsedModalAnnotationGroupIds.has(id);
+            const groupToggle = annotation.isGroup
+                ? `<button class="annotation-group-toggle" type="button" data-annotation-group-toggle="${{annotation.id}}" title="${{isCollapsedGroup ? 'Expand group' : 'Collapse group'}}" aria-label="${{isCollapsedGroup ? 'Expand group' : 'Collapse group'}}" aria-expanded="${{isCollapsedGroup ? 'false' : 'true'}}"${{children.length ? '' : ' disabled'}}>
+                        <svg viewBox="0 0 24 24" aria-hidden="true">${{isCollapsedGroup ? '<path d="m9 18 6-6-6-6"></path>' : '<path d="m6 9 6 6 6-6"></path>'}}</svg>
+                    </button>`
+                : '';
+            const childTitle = children.length
+                ? `${{children.length.toLocaleString()}} nested annotation${{children.length === 1 ? '' : 's'}}`
+                : (annotation.isGroup ? 'Drop annotation rows on this group to add them' : 'Annotation row');
             return `
-                <div class="${{rowClasses}}" data-annotation-id="${{annotation.id}}">
+                <div class="${{rowClasses}}" data-annotation-id="${{annotation.id}}" data-annotation-depth="${{depth}}" draggable="true">
                     <div class="modal-annotation-row-main">
-                        <input class="modal-annotation-label" type="text" value="${{label}}" data-annotation-label="${{annotation.id}}" style="border-color: ${{annotationColor}}">
+                        <span class="modal-annotation-drag-handle" data-annotation-drag-handle title="Drag to reorder or nest" aria-label="Drag to reorder or nest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h.01"></path><path d="M15 5h.01"></path><path d="M9 12h.01"></path><path d="M15 12h.01"></path><path d="M9 19h.01"></path><path d="M15 19h.01"></path></svg></span>
+                        <input class="modal-annotation-label" type="text" value="${{label}}" data-annotation-label="${{annotation.id}}"${{labelStyle}}>
                         <div class="modal-annotation-row-actions">
+                            ${{groupToggle}}
                             ${{primaryAction}}
                             <button type="button" data-annotation-delete="${{annotation.id}}" title="Delete annotation" aria-label="Delete annotation">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                             </button>
                         </div>
-                        <span class="modal-annotation-count" style="background: ${{annotationColor}}">${{count}} cells</span>
+                        <span class="modal-annotation-count" style="${{countStyle}}" title="${{childTitle}}">${{count}} cells</span>
                     </div>
                 </div>
             `;
-        }}).join('');
+        }};
+
+        const renderAnnotationNode = (annotation, depth = 0, visited = new Set()) => {{
+            const id = Number(annotation?.id);
+            if (!Number.isFinite(id) || visited.has(id)) return '';
+            if (annotation.isGroup) return renderGroupWrap(annotation, depth, visited);
+            return renderAnnotationRow(annotation, depth);
+        }};
+
+        const renderGroupWrap = (group, depth = 0, visited = new Set()) => {{
+            const id = Number(group?.id);
+            if (!Number.isFinite(id) || visited.has(id)) return '';
+            const nextVisited = new Set(visited);
+            nextVisited.add(id);
+            const children = getAnnotationChildren(group.id);
+            const isCollapsed = collapsedModalAnnotationGroupIds.has(id);
+            const childHtml = isCollapsed
+                ? ''
+                : children.length
+                ? children.map((child) => renderAnnotationNode(child, depth + 1, nextVisited)).join('')
+                : '<div class="modal-annotation-group-placeholder" data-annotation-group-placeholder>Drop annotations here</div>';
+            const wrapClasses = [
+                'modal-annotation-group-wrap',
+                isCollapsed ? 'annotation-group-collapsed' : '',
+                depth > 0 ? 'annotation-child' : '',
+            ].filter(Boolean).join(' ');
+            return `
+                <div class="${{wrapClasses}}" data-annotation-group-id="${{group.id}}" data-annotation-depth="${{depth}}">
+                    ${{renderAnnotationRow(group, 0)}}
+                    ${{childHtml}}
+                </div>
+            `;
+        }};
+
+        listEl.innerHTML = rootAnnotations.map((annotation) => (
+            renderAnnotationNode(annotation, 0)
+        )).join('');
+
+        const clearAnnotationDropIndicators = () => {{
+            listEl.querySelectorAll('.modal-annotation-row').forEach((candidate) => {{
+                candidate.classList.remove('drag-over', 'drag-before', 'drag-after', 'drag-inside');
+            }});
+            listEl.querySelectorAll('.modal-annotation-group-wrap').forEach((group) => {{
+                group.classList.remove('drop-active', 'drag-inside');
+            }});
+            listEl.querySelector('[data-annotation-drop-placeholder]')?.remove();
+        }};
+        const getAnnotationDropPlaceholder = () => {{
+            let placeholder = listEl.querySelector('[data-annotation-drop-placeholder]');
+            if (!placeholder) {{
+                placeholder = document.createElement('div');
+                placeholder.className = 'modal-annotation-drop-placeholder';
+                placeholder.dataset.annotationDropPlaceholder = '1';
+            }}
+            return placeholder;
+        }};
+        const showAnnotationDropPlaceholder = (row, position) => {{
+            if (!row) return;
+            clearAnnotationDropIndicators();
+            const placeholder = getAnnotationDropPlaceholder();
+            row.classList.add('drag-over', `drag-${{position}}`);
+            if (position === 'before') {{
+                row.parentElement?.insertBefore(placeholder, row);
+            }} else {{
+                row.parentElement?.insertBefore(placeholder, row.nextSibling);
+            }}
+        }};
+        const showAnnotationGroupDropPlaceholder = (groupEl) => {{
+            if (!groupEl) return;
+            clearAnnotationDropIndicators();
+            const placeholder = getAnnotationDropPlaceholder();
+            groupEl.classList.add('drop-active');
+            groupEl.appendChild(placeholder);
+        }};
+        const getGroupWrapDropPosition = (groupEl, event) => {{
+            const rect = groupEl.getBoundingClientRect();
+            const y = event.clientY - rect.top;
+            if (y < rect.height * 0.22) return 'before';
+            if (y > rect.height * 0.78) return 'after';
+            return 'inside';
+        }};
+        const showGroupWrapDropPlaceholder = (groupEl, position) => {{
+            if (!groupEl) return;
+            if (position === 'inside') {{
+                showAnnotationGroupDropPlaceholder(groupEl);
+                return;
+            }}
+            clearAnnotationDropIndicators();
+            const placeholder = getAnnotationDropPlaceholder();
+            groupEl.parentElement?.insertBefore(
+                placeholder,
+                position === 'before' ? groupEl : groupEl.nextSibling
+            );
+        }};
+
+        listEl.querySelectorAll('.modal-annotation-row[draggable="true"]').forEach((row) => {{
+            row.addEventListener('dragstart', (event) => {{
+                if (event.target?.closest?.('input, button, select, textarea, a, [contenteditable="true"]')) {{
+                    event.preventDefault();
+                    return;
+                }}
+                event.stopPropagation();
+                draggedModalAnnotationId = Number(row.dataset.annotationId);
+                row.classList.add('dragging');
+                event.dataTransfer.effectAllowed = 'move';
+                event.dataTransfer.setData('text/plain', String(draggedModalAnnotationId));
+            }});
+            row.addEventListener('dragend', () => {{
+                draggedModalAnnotationId = null;
+                listEl.querySelectorAll('.modal-annotation-row').forEach((candidate) => candidate.classList.remove('dragging'));
+                clearAnnotationDropIndicators();
+            }});
+            row.addEventListener('dragover', (event) => {{
+                if (!Number.isFinite(draggedModalAnnotationId)) return;
+                const targetId = Number(row.dataset.annotationId);
+                if (!Number.isFinite(targetId) || targetId === draggedModalAnnotationId || isAnnotationDescendantOf(draggedModalAnnotationId, targetId)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = 'move';
+                const position = getAnnotationDropPosition(row, event);
+                showAnnotationDropPlaceholder(row, position);
+            }});
+            row.addEventListener('drop', (event) => {{
+                event.preventDefault();
+                event.stopPropagation();
+                clearAnnotationDropIndicators();
+                const targetId = Number(row.dataset.annotationId);
+                const sourceId = Number(event.dataTransfer.getData('text/plain') || draggedModalAnnotationId);
+                const position = getAnnotationDropPosition(row, event);
+                moveModalAnnotation(sourceId, targetId, position);
+            }});
+        }});
+
+        listEl.querySelectorAll('.modal-annotation-group-wrap[data-annotation-group-id]').forEach((groupEl) => {{
+            groupEl.addEventListener('dragover', (event) => {{
+                if (!Number.isFinite(draggedModalAnnotationId)) return;
+                if (event.target?.closest?.('.modal-annotation-row')) return;
+                const targetId = Number(groupEl.dataset.annotationGroupId);
+                if (!Number.isFinite(targetId) || targetId === draggedModalAnnotationId || isAnnotationDescendantOf(draggedModalAnnotationId, targetId)) return;
+                event.preventDefault();
+                event.stopPropagation();
+                event.dataTransfer.dropEffect = 'move';
+                showGroupWrapDropPlaceholder(groupEl, getGroupWrapDropPosition(groupEl, event));
+            }});
+            groupEl.addEventListener('dragleave', (event) => {{
+                if (groupEl.contains(event.relatedTarget)) return;
+                clearAnnotationDropIndicators();
+            }});
+            groupEl.addEventListener('drop', (event) => {{
+                if (event.target?.closest?.('.modal-annotation-row')) return;
+                event.preventDefault();
+                event.stopPropagation();
+                clearAnnotationDropIndicators();
+                const targetId = Number(groupEl.dataset.annotationGroupId);
+                const sourceId = Number(event.dataTransfer.getData('text/plain') || draggedModalAnnotationId);
+                const position = getGroupWrapDropPosition(groupEl, event);
+                if (position === 'inside') {{
+                    moveModalAnnotation(sourceId, targetId, 'inside');
+                }} else {{
+                    moveModalAnnotationToParentLevel(sourceId, targetId, position);
+                }}
+            }});
+        }});
+
+        if (!listEl.dataset.rootDropBound) {{
+            listEl.dataset.rootDropBound = '1';
+            listEl.addEventListener('dragover', (event) => {{
+                if (!Number.isFinite(draggedModalAnnotationId)) return;
+                if (event.target?.closest?.('.modal-annotation-row')) return;
+                event.preventDefault();
+                event.dataTransfer.dropEffect = 'move';
+                clearAnnotationDropIndicators();
+                listEl.appendChild(getAnnotationDropPlaceholder());
+            }});
+            listEl.addEventListener('drop', (event) => {{
+                if (event.target?.closest?.('.modal-annotation-row')) return;
+                event.preventDefault();
+                clearAnnotationDropIndicators();
+                const sourceId = Number(event.dataTransfer.getData('text/plain') || draggedModalAnnotationId);
+                moveModalAnnotationToRoot(sourceId);
+            }});
+        }}
 
         listEl.querySelectorAll('[data-annotation-label]').forEach((input) => {{
             input.addEventListener('change', () => {{
@@ -15700,9 +18460,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (modalSection) renderModalSection();
             }});
         }});
-        listEl.querySelectorAll('[data-annotation-select]').forEach((btn) => {{
-            btn.addEventListener('click', () => {{
-                selectCellsFromAnnotation(btn.dataset.annotationSelect);
+        listEl.querySelectorAll('[data-annotation-group-toggle]').forEach((btn) => {{
+            btn.addEventListener('click', (event) => {{
+                event.preventDefault();
+                event.stopPropagation();
+                const groupId = Number(btn.dataset.annotationGroupToggle);
+                if (!Number.isFinite(groupId)) return;
+                if (collapsedModalAnnotationGroupIds.has(groupId)) {{
+                    collapsedModalAnnotationGroupIds.delete(groupId);
+                }} else {{
+                    collapsedModalAnnotationGroupIds.add(groupId);
+                }}
+                renderModalAnnotationPanel();
             }});
         }});
         listEl.querySelectorAll('[data-annotation-compare]').forEach((btn) => {{
@@ -15759,6 +18528,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (lassoModeB) {{
             selectedCellsB = newCells;
+            selectionWelchRevision += 1;
+            selectionWelchCache.clear();
+            selectionWelchRunRequested = false;
+            selectionWelchButtonHidden = false;
             selectedLassoPathB = [];
             selectedCellsBFromGridLasso = false;
             selectedGridLassoSectionIdB = null;
@@ -15773,6 +18546,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             setUMAPCompareHintVisible(false);
         }} else {{
             selectedCells = newCells;
+            markPrimarySelectionChanged();
             clearRegionBSelection();
             selectedLassoPath = [];
             selectedCellsFromGridLasso = false;
@@ -15782,13 +18556,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             selectedModalLassoSectionId = modalSection.id;
             selectedModalLassoPath = polygonData;
             selectedCellsFromAnnotation = false;
+            selectedCellsFromQuery = false;
             selectedAnnotationId = null;
         }}
 
         selectionSummaryExpanded = false;
         selectionSectionSummaryExpanded = false;
         hideModalGeneDiscoveryPanel();
-        updateSelectionInfo();
+        openInsightsMode('selection');
         renderAllSections();
         if (umapVisible) renderUMAP();
         if (modalSection) renderModalSection();
@@ -15831,44 +18606,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function updateUMAPCompareButtonState() {{
-        const btn = document.getElementById('umap-compare-toggle');
+        const btn = document.getElementById('umap-compare-btn');
         if (!btn) return;
         const hasRegionA = selectedCells.size > 0;
         const hasRegionB = selectedCellsB.size > 0;
-        const active = lassoModeB || hasRegionB;
         btn.disabled = !hasRegionA;
-        btn.classList.toggle('active', active);
-        btn.classList.toggle('compare-complete', hasRegionB);
-        const regionAFromLasso = selectedLassoPath.length > 0 || selectedGridLassoPath.length > 0 || selectedModalLassoPath.length > 0;
-        btn.classList.toggle('lasso-ready', hasRegionA && regionAFromLasso && !hasRegionB);
         btn.innerHTML = hasRegionB ? UMAP_CLEAR_ICON : UMAP_COMPARE_ICON;
-        if (!hasRegionA) {{
-            btn.title = 'Select Region A before comparing';
-            btn.setAttribute('aria-label', 'Select Region A before comparing');
-        }} else if (hasRegionB) {{
-            btn.title = 'Clear comparison region';
-            btn.setAttribute('aria-label', 'Clear comparison region');
-        }} else if (lassoModeB) {{
-            btn.title = 'Cancel comparison region';
-            btn.setAttribute('aria-label', 'Cancel comparison region');
-        }} else {{
-            btn.title = 'Compare with a second region';
-            btn.setAttribute('aria-label', 'Compare with a second region');
+        btn.classList.toggle('active', hasRegionA && (lassoModeB || hasRegionB));
+        btn.title = !hasRegionA
+            ? 'Draw Region A first to compare selections'
+            : (hasRegionB ? 'Clear Region B and draw it again' : 'Draw Region B to compare selections');
+        btn.setAttribute('aria-label', btn.title);
+    }}
+
+    function toggleUMAPRegionBSelection() {{
+        if (selectedCells.size === 0) return;
+        if (selectedCellsB.size > 0) {{
+            clearRegionBSelection();
+            lassoModeB = false;
+            updateSelectionInfo();
+            updateUMAPCursor();
+            renderUMAP();
+            renderAllSections();
+            if (modalSection) renderModalSection();
+            return;
         }}
+        lassoModeB = true;
+        magicWandActive = true;
+        umapPanActive = false;
+        syncModalLassoFromGlobal();
+        updateUMAPCursor();
+        updateUMAPLassoButtonState();
+        if (umapVisible) renderUMAP();
     }}
 
     function setUMAPCompareHintVisible(visible) {{
-        const hint = document.getElementById('umap-compare-hint');
         if (umapCompareHintTimeout) {{
             window.clearTimeout(umapCompareHintTimeout);
             umapCompareHintTimeout = null;
-        }}
-        hint?.classList.toggle('visible', !!visible);
-        if (visible && hint) {{
-            umapCompareHintTimeout = window.setTimeout(() => {{
-                hint.classList.remove('visible');
-                umapCompareHintTimeout = null;
-            }}, 1000);
         }}
     }}
 
@@ -15909,19 +18684,34 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const umapSummary = document.getElementById('insights-selection-panel');
         if (umapSummary) {{
             const hasSelection = selectedCells.size > 0;
+            umapSummary.classList.add('selection-main-summary');
             umapSummary.classList.toggle('expanded', selectionSummaryExpanded);
             umapSummary.classList.toggle('minimized', selectionSummaryMinimized && hasSelection);
+            const findMoreHtml = hasSelection
+                ? `<button class="selection-summary-find-more" type="button" data-selection-find-more><span>Find more in Compare → Selection</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg></button>`
+                : '';
             umapSummary.innerHTML = renderSelectionSummaryHtml(summary, {{
                 hideHeader: true,
                 hideSelectionQuery: true,
                 hideCompareRegion: true,
-            }});
+            }}) + findMoreHtml;
             bindSelectionSummaryInteractions(umapSummary);
+        }}
+        const compareSelectionSummary = document.getElementById('compare-selection-panel');
+        if (compareSelectionSummary) {{
+            compareSelectionSummary.classList.add('selection-expression-only');
+            compareSelectionSummary.innerHTML = renderSelectionSummaryHtml(summary, {{
+                hideHeader: true,
+                hideSelectionQuery: true,
+                hideCompareRegion: true,
+            }});
+            bindSelectionSummaryInteractions(compareSelectionSummary);
         }}
         renderUMAPSelectionQueryPanel();
         updateUMAPSelectionSummaryPanelSize();
         updateModalToolbarState();
         updateUMAPLassoButtonState();
+        updateSelectionCreateAnnotationButtonState();
     }}
 
     // Clear selection
@@ -15947,12 +18737,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         selectedModalLassoSectionId = null;
         selectedModalLassoPath = [];
         selectedCellsFromAnnotation = false;
+        selectedCellsFromQuery = false;
         selectedAnnotationId = null;
+        annotationCreatedForSelectionRevision = null;
         selectionSummaryExpanded = false;
         selectionSectionSummaryExpanded = false;
         selectionSummaryMinimized = false;
         hideModalGeneDiscoveryPanel();
         updateSelectionInfo();
+        renderModalAnnotationPanel();
         updateUMAPCursor();
         renderUMAP();
         renderAllSections();
@@ -16132,59 +18925,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             magicWandActive = !magicWandActive;
             if (magicWandActive) umapPanActive = false;
             else umapPanActive = true;
-            if (magicWandActive) {{
-                const colorPanel = document.getElementById('color-panel');
-                const colorToggle = document.getElementById('color-toggle');
-                colorPanel?.classList.remove('collapsed');
-                colorToggle?.classList.add('active');
-                setInsightsMode('selection');
-            }}
             syncModalLassoFromGlobal();
             updateUMAPCursor();
             updateUMAPLassoButtonState();
         }});
 
-        document.getElementById('umap-compare-toggle')?.addEventListener('click', () => {{
-            if (selectedCells.size === 0) return;
-            if (selectedCellsB.size > 0) {{
-                clearRegionBSelection();
-                lassoModeB = false;
-                magicWandActive = false;
-                umapPanActive = true;
-                isDrawingLasso = false;
-                lassoPath = [];
-                setUMAPCompareHintVisible(false);
-                syncModalLassoFromGlobal();
-                updateUMAPCursor();
-                updateUMAPLassoButtonState();
-                updateSelectionInfo();
-                renderUMAP();
-                renderAllSections();
-                if (modalSection) renderModalSection();
-                return;
+        document.getElementById('umap-compare-btn')?.addEventListener('click', (event) => {{
+            event.preventDefault();
+            event.stopPropagation();
+            toggleUMAPRegionBSelection();
+        }});
+
+        document.getElementById('selection-create-annotation-btn')?.addEventListener('click', (event) => {{
+            event.preventDefault();
+            event.stopPropagation();
+            if (createModalAnnotationFromSelection()) {{
+                updateSelectionCreateAnnotationButtonState();
             }}
-            if (selectedCellsFromAnnotation) {{
-                lassoModeB = false;
-                magicWandActive = false;
-                umapPanActive = true;
-                isDrawingLasso = false;
-                lassoPath = [];
-                setUMAPCompareHintVisible(false);
-                syncModalLassoFromGlobal();
-                updateUMAPCursor();
-                updateUMAPLassoButtonState();
-                renderModalAnnotationPanel();
-                openInsightsMode('annotate');
-                return;
-            }}
-            lassoModeB = !lassoModeB;
-            magicWandActive = lassoModeB;
-            umapPanActive = !lassoModeB;
-            setUMAPCompareHintVisible(lassoModeB);
-            syncModalLassoFromGlobal();
-            updateUMAPCursor();
-            updateUMAPLassoButtonState();
-            updateSelectionInfo();
         }});
 
         const umapParamsToggle = document.getElementById('umap-params-toggle');
@@ -16224,12 +18981,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             umapQueryPanel?.classList.remove('visible');
             umapQueryToggle?.classList.remove('active');
         }});
-        document.addEventListener('mousedown', (event) => {{
-            const wrap = document.getElementById('umap-compare-wrap');
-            if (!wrap || wrap.contains(event.target)) return;
-            setUMAPCompareHintVisible(false);
-        }});
-
         // UMAP spot size slider
         document.getElementById('umap-spot-size').addEventListener('input', (e) => {{
             umapSpotSize = parseFloat(e.target.value);
@@ -16943,6 +19694,64 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
+    function initCalcInfoPopovers() {{
+        let popover = document.getElementById('calc-info-popover');
+        if (!popover) {{
+            popover = document.createElement('div');
+            popover.id = 'calc-info-popover';
+            popover.className = 'calc-info-popover';
+            popover.setAttribute('role', 'dialog');
+            popover.setAttribute('aria-hidden', 'true');
+            document.body.appendChild(popover);
+        }}
+
+        const hide = () => {{
+            popover.classList.remove('visible');
+            popover.setAttribute('aria-hidden', 'true');
+        }};
+
+        const position = (target) => {{
+            popover.style.left = '-9999px';
+            popover.style.top = '-9999px';
+            popover.classList.add('visible');
+            const pRect = popover.getBoundingClientRect();
+            const tRect = target.getBoundingClientRect();
+            let left = tRect.right + 8;
+            if (left + pRect.width > window.innerWidth - 8) left = tRect.left - pRect.width - 8;
+            left = Math.max(8, Math.min(window.innerWidth - pRect.width - 8, left));
+            let top = tRect.top;
+            if (top + pRect.height > window.innerHeight - 8) top = window.innerHeight - pRect.height - 8;
+            top = Math.max(8, top);
+            popover.style.left = `${{left}}px`;
+            popover.style.top = `${{top}}px`;
+        }};
+
+        document.addEventListener('click', (event) => {{
+            const btn = event.target?.closest?.('[data-calc-info]');
+            if (!btn) {{
+                if (!event.target?.closest?.('#calc-info-popover')) hide();
+                return;
+            }}
+            event.preventDefault();
+            event.stopPropagation();
+            const info = CALC_INFO[btn.getAttribute('data-calc-info') || ''];
+            if (!info) return;
+            popover.innerHTML = `
+                <div class="calc-info-popover-title">${{escapeHtml(info.title || 'Calculation')}}</div>
+                <div class="calc-info-popover-body">${{escapeHtml(info.body || '')}}</div>
+                ${{info.formula ? `<div class="calc-info-popover-formula">${{escapeHtml(info.formula)}}</div>` : ''}}
+            `;
+            popover.setAttribute('aria-hidden', 'false');
+            position(btn);
+        }}, true);
+
+        document.addEventListener('keydown', (event) => {{
+            if (event.key === 'Escape') hide();
+        }});
+        window.addEventListener('resize', hide);
+        window.addEventListener('scroll', hide, true);
+    }}
+
     function findNearestCell(section, mouseX, mouseY, canvasRect, transform, options = {{}}) {{
         ensureSectionXY(section);
         const config = getColorConfig();
@@ -17000,7 +19809,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const config = getColorConfig();
         const values = getSectionValues(section);
         const val = values[cellIdx];
-        const colorLabel = currentGene || currentColor;
+        const colorLabel = escapeHtml(getGeneDisplayLabel(currentGene) || currentColor);
 
         if (config.is_continuous) {{
             if (isMissingDisplayValue(val)) {{
@@ -17096,7 +19905,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
             cx /= vertices.length;
             cy /= vertices.length;
-            const count = Number(annotation.localCellIndices?.length || 0).toLocaleString();
+            const count = Number(getAnnotationCellCount(annotation) || 0).toLocaleString();
             ctx.fillStyle = annotation.color || getAnnotationColorById(annotation.id);
             ctx.globalAlpha = 1;
             ctx.font = '11px sans-serif';
@@ -17141,10 +19950,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!spec || spec.kind === 'cell') return false;
             const gene = String(spec.gene || '').trim();
             if (!gene) return false;
-            const meta = (spec.kind === CURRENT_MODALITY || (spec.kind === 'gene' && CURRENT_MODALITY === 'rna'))
-                ? DATA.genes_meta
-                : (MODALITY_GENE_STATE[spec.kind]?.genes_meta);
-            return !!(meta && meta[gene]);
+            return isFeatureLoadedForModality(gene, spec.kind);
         }});
     }}
 
@@ -17483,7 +20289,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function renderModalBlendFromCache() {{
         if (!modalSection || !modalBlendEnabled) return false;
-        if (showGraph || hoverNeighbors || isDrawingModalLasso || isDrawingModalAnnotation) return false;
+        if (showGraph || hoverNeighbors || isDrawingModalLasso) return false;
         if (selectedCells.size > 0 && !getModalActiveCellIndexSet(modalSection.id)) return false;
 
         const canvas = document.getElementById('modal-canvas');
@@ -18085,25 +20891,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ctx.setLineDash([]);
         }}
 
-        if (isDrawingModalAnnotation && modalAnnotationPath.length > 1) {{
-            ctx.save();
-            const nextAnnotationColor = getAnnotationColorById(getNextModalAnnotationId());
-            ctx.strokeStyle = nextAnnotationColor;
-            ctx.fillStyle = colorToRgbaCss(nextAnnotationColor, 0.14);
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(modalAnnotationPath[0].x, modalAnnotationPath[0].y);
-            for (let i = 1; i < modalAnnotationPath.length; i++) {{
-                ctx.lineTo(modalAnnotationPath[i].x, modalAnnotationPath[i].y);
-            }}
-            if (modalAnnotationPath.length > 2) {{
-                ctx.closePath();
-                ctx.fill();
-            }}
-            ctx.stroke();
-            ctx.restore();
-        }}
-
         drawScalebar(ctx, transform, {{ isModal: true, darkBg: currentTheme === 'dark' }});
 
         cacheModalRenderedView(rect, transform);
@@ -18120,6 +20907,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const LEGEND_SPOTLIGHT_ICON = '<svg viewBox="0 0 24 24"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M12 2v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="M2 12h2"></path><path d="m19.07 4.93-1.41 1.41"></path><path d="M20 12h2"></path><path d="M15 14a5 5 0 1 0-6 0l1 4h4z"></path></svg>';
     const LEGEND_EXPORT_ICON = '<svg viewBox="0 0 24 24"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>';
     const LEGEND_IMPORT_ICON = '<svg viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="m17 8-5-5-5 5"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path></svg>';
+    const MODULE_DELETE_ICON = '<svg viewBox="0 0 24 24"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>';
+    const MODULE_LOAD_ICON = '<svg viewBox="0 0 24 24"><path d="m10 17 5-5-5-5"></path><path d="M15 12H3"></path><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path></svg>';
+    const MODULE_CREATE_ICON = '<svg viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M16 8.9V7H8l4 5-4 5h8v-1.9"></path></svg>';
 
     function closeLegendExportMenus(except = null) {{
         document.querySelectorAll('.legend-export-menu.open').forEach((menu) => {{
@@ -18137,7 +20927,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const legend = document.getElementById(targetId);
         if (!legend) return;
         const config = getColorConfig();
-        const colorLabel = currentGene || currentColor;
+        const colorLabel = getGeneDisplayLabel(currentGene) || currentColor;
         const splitLegendActive = (
             (targetId === 'modal-legend' && !!getModalBlendRuntimes(modalSection))
             || (targetId === 'legend' && overviewBlendEnabled)
@@ -18437,7 +21227,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const INSIGHTS_SUBTABS = {{
         overview: ['summary', 'sections'],
         genes: ['de-genes', 'spatial', 'distribution', 'means'],
-        compare: ['groups', 'regions', 'cell-de', 'river'],
+        compare: ['groups', 'regions', 'selection', 'cell-de', 'complex-contrast', 'river'],
         neighbors: ['enrichment', 'interactions', 'dispersion'],
     }};
 
@@ -18446,6 +21236,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!INSIGHTS_SUBTABS.overview.includes(insightsOverviewTab)) insightsOverviewTab = 'summary';
         if (!INSIGHTS_SUBTABS.genes.includes(insightsGenesTab)) insightsGenesTab = 'de-genes';
         if (!INSIGHTS_SUBTABS.compare.includes(insightsCompareTab)) insightsCompareTab = 'groups';
+        if (!['quick', 'precise', 'relationships'].includes(insightsCompareMode)) insightsCompareMode = 'quick';
         if (!INSIGHTS_SUBTABS.neighbors.includes(insightsNeighborsTab)) insightsNeighborsTab = 'enrichment';
     }}
 
@@ -18464,6 +21255,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         if (topLevel === 'compare') {{
             insightsCompareTab = value;
+            insightsCompareMode = ['groups', 'regions', 'selection'].includes(value)
+                ? 'quick'
+                : (['cell-de', 'complex-contrast'].includes(value) ? 'precise' : 'relationships');
             return;
         }}
         if (topLevel === 'neighbors') {{
@@ -18473,37 +21267,131 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         insightsOverviewTab = value;
     }}
 
+    const INSIGHTS_TREE_TOP_LABELS = {{
+        overview: 'Overview',
+        genes: 'Genes',
+        compare: 'Compare',
+        neighbors: 'Neighbors',
+    }};
+    const INSIGHTS_TREE_LEAF_LABELS = {{
+        overview: {{ summary: 'Summary', sections: 'Sections' }},
+        genes: {{ 'de-genes': 'Markers', spatial: 'Spatial', distribution: 'Distribution', means: 'Means' }},
+        compare: {{ groups: 'Groups', regions: 'Regions', selection: 'Selections', 'cell-de': 'Normal contrast', 'complex-contrast': 'Complex contrast', river: 'Relationships' }},
+        neighbors: {{ enrichment: 'Enrichment', interactions: 'Interactions', dispersion: 'Dispersion' }},
+    }};
+
+    function getInsightsTreePath(topLevel, subtab) {{
+        const path = [INSIGHTS_TREE_TOP_LABELS[topLevel] || topLevel];
+        if (topLevel === 'compare') {{
+            const group = ['groups', 'regions', 'selection'].includes(subtab)
+                ? 'Quick'
+                : (['cell-de', 'complex-contrast'].includes(subtab) ? 'Precise' : 'Relationships');
+            if (group !== 'Relationships') path.push(group);
+        }}
+        const leaf = INSIGHTS_TREE_LEAF_LABELS[topLevel]?.[subtab];
+        if (leaf) path.push(leaf);
+        return path;
+    }}
+
+    function syncInsightsTree() {{
+        document.querySelectorAll('[data-insights-tree]').forEach((tree) => {{
+            tree.classList.toggle('is-open', insightsTreeOpen);
+            tree.classList.toggle('has-selection', !!insightsTreeSelectedLeaf);
+            tree.querySelector('[data-insights-tree-root]')?.setAttribute('aria-expanded', insightsTreeOpen ? 'true' : 'false');
+            const rootLabel = tree.querySelector('[data-insights-tree-root-label]');
+            if (rootLabel) {{
+                rootLabel.textContent = insightsTreeSelectedLeaf
+                    ? ['Visualization', ...getInsightsTreePath(insightsTreeSelectedLeaf.topLevel, insightsTreeSelectedLeaf.subtab)].join(' > ')
+                    : 'Visualization';
+            }}
+        }});
+        document.querySelectorAll('[data-insights-tree-node]').forEach((node) => {{
+            const topLevel = node.getAttribute('data-insights-tree-node') || 'overview';
+            const isOpen = insightsTreeOpen && insightsTreeOpenBranch === topLevel;
+            const hideSibling = insightsTreeOpen && !!insightsTreeOpenBranch && !isOpen;
+            node.classList.toggle('is-open', isOpen);
+            node.classList.toggle('is-sibling-hidden', hideSibling);
+            node.querySelector('[data-insights-tree-branch]')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+            const label = node.querySelector('[data-insights-tree-label]');
+            if (label) {{
+                label.textContent = INSIGHTS_TREE_TOP_LABELS[topLevel] || topLevel;
+            }}
+        }});
+        document.querySelectorAll('[data-insights-tree-compare-node]').forEach((node) => {{
+            const branch = node.getAttribute('data-insights-tree-compare-node') || '';
+            const isOpen = insightsTreeOpen && insightsTreeOpenBranch === 'compare' && insightsTreeOpenCompareBranch === branch;
+            const hideSibling = insightsTreeOpen && insightsTreeOpenBranch === 'compare' && !!insightsTreeOpenCompareBranch && !isOpen;
+            node.classList.toggle('is-open', isOpen);
+            node.classList.toggle('is-sibling-hidden', hideSibling);
+            node.querySelector('[data-insights-tree-compare-branch]')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }});
+        document.querySelectorAll('[data-insights-tree-leaf]').forEach((leaf) => {{
+            const topLevel = leaf.getAttribute('data-insights-tree-parent') || 'overview';
+            const subtab = leaf.getAttribute('data-insights-tree-leaf') || '';
+            const hideRelationship = topLevel === 'compare'
+                && subtab === 'river'
+                && insightsTreeOpen
+                && insightsTreeOpenBranch === 'compare'
+                && !!insightsTreeOpenCompareBranch;
+            leaf.classList.toggle('is-selected', insightsTreeSelectedLeaf?.topLevel === topLevel && insightsTreeSelectedLeaf?.subtab === subtab);
+            leaf.classList.toggle('is-sibling-hidden', hideRelationship);
+        }});
+    }}
+
     function syncInsightsTabClasses() {{
         normalizeInsightsTabsState();
+        syncCompareNavigationClasses();
+        syncInsightsTree();
+        const hasSelectedLeaf = !!insightsTreeSelectedLeaf;
         INSIGHTS_TOP_LEVEL_TABS.forEach((topLevel) => {{
-            document.getElementById(`color-tab-${{topLevel}}`)?.classList.toggle('active', insightsTopLevelTab === topLevel);
-            document.getElementById(`color-tab-${{topLevel}}-content`)?.classList.toggle('active', insightsTopLevelTab === topLevel);
+            const topLevelSelected = hasSelectedLeaf && insightsTreeSelectedLeaf.topLevel === topLevel;
+            document.getElementById(`color-tab-${{topLevel}}`)?.classList.toggle('active', topLevelSelected);
+            document.getElementById(`color-tab-${{topLevel}}-content`)?.classList.toggle('active', topLevelSelected);
             (INSIGHTS_SUBTABS[topLevel] || []).forEach((subtab) => {{
-                const isActive = getActiveInsightsSubtab(topLevel) === subtab;
+                const isActive = topLevelSelected && insightsTreeSelectedLeaf.subtab === subtab;
                 document.getElementById(`${{topLevel}}-tab-${{subtab}}`)?.classList.toggle('active', isActive);
                 document.getElementById(`${{topLevel}}-tab-${{subtab}}-content`)?.classList.toggle('active', isActive);
             }});
         }});
+        document.querySelectorAll('[data-insights-parent][data-insights-subtab]').forEach((button) => {{
+            const topLevel = button.getAttribute('data-insights-parent') || 'overview';
+            const subtab = button.getAttribute('data-insights-subtab') || '';
+            button.classList.toggle('active', hasSelectedLeaf && insightsTreeSelectedLeaf.topLevel === topLevel && insightsTreeSelectedLeaf.subtab === subtab);
+        }});
+    }}
+
+    function syncCompareNavigationClasses() {{
+        const mode = insightsCompareMode;
+        document.querySelectorAll('[data-compare-mode]').forEach((button) => {{
+            button.classList.toggle('active', button.getAttribute('data-compare-mode') === mode);
+        }});
+        document.getElementById('compare-quick-navigation')?.classList.toggle('active', mode === 'quick');
+        document.getElementById('compare-precise-navigation')?.classList.toggle('active', mode === 'precise');
+        document.getElementById('compare-tab-river')?.classList.toggle('active', mode === 'relationships');
     }}
 
     function syncInsightsModeClasses() {{
-        const mode = ['selection', 'annotate', 'exploration'].includes(insightsMode) ? insightsMode : 'exploration';
+        const mode = ['selection', 'annotate', 'module', 'exploration'].includes(insightsMode) ? insightsMode : 'exploration';
         document.querySelectorAll('[data-insights-mode]').forEach((btn) => {{
             btn.classList.toggle('active', btn.getAttribute('data-insights-mode') === mode);
             if (btn.id === 'insights-annotate-toggle') btn.setAttribute('aria-expanded', mode === 'annotate' ? 'true' : 'false');
         }});
         document.getElementById('insights-selection-panel')?.classList.toggle('active', mode === 'selection');
         document.getElementById('modal-annotation-section')?.classList.toggle('active', mode === 'annotate');
+        document.getElementById('insights-module-panel')?.classList.toggle('active', mode === 'module');
         document.getElementById('insights-exploration-panel')?.classList.toggle('active', mode === 'exploration');
+        document.getElementById('color-panel')?.classList.toggle('annotation-panel-open', mode === 'annotate');
     }}
 
     function setInsightsMode(mode) {{
-        insightsMode = ['selection', 'annotate', 'exploration'].includes(mode) ? mode : 'exploration';
+        insightsMode = ['selection', 'annotate', 'module', 'exploration'].includes(mode) ? mode : 'exploration';
         syncInsightsModeClasses();
         if (insightsMode === 'selection') {{
             updateSelectionInfo();
         }} else if (insightsMode === 'annotate') {{
             renderModalAnnotationPanel();
+        }} else if (insightsMode === 'module') {{
+            renderGeneModulePanel();
         }} else {{
             renderActiveInsightsPanel();
         }}
@@ -18520,6 +21408,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderModalAnnotationPanel();
             return;
         }}
+        if (insightsMode === 'module') {{
+            renderGeneModulePanel();
+            return;
+        }}
         syncInsightsTabClasses();
 
         if (insightsTopLevelTab === 'overview') {{
@@ -18533,6 +21425,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         if (insightsTopLevelTab === 'genes') {{
+            renderGenesDetailsWarnings();
             if (insightsGenesTab === 'de-genes') {{
                 renderMarkerGenes();
             }} else if (insightsGenesTab === 'spatial') {{
@@ -18548,6 +21441,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (insightsTopLevelTab === 'compare') {{
             if (insightsCompareTab === 'regions') {{
                 renderAnnotationComparison();
+            }} else if (insightsCompareTab === 'selection') {{
+                updateSelectionInfo();
             }} else if (insightsCompareTab === 'cell-de') {{
                 renderClusterDE();
             }} else if (insightsCompareTab === 'river') {{
@@ -18769,6 +21664,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }} else if (fullCached?.available) {{
             resultHtml = cachedSummaryHtml;
             resultHtml += '<div style="display:flex; justify-content:flex-end;"><button class="legend-btn" id="annotation-de-refresh-full" type="button">Refresh Full DE</button></div>';
+        }} else if (!deResult.available && deResult.reason === 'multi_section_region') {{
+            resultHtml = '<div class="agg-group-meta">Region DE currently requires each selected annotation group to resolve to one section.</div>';
         }} else if (!deResult.available && deResult.reason === 'empty_region') {{
             resultHtml = '<div class="agg-group-meta">One of the selected annotations has no cells.</div>';
         }} else if (!deResult.available && deResult.reason === 'no_loaded_genes' && sidecarAvailable) {{
@@ -18828,11 +21725,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         // Build per-annotation summaries
         const annotSummaries = modalAnnotations.map((annotation) => {{
-            const cellSet = new Set(
-                (annotation.localCellIndices || [])
-                    .filter(idx => Number.isInteger(idx) && idx >= 0)
-                    .map(idx => `${{annotation.sectionId}}:${{idx}}`)
-            );
+            const cellSet = getAnnotationCellSet(annotation);
             const summary = computeSelectionSummary(cellSet);
             return {{ annotation, summary }};
         }});
@@ -18991,54 +21884,270 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         bindGeneGoogleSearchButtons(container);
     }}
 
+    function refreshAfterGeneModuleChange() {{
+        geneDenseCache.clear();
+        invalidateGeneDensityCaches();
+        populateGeneInputDatalist();
+        const geneInput = document.getElementById('gene-input');
+        if (geneInput && currentGene) geneInput.value = getGeneDisplayLabel(currentGene);
+        renderGeneDiscoveryPanel();
+        updateExpressionScaleUI();
+        renderLegend('legend');
+        renderLegend('modal-legend');
+        renderAllSections();
+        if (modalSection) renderModalSection();
+        if (umapVisible) renderUMAP();
+        updateSelectionInfo();
+    }}
+
+    function renderGeneModulePanel() {{
+        const panel = document.getElementById('insights-module-panel');
+        if (!panel) return;
+        const moduleGeneOptions = getGeneInputFeatureList()
+            .filter(gene => !geneModuleDraftGenes.includes(gene))
+            .map(gene => `<option value="${{escapeHtml(gene)}}">${{escapeHtml(gene)}}</option>`)
+            .join('');
+        const draftGenesHtml = geneModuleDraftGenes.length
+            ? `<div class="gene-token-grid">${{geneModuleDraftGenes.map(gene => `
+                <button type="button" class="gene-token-btn" data-gene-module-draft-remove="${{escapeHtml(gene)}}" title="Remove ${{escapeHtml(gene)}} from this module">
+                    <span>${{escapeHtml(gene)}}</span>
+                </button>
+            `).join('')}}</div>`
+            : '<div class="gene-discovery-empty">Select genes from the dropdown.</div>';
+        const moduleListHtml = geneModules.length
+            ? geneModules.map((module) => {{
+                const token = getGeneModuleToken(module);
+                const isActive = currentGene === token;
+                const geneChips = module.genes.length
+                    ? `<div class="gene-token-grid">${{module.genes.map((gene) => renderGeneTokenButton(gene, {{
+                        isActive: gene === currentGene,
+                        title: `Load ${{gene}}`,
+                    }})).join('')}}</div>`
+                    : '<div class="gene-discovery-empty">No valid genes in this module.</div>';
+                return `
+                    <div class="gene-module-card" data-gene-module-id="${{escapeHtml(module.id)}}">
+                        <input type="text" data-module-name-input="${{escapeHtml(module.id)}}" value="${{escapeHtml(module.name)}}" aria-label="Module name">
+                        <div class="gene-module-genes">${{geneChips}}</div>
+                        <div class="gene-module-actions">
+                            <button class="legend-btn icon-only${{isActive ? ' active' : ''}}" type="button" data-gene-module-load="${{escapeHtml(module.id)}}" title="${{isActive ? 'Module loaded' : 'Load module assay'}}" aria-label="${{isActive ? 'Module loaded' : 'Load module assay'}}"${{module.genes.length ? '' : ' disabled'}}>${{MODULE_LOAD_ICON}}</button>
+                            <button class="legend-btn icon-only" type="button" data-gene-module-delete="${{escapeHtml(module.id)}}" title="Delete module" aria-label="Delete module">${{MODULE_DELETE_ICON}}</button>
+                        </div>
+                    </div>
+                `;
+            }}).join('')
+            : '';
+
+        panel.innerHTML = `
+            <div class="color-panel-section" style="display:block">
+                <div class="gene-module-section-header">
+                    <label>Gene Modules</label>${{renderCalcInfoButton('module')}}
+                </div>
+                <div class="gene-module-form">
+                    <select id="gene-module-gene-picker" aria-label="Add gene to module"${{moduleGeneOptions ? '' : ' disabled'}}>
+                        <option value="">Select gene...</option>
+                        ${{moduleGeneOptions}}
+                    </select>
+                    <div class="gene-module-draft" id="gene-module-draft-genes">${{draftGenesHtml}}</div>
+                    <div class="gene-module-form-actions">
+                        <button class="legend-btn icon-only" id="gene-module-create" type="button" title="Create module" aria-label="Create module"${{geneModuleDraftGenes.length ? '' : ' disabled'}}>${{MODULE_CREATE_ICON}}</button>
+                    </div>
+                </div>
+            </div>
+            <div class="color-panel-section" style="display:block">
+                ${{moduleListHtml ? '<label>Modules</label>' : ''}}
+                <div>${{moduleListHtml}}</div>
+                <div class="gene-module-form-actions" style="margin-top: 7px;">
+                    <button class="legend-btn icon-only" id="gene-module-upload" type="button" title="Upload modules JSON" aria-label="Upload modules JSON">${{LEGEND_IMPORT_ICON}}</button>
+                    <button class="legend-btn icon-only" id="gene-module-download" type="button" title="Download modules JSON" aria-label="Download modules JSON"${{geneModules.length ? '' : ' disabled'}}>${{LEGEND_EXPORT_ICON}}</button>
+                    <input type="file" id="gene-module-upload-input" accept="application/json,.json" style="display:none">
+                </div>
+            </div>
+        `;
+
+        panel.querySelector('#gene-module-gene-picker')?.addEventListener('change', (event) => {{
+            const gene = resolveCanonicalGeneName(event.target.value);
+            if (gene && !geneModuleDraftGenes.includes(gene)) {{
+                geneModuleDraftGenes.push(gene);
+                renderGeneModulePanel();
+            }} else {{
+                event.target.value = '';
+            }}
+        }});
+        panel.querySelectorAll('[data-gene-module-draft-remove]').forEach((btn) => {{
+            btn.addEventListener('click', () => {{
+                const gene = btn.getAttribute('data-gene-module-draft-remove') || '';
+                geneModuleDraftGenes = geneModuleDraftGenes.filter(item => item !== gene);
+                renderGeneModulePanel();
+            }});
+        }});
+        panel.querySelector('#gene-module-create')?.addEventListener('click', async () => {{
+            const genes = geneModuleDraftGenes.slice();
+            if (!genes.length) {{
+                alert('Select at least one valid gene for the module.');
+                return;
+            }}
+            const module = createGeneModule('', genes);
+            if (module) {{
+                geneModuleDraftGenes = [];
+                await ensureGeneModuleAvailable(module, {{ showErrors: false }});
+                refreshAfterGeneModuleChange();
+                renderGeneModulePanel();
+            }}
+        }});
+
+        panel.querySelector('#gene-module-download')?.addEventListener('click', () => {{
+            downloadGeneModulesJson();
+        }});
+        const moduleUploadInput = panel.querySelector('#gene-module-upload-input');
+        panel.querySelector('#gene-module-upload')?.addEventListener('click', () => {{
+            moduleUploadInput?.click();
+        }});
+        moduleUploadInput?.addEventListener('change', () => {{
+            const file = moduleUploadInput.files && moduleUploadInput.files[0];
+            if (file) loadGeneModulesFromFile(file);
+            moduleUploadInput.value = '';
+        }});
+
+        panel.querySelectorAll('[data-gene-module-load]').forEach((btn) => {{
+            btn.addEventListener('click', async () => {{
+                const module = geneModules.find(item => String(item.id) === String(btn.getAttribute('data-gene-module-load')));
+                if (!module) return;
+                await activateViewerGene(getGeneModuleToken(module), {{ showErrors: true }});
+                renderGeneModulePanel();
+            }});
+        }});
+
+        panel.querySelectorAll('[data-module-name-input]').forEach((input) => {{
+            const commitName = () => {{
+                const id = String(input.getAttribute('data-module-name-input') || '');
+                const module = geneModules.find(item => String(item.id) === id);
+                if (!module || !input) return;
+                const nextName = String(input.value || '').trim();
+                if (!nextName || nextName === module.name) return;
+                module.name = nextName;
+                refreshAfterGeneModuleChange();
+                renderGeneModulePanel();
+            }};
+            input.addEventListener('change', commitName);
+            input.addEventListener('keydown', (event) => {{
+                if (event.key === 'Enter') {{
+                    event.preventDefault();
+                    commitName();
+                }}
+            }});
+        }});
+
+        panel.querySelectorAll('[data-gene-module-delete]').forEach((btn) => {{
+            btn.addEventListener('click', async () => {{
+                const id = String(btn.getAttribute('data-gene-module-delete') || '');
+                const module = geneModules.find(item => String(item.id) === id);
+                if (!module) return;
+                if (!confirm(`Delete module "${{module.name}}"?`)) return;
+                const token = getGeneModuleToken(module);
+                geneModules = geneModules.filter(item => String(item.id) !== id);
+                if (currentGene === token) await activateViewerGene('', {{ showErrors: false }});
+                refreshAfterGeneModuleChange();
+                renderGeneModulePanel();
+            }});
+        }});
+
+        bindGeneActivateButtons(panel, renderGeneModulePanel);
+    }}
+
     function buildColorPanel() {{
         const panel = document.getElementById('color-panel');
         if (!panel) return;
         const metadataKeys = Object.keys(DATA.metadata_filters || {{}});
         const hasMetadata = metadataKeys.length > 0;
+        const hasAggregationColumns = hasMetadata || getCategoricalColorColumns().length > 0;
 
-        const options = ['<option value="">None</option>']
-            .concat(metadataKeys.map(key => `<option value="${{key}}">${{formatMetadataLabel(key)}}</option>`))
-            .join('');
+        const options = renderGroupedAnnotationOptions('', true);
 
         panel.innerHTML = `
             <div class="color-panel-header">
                 <div class="insights-mode-switch" role="group" aria-label="Insights mode">
                     <button class="insights-mode-btn" id="insights-mode-selection" data-insights-mode="selection" type="button">Selection</button>
-                    <button class="insights-mode-btn" id="insights-annotate-toggle" data-insights-mode="annotate" type="button" aria-expanded="false" aria-controls="modal-annotation-section">Annotate</button>
+                    <button class="insights-mode-btn" id="insights-annotate-toggle" data-insights-mode="annotate" type="button" aria-expanded="false" aria-controls="modal-annotation-section">Region</button>
+                    <button class="insights-mode-btn" id="insights-mode-module" data-insights-mode="module" type="button">Module</button>
                     <button class="insights-mode-btn" id="insights-mode-exploration" data-insights-mode="exploration" type="button">Exploration</button>
                 </div>
             </div>
             <div class="modal-annotation-section" id="modal-annotation-section">
                 <div class="modal-annotation-list" id="modal-annotation-list">
-                    <div class="modal-annotation-empty">Draw a region with Annote polygon to annotation cells.</div>
+                    <div class="modal-annotation-empty">Create regions from lasso selection in the Tools panel.</div>
                 </div>
                 <div class="modal-annotation-actions selection-query-actions">
-                    <button class="selection-summary-compare-btn icon-only" id="modal-annotations-export" type="button" title="Export all polygon annotations as JSON" aria-label="Export polygon annotations as JSON">
+                    <button class="selection-summary-compare-btn icon-only" id="modal-annotations-create-group" type="button" title="Create annotation group" aria-label="Create annotation group">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="9" r="7"></circle><circle cx="15" cy="15" r="7"></circle></svg>
+                    </button>
+                    <button class="selection-summary-compare-btn icon-only" id="modal-annotations-export" type="button" title="Export all polygon annotations as JSON" aria-label="Export polygon annotations as JSON" data-requires-annotations>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg>
                     </button>
-                    <button class="selection-summary-compare-btn icon-only" id="modal-annotations-clear-all" type="button" title="Delete all annotations" aria-label="Delete all annotations">
+                    <button class="selection-summary-compare-btn icon-only" id="modal-annotations-clear-all" type="button" title="Delete all annotations" aria-label="Delete all annotations" data-requires-annotations>
                         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                     </button>
                 </div>
             </div>
             <div class="color-panel-mode selection-summary umap-selection-summary" id="insights-selection-panel"></div>
+            <div class="color-panel-mode" id="insights-module-panel"></div>
             <div class="color-panel-mode" id="insights-exploration-panel">
                 <div class="color-panel-section">
-                    <label>Search Colors</label>
-                    <input class="color-search" id="color-search" type="text" placeholder="Type to filter...">
+                    <label id="exploration-color-label">Annotation</label>
+                    <select id="exploration-color-select"></select>
                 </div>
                 <div class="color-panel-section">
-                    <label>Available Colors</label>
-                    <div class="color-list" id="color-list"></div>
-                </div>
-                <div class="color-panel-section">
-                    <label>Details</label>
-                    <div class="color-tabs insights-top-tabs">
-                        <button class="color-tab active" id="color-tab-overview" data-insights-top="overview" type="button">Overview</button>
-                        <button class="color-tab" id="color-tab-genes" data-insights-top="genes" type="button">Genes</button>
-                        <button class="color-tab" id="color-tab-compare" data-insights-top="compare" type="button">Compare</button>
-                        <button class="color-tab" id="color-tab-neighbors" data-insights-top="neighbors" type="button">Neighbors</button>
+                    <label id="visualization-menu-label">Select</label>
+                    <div class="insights-tree" data-insights-tree aria-labelledby="visualization-menu-label">
+                        <button class="color-tab insights-tree-root" type="button" data-insights-tree-root aria-expanded="false"><span data-insights-tree-root-label>Visualization</span></button>
+                        <div class="insights-tree-panel">
+                            <div class="insights-tree-panel-content">
+                                <div class="insights-tree-node" data-insights-tree-node="overview">
+                                    <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-branch="overview" aria-expanded="false"><span data-insights-tree-label>Overview</span></button>
+                                    <div class="insights-tree-children"><div class="insights-tree-children-content">
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="summary" data-insights-tree-parent="overview">Summary</button>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="sections" data-insights-tree-parent="overview">Sections</button>
+                                    </div></div>
+                                </div>
+                                <div class="insights-tree-node" data-insights-tree-node="genes">
+                                    <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-branch="genes" aria-expanded="false"><span data-insights-tree-label>Genes</span></button>
+                                    <div class="insights-tree-children"><div class="insights-tree-children-content">
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="de-genes" data-insights-tree-parent="genes">Markers</button>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="spatial" data-insights-tree-parent="genes">Spatial</button>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="distribution" data-insights-tree-parent="genes">Distribution</button>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="means" data-insights-tree-parent="genes">Means</button>
+                                    </div></div>
+                                </div>
+                                <div class="insights-tree-node" data-insights-tree-node="compare">
+                                    <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-branch="compare" aria-expanded="false"><span data-insights-tree-label>Compare</span></button>
+                                    <div class="insights-tree-children"><div class="insights-tree-children-content">
+                                        <div class="insights-tree-node" data-insights-tree-compare-node="quick">
+                                            <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-compare-branch="quick" aria-expanded="false">Quick</button>
+                                            <div class="insights-tree-children"><div class="insights-tree-children-content">
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="selection" data-insights-tree-parent="compare">Selections</button>
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="groups" data-insights-tree-parent="compare">Groups</button>
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="regions" data-insights-tree-parent="compare">Regions</button>
+                                            </div></div>
+                                        </div>
+                                        <div class="insights-tree-node" data-insights-tree-compare-node="precise">
+                                            <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-compare-branch="precise" aria-expanded="false">Precise</button>
+                                            <div class="insights-tree-children"><div class="insights-tree-children-content">
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="cell-de" data-insights-tree-parent="compare">Normal contrast</button>
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="complex-contrast" data-insights-tree-parent="compare">Complex contrast</button>
+                                            </div></div>
+                                        </div>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="river" data-insights-tree-parent="compare">Relationships</button>
+                                    </div></div>
+                                </div>
+                                <div class="insights-tree-node" data-insights-tree-node="neighbors">
+                                    <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-branch="neighbors" aria-expanded="false"><span data-insights-tree-label>Neighbors</span></button>
+                                    <div class="insights-tree-children"><div class="insights-tree-children-content">
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="enrichment" data-insights-tree-parent="neighbors">Enrichment</button>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="interactions" data-insights-tree-parent="neighbors">Interactions</button>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="dispersion" data-insights-tree-parent="neighbors">Dispersion</button>
+                                    </div></div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                     <div class="color-tab-content active" id="color-tab-overview-content">
                         <div class="insights-subtab-label">Overview details</div>
@@ -19047,24 +22156,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <button class="color-tab" id="overview-tab-sections" data-insights-parent="overview" data-insights-subtab="sections" type="button">Sections</button>
                         </div>
                         <div class="color-tab-content active" id="overview-tab-summary-content">
-                            <div>
-                                <label>Aggregate By</label>
-                                <select id="color-groupby" ${{!hasMetadata ? 'disabled' : ''}}>
-                                    ${{options}}
-                                </select>
+                            <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; align-items:end;">
+                                <div>
+                                    <label>Aggregate By</label>
+                                    <select id="color-groupby" ${{!hasAggregationColumns ? 'disabled' : ''}}>
+                                        ${{options}}
+                                    </select>
+                                </div>
+                                ${{renderCalcInfoButton('color_aggregation')}}
                             </div>
                             <div style="display: flex; justify-content: flex-end;">
                                 <button class="legend-btn" id="color-aggregation-toggle" type="button">Collapse Stats</button>
                             </div>
                             <div class="color-aggregation" id="color-aggregation">
-                                <div class="agg-group-meta">${{hasMetadata ? 'Pick a metadata column to summarize.' : 'No metadata columns available for aggregation.'}}</div>
+                            ${{hasAggregationColumns ? '' : '<div class="agg-group-meta">No metadata or annotation columns available for aggregation.</div>'}}
                             </div>
-                            <div>
-                                <label>Cell Type Trend</label>
+                            <div id="celltype-select-row">
+                                <label>Per Annotation</label>
                                 <select id="celltype-select"></select>
                             </div>
                             <div class="color-aggregation" id="celltype-trend">
-                                <div class="agg-group-meta">${{hasMetadata ? 'Choose a category to see counts across the selected metadata.' : 'No metadata columns available.'}}</div>
                             </div>
                         </div>
                         <div class="color-tab-content" id="overview-tab-sections-content">
@@ -19072,37 +22183,80 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 <div class="agg-group-meta">Open Sections to view per-section composition as stacked bars or a heatmap.</div>
                             </div>
                         </div>
-                    </div>
+                </div>
                 <div class="color-tab-content" id="color-tab-genes-content">
                     <div class="insights-subtab-label">Genes details</div>
+                    <div id="genes-details-warnings"></div>
+                    <div class="color-panel-section">
+                        <label for="marker-gene-search">Search</label>
+                        <div class="marker-gene-search-wrap">
+                            <select class="marker-search" id="marker-gene-search" aria-label="Select loaded gene">
+                                ${{renderLoadedGeneSelectOptions('', 'All loaded genes')}}
+                            </select>
+                            <button class="marker-gene-clear-btn" id="marker-gene-search-clear" type="button" title="Clear selected gene" aria-label="Clear selected gene">&times;</button>
+                        </div>
+                    </div>
                     <div class="color-tabs insights-subtabs">
-                        <button class="color-tab active" id="genes-tab-de-genes" data-insights-parent="genes" data-insights-subtab="de-genes" type="button">DE Genes</button>
+                        <button class="color-tab active" id="genes-tab-de-genes" data-insights-parent="genes" data-insights-subtab="de-genes" type="button">Markers</button>
                         <button class="color-tab" id="genes-tab-spatial" data-insights-parent="genes" data-insights-subtab="spatial" type="button">Spatial</button>
                         <button class="color-tab" id="genes-tab-distribution" data-insights-parent="genes" data-insights-subtab="distribution" type="button">Distribution</button>
                         <button class="color-tab" id="genes-tab-means" data-insights-parent="genes" data-insights-subtab="means" type="button">Means</button>
                     </div>
                     <div class="color-tab-content active" id="genes-tab-de-genes-content">
-                        <input class="marker-search" id="marker-gene-search" type="text" placeholder="Search pseudobulk DE genes...">
+                        <div class="samples-view-toggle gene-subtab-view-toggle" data-gene-subtab-toggle="de-genes"></div>
+                        <div class="gene-subtab-action-row" id="marker-genes-action-row">
+                            <button class="selection-summary-compare-btn icon-only" type="button" id="marker-genes-export-btn" title="Download pseudobulk DE genes CSV" aria-label="Download pseudobulk DE genes CSV">${{LEGEND_EXPORT_ICON}}</button>
+                            <span id="marker-genes-calc-info">${{renderCalcInfoButton('de_genes')}}</span>
+                        </div>
                         <div class="marker-genes" id="marker-genes"></div>
                     </div>
                     <div class="color-tab-content" id="genes-tab-spatial-content">
-                        <input class="marker-search" id="spatial-gene-search" type="text" placeholder="Search spatially variable genes...">
+                        <div class="samples-view-toggle gene-subtab-view-toggle" data-gene-subtab-toggle="spatial"></div>
+                        <div class="gene-subtab-action-row">${{renderCalcInfoButton('spatial_moran')}}</div>
                         <div class="marker-genes" id="spatially-variable-genes"></div>
                     </div>
                     <div class="color-tab-content" id="genes-tab-distribution-content">
+                        <div class="samples-view-toggle gene-subtab-view-toggle" data-gene-subtab-toggle="distribution"></div>
+                        <div class="gene-subtab-action-row" id="gene-distribution-action-row">
+                            <button class="selection-summary-compare-btn icon-only" type="button" id="gene-distribution-export-svg" title="Download distribution graph SVG" aria-label="Download distribution graph SVG">${{LEGEND_EXPORT_ICON}}</button>
+                            ${{renderCalcInfoButton('distribution')}}
+                        </div>
                         <div class="gene-distribution-panel" id="gene-distribution-panel"></div>
                     </div>
                     <div class="color-tab-content" id="genes-tab-means-content">
+                        <div class="samples-view-toggle gene-subtab-view-toggle" data-gene-subtab-toggle="means"></div>
+                        <div class="gene-subtab-action-row" id="gene-means-action-row">
+                            <button class="selection-summary-compare-btn icon-only" type="button" id="gene-means-export-svg" title="Download means graph SVG" aria-label="Download means graph SVG">${{LEGEND_EXPORT_ICON}}</button>
+                            ${{renderCalcInfoButton('means')}}
+                        </div>
                         <div class="gene-distribution-panel" id="pseudobulk-gene-means"></div>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-compare-content">
                     <div class="insights-subtab-label">Compare details</div>
-                    <div class="color-tabs insights-subtabs">
-                        <button class="color-tab active" id="compare-tab-groups" data-insights-parent="compare" data-insights-subtab="groups" type="button">Groups</button>
-                        <button class="color-tab" id="compare-tab-regions" data-insights-parent="compare" data-insights-subtab="regions" type="button">Regions</button>
-                        <button class="color-tab" id="compare-tab-cell-de" data-insights-parent="compare" data-insights-subtab="cell-de" type="button">Cell DE</button>
-                        <button class="color-tab" id="compare-tab-river" data-insights-parent="compare" data-insights-subtab="river" type="button">River</button>
+                    <div class="insights-menu-branch">
+                        <div class="insights-subtab-label">Compare views</div>
+                        <div class="color-tabs compare-mode-tabs insights-subtabs">
+                        <button class="color-tab active" id="compare-mode-quick" data-compare-mode="quick" type="button">Quick</button>
+                        <button class="color-tab" id="compare-mode-precise" data-compare-mode="precise" type="button">Precise</button>
+                        <button class="color-tab" id="compare-mode-relationships" data-compare-mode="relationships" type="button">Relationships</button>
+                        </div>
+                        <div class="insights-menu-children compare-navigation">
+                        <div class="compare-navigation-group active" id="compare-quick-navigation">
+                            <div class="color-tabs insights-subtabs">
+                                <button class="color-tab" id="compare-tab-selection" data-insights-parent="compare" data-insights-subtab="selection" type="button">Selections</button>
+                                <button class="color-tab active" id="compare-tab-groups" data-insights-parent="compare" data-insights-subtab="groups" type="button">Groups</button>
+                                <button class="color-tab" id="compare-tab-regions" data-insights-parent="compare" data-insights-subtab="regions" type="button">Regions</button>
+                            </div>
+                        </div>
+                        <div class="compare-navigation-group" id="compare-precise-navigation">
+                            <div class="color-tabs insights-subtabs">
+                                <button class="color-tab" id="compare-tab-cell-de" data-insights-parent="compare" data-insights-subtab="cell-de" type="button">Normal contrast</button>
+                                <button class="color-tab" id="compare-tab-complex-contrast" data-insights-parent="compare" data-insights-subtab="complex-contrast" type="button">Complex contrast</button>
+                            </div>
+                        </div>
+                        <div class="compare-navigation-group" id="compare-relationships-navigation"></div>
+                    </div>
                     </div>
                     <div class="color-tab-content active" id="compare-tab-groups-content">
                         <div class="agg-group-meta" id="group-de-summary">Compare samples, metadata groups, or annotations.</div>
@@ -19114,6 +22268,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <div class="color-aggregation" id="annotation-comparison">
                             <div class="agg-group-meta">Open a section, draw annotations, then use Regions to compare those cell sets.</div>
                         </div>
+                    </div>
+                    <div class="color-tab-content" id="compare-tab-selection-content">
+                        <div class="color-aggregation" id="compare-selection-panel"></div>
                     </div>
                     <div class="color-tab-content" id="compare-tab-cell-de-content">
                         <div class="cluster-de-controls">
@@ -19139,6 +22296,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <div class="color-aggregation" id="cluster-de-results">
                             <div class="agg-group-meta">Choose two categories to compare.</div>
                         </div>
+                    </div>
+                    <div class="color-tab-content" id="compare-tab-complex-contrast-content">
+                        <div class="agg-group-meta">Complex contrast is reserved for a future contrast design.</div>
                     </div>
                     <div class="color-tab-content" id="compare-tab-river-content">
                         <div class="cluster-de-controls">
@@ -19188,7 +22348,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <button class="legend-btn" id="neighbor-stats-toggle" type="button">Collapse Neighbor Stats</button>
                         </div>
                         <div class="color-aggregation" id="neighbor-stats">
-                            <div class="agg-group-meta">Select a categorical color to view neighbor stats.</div>
+                            <div class="agg-group-meta">Select a categorical annotation to view neighbor stats.</div>
                         </div>
                     </div>
                     <div class="color-tab-content" id="neighbors-tab-interactions-content">
@@ -19206,7 +22366,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                     <div class="color-tab-content" id="neighbors-tab-dispersion-content">
                         <div class="color-aggregation" id="dispersion-panel">
-                            <div class="agg-group-meta">Select a categorical color to view spatial dispersion.</div>
+                            <div class="agg-group-meta">Select a categorical annotation to view spatial dispersion.</div>
                         </div>
                     </div>
                 </div>
@@ -19215,15 +22375,53 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         panel.querySelectorAll('[data-insights-mode]').forEach((btn) => {{
             btn.addEventListener('click', () => {{
-                setInsightsMode(btn.getAttribute('data-insights-mode') || 'exploration');
+                const mode = btn.getAttribute('data-insights-mode') || 'exploration';
+                if (mode === 'annotate' && insightsMode === 'annotate') {{
+                    setInsightsMode('selection');
+                    return;
+                }}
+                setInsightsMode(mode);
             }});
         }});
         syncInsightsModeClasses();
 
-        const search = document.getElementById('color-search');
-        search.addEventListener('input', () => {{
-            renderColorList(search.value);
-        }});
+        const explorationColorSelect = document.getElementById('exploration-color-select');
+        if (explorationColorSelect) {{
+            const explorationOptions = getExplorationColorOptions();
+            const validExplorationValues = explorationOptions.metadata.concat(explorationOptions.annotations).map((entry) => entry.value);
+            if (!explorationColorCol || !validExplorationValues.includes(getExplorationColorOptionValue(explorationColorCol))) {{
+                explorationColorCol = (DATA.available_colors || []).includes(currentColor)
+                    ? currentColor
+                    : (explorationOptions.annotations[0]?.value || explorationOptions.metadata[0]?.value || '');
+            }}
+            explorationColorSelect.innerHTML = '';
+            [['Section metadata', explorationOptions.metadata], ['Cell annotations', explorationOptions.annotations]].forEach(([group, entries]) => {{
+                if (!entries.length) return;
+                const optgroup = document.createElement('optgroup');
+                optgroup.label = group;
+                entries.forEach((entry) => {{
+                    const option = document.createElement('option');
+                    option.value = entry.value;
+                    option.textContent = entry.label;
+                    optgroup.appendChild(option);
+                }});
+                explorationColorSelect.appendChild(optgroup);
+            }});
+            explorationColorSelect.value = getExplorationColorOptionValue(explorationColorCol);
+            const explorationLabel = document.getElementById('exploration-color-label');
+            if (explorationLabel) explorationLabel.textContent = String(explorationColorCol).startsWith(SECTION_METADATA_COLOR_PREFIX) ? 'Section metadata' : 'Annotation';
+            explorationColorSelect.addEventListener('change', () => {{
+                const nextColor = explorationColorSelect.value;
+                if (!nextColor || !validExplorationValues.includes(nextColor)) return;
+                explorationColorCol = nextColor;
+                if (explorationLabel) explorationLabel.textContent = nextColor.startsWith(SECTION_METADATA_COLOR_PREFIX) ? 'Section metadata' : 'Annotation';
+                celltypeTrendTarget = null;
+                renderGenesDetailsWarnings();
+                renderColorAggregation();
+                renderCellTypeTrend();
+                renderActiveInsightsPanel();
+            }});
+        }}
 
         const groupBy = document.getElementById('color-groupby');
         groupBy.addEventListener('change', () => {{
@@ -19238,31 +22436,71 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             aggregationToggle.textContent = isCollapsed ? 'Show stats' : 'Collapse stats';
         }});
 
-        panel.querySelectorAll('[data-insights-top]').forEach((btn) => {{
-            btn.addEventListener('click', () => {{
-                activateInsightsTopLevelTab(btn.getAttribute('data-insights-top') || 'overview');
+        panel.querySelectorAll('[data-insights-tree-root]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                insightsTreeOpen = !insightsTreeOpen;
+                insightsTreeOpenBranch = null;
+                insightsTreeOpenCompareBranch = null;
+                insightsTreeSelectedLeaf = null;
+                syncInsightsTabClasses();
             }});
         }});
-        panel.querySelectorAll('[data-insights-subtab]').forEach((btn) => {{
-            btn.addEventListener('click', () => {{
-                const topLevel = btn.getAttribute('data-insights-parent') || 'overview';
-                const subtab = btn.getAttribute('data-insights-subtab') || '';
+        panel.querySelectorAll('[data-insights-tree-branch]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const topLevel = button.getAttribute('data-insights-tree-branch') || 'overview';
+                const wasOpen = insightsTreeOpen && insightsTreeOpenBranch === topLevel;
+                insightsTreeOpen = true;
+                insightsTreeOpenBranch = wasOpen ? null : topLevel;
+                insightsTreeOpenCompareBranch = null;
+                insightsTreeSelectedLeaf = null;
+                activateInsightsTopLevelTab(topLevel);
+            }});
+        }});
+        panel.querySelectorAll('[data-insights-tree-compare-branch]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const branch = button.getAttribute('data-insights-tree-compare-branch') || 'quick';
+                const wasOpen = insightsTreeOpen && insightsTreeOpenBranch === 'compare' && insightsTreeOpenCompareBranch === branch;
+                insightsTreeOpen = true;
+                insightsTreeOpenBranch = 'compare';
+                insightsTreeOpenCompareBranch = wasOpen ? null : branch;
+                insightsTreeSelectedLeaf = null;
+                activateInsightsTopLevelTab('compare');
+            }});
+        }});
+        panel.querySelectorAll('[data-insights-tree-leaf]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const topLevel = button.getAttribute('data-insights-tree-parent') || 'overview';
+                const subtab = button.getAttribute('data-insights-tree-leaf') || '';
+                if (!INSIGHTS_SUBTABS[topLevel]?.includes(subtab)) return;
+                insightsTreeSelectedLeaf = {{ topLevel, subtab }};
+                insightsTreeOpen = false;
+                insightsTreeOpenBranch = null;
+                insightsTreeOpenCompareBranch = null;
                 activateInsightsSubtab(topLevel, subtab);
+            }});
+        }});
+        panel.querySelectorAll('[data-compare-mode]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const mode = button.getAttribute('data-compare-mode') || 'quick';
+                insightsCompareMode = mode;
+                const subtab = mode === 'quick' ? 'groups' : (mode === 'precise' ? 'cell-de' : 'river');
+                activateInsightsSubtab('compare', subtab);
             }});
         }});
 
         const markerSearch = document.getElementById('marker-gene-search');
-        markerSearch?.addEventListener('input', () => {{
-            if (insightsTopLevelTab === 'genes' && insightsGenesTab === 'de-genes') {{
-                renderMarkerGenes();
-            }}
+        markerSearch?.addEventListener('change', async () => {{
+            const gene = getInsightsSelectedGene();
+            if (gene) await activateViewerGene(gene, {{ showErrors: true }});
+            else await activateViewerGene('', {{ showErrors: false }});
         }});
-        const spatialGeneSearch = document.getElementById('spatial-gene-search');
-        spatialGeneSearch?.addEventListener('input', () => {{
-            if (insightsTopLevelTab === 'genes' && insightsGenesTab === 'spatial') {{
-                renderSpatialVariableGenes();
-            }}
+        document.getElementById('marker-gene-search-clear')?.addEventListener('click', async () => {{
+            const markerSearch = document.getElementById('marker-gene-search');
+            if (!markerSearch) return;
+            markerSearch.value = '';
+            await activateViewerGene('', {{ showErrors: false }});
         }});
+        renderGenesDetailsWarnings();
 
         const celltypeSelect = document.getElementById('celltype-select');
         celltypeSelect.addEventListener('change', () => {{
@@ -19363,9 +22601,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             exportRiverCsv();
         }});
 
-        // Keep initial load fast: only render the list. Other Insights content is computed on-demand
+        // Keep initial load fast: other Insights content is computed on-demand
         // when the panel/tab is opened.
-        renderColorList('');
         syncInsightsTabClasses();
         updateExpressionScaleUI();
 
@@ -19485,32 +22722,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
-    function renderColorList(query) {{
-        const list = document.getElementById('color-list');
-        if (!list) return;
-        const q = (query || '').trim().toLowerCase();
-        const items = DATA.available_colors.filter(col => col.toLowerCase().includes(q));
-        if (items.length === 0) {{
-            list.innerHTML = `<div class="agg-group-meta">No matches.</div>`;
-            return;
-        }}
-        list.innerHTML = items.map(col => `
-            <div class="color-item ${{col === currentColor && !currentGene ? 'active' : ''}}" data-color="${{col}}">
-                ${{col}}
-            </div>
-        `).join('');
-
-        list.querySelectorAll('.color-item').forEach(item => {{
-            item.addEventListener('click', () => {{
-                const col = item.dataset.color;
-                if (!col) return;
-                setViewerColorColumn(col);
-            }});
-        }});
-    }}
-
     function setViewerColorColumn(col) {{
-        if (!col || !(DATA.available_colors || []).includes(col)) return;
+        const validColumns = getExplorationColorOptions().metadata.concat(getExplorationColorOptions().annotations).map((entry) => entry.value);
+        if (!col || !validColumns.includes(col)) return;
         currentColor = col;
         currentGene = null;
         _dispersionCache.clear();
@@ -19537,12 +22751,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (umapVisible) renderUMAP();
         updateSelectionInfo();
         renderGeneDiscoveryPanel();
-        renderColorList(document.getElementById('color-search')?.value || '');
         renderActiveInsightsPanel();
     }}
 
     function getRiverColumns() {{
-        return getCategoricalColorColumns();
+        const metadataColumns = Object.keys(DATA.metadata_filters || {{}})
+            .filter((column) => Array.isArray(DATA.metadata_filters?.[column]) && DATA.metadata_filters[column].length)
+            .map((column) => ensureSectionMetadataColorColumn(column));
+        return metadataColumns.concat(getCategoricalColorColumns());
     }}
 
     function syncRiverControls() {{
@@ -19555,9 +22771,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!riverRightColumn || !cols.includes(riverRightColumn) || riverRightColumn === riverLeftColumn) {{
             riverRightColumn = cols.find((c) => c !== riverLeftColumn) || riverLeftColumn;
         }}
-        const options = cols.map((c) => ({{ value: c, label: formatMetadataLabel(c) }}));
-        setSelectOptions(document.getElementById('river-left'), options, riverLeftColumn);
-        setSelectOptions(document.getElementById('river-right'), options, riverRightColumn);
+        const left = document.getElementById('river-left');
+        const right = document.getElementById('river-right');
+        if (left) left.innerHTML = renderGroupedAnnotationOptions(riverLeftColumn);
+        if (right) right.innerHTML = renderGroupedAnnotationOptions(riverRightColumn);
     }}
 
     function computeAnnotationCrossTab(leftCol, rightCol) {{
@@ -19836,21 +23053,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const container = document.getElementById('samples-panel');
         if (!container) return;
 
-        const availableCols = (DATA.available_colors || []).filter(function(c) {{
+        const metadataCols = Object.entries(DATA.metadata_filters || {{}})
+            .filter(([, values]) => Array.isArray(values) && values.length)
+            .map(([column]) => ensureSectionMetadataColorColumn(column));
+        const availableCols = (DATA.available_colors || []).concat(metadataCols).filter(function(c) {{
             const meta = DATA.colors_meta?.[c];
             return meta && !meta.is_continuous && (meta.categories || []).length > 0;
         }});
         if (!availableCols.length) {{
-            container.innerHTML = '<div class="agg-group-meta">No categorical color columns available.</div>';
+            container.innerHTML = '<div class="agg-group-meta">No categorical annotation columns available.</div>';
             return;
         }}
 
-        if (!samplesColorCol || !availableCols.includes(samplesColorCol)) {{
-            const curMeta = DATA.colors_meta?.[currentColor];
-            samplesColorCol = (!currentGene && curMeta && !curMeta.is_continuous) ? currentColor : availableCols[0];
+        if (!explorationColorCol || !availableCols.includes(explorationColorCol)) {{
+            explorationColorCol = availableCols.includes(currentColor) ? currentColor : availableCols[0];
         }}
 
-        const comp = computeSectionComposition(samplesColorCol);
+        const colorCol = explorationColorCol;
+        const comp = computeSectionComposition(colorCol);
         if (!comp || !comp.rows.length) {{
             container.innerHTML = '<div class="agg-group-meta">No composition data available.</div>';
             return;
@@ -19858,53 +23078,57 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         let rows = comp.rows.slice();
         if (samplesMetaSortBy) {{
+            const sortColumn = String(samplesMetaSortBy);
+            const getSortValue = (row) => {{
+                if (sortColumn.startsWith(SECTION_METADATA_COLOR_PREFIX)) {{
+                    return String(row.metadata[sortColumn.slice(SECTION_METADATA_COLOR_PREFIX.length)] ?? '');
+                }}
+                const values = getSectionColorValues(sectionById.get(row.id), sortColumn);
+                const meta = DATA.colors_meta?.[sortColumn];
+                const first = Array.from(values || []).find((value) => Number.isFinite(Number(value)) && Number(value) >= 0);
+                return first === undefined ? '' : String(getCategoricalValueNameFromRaw(meta, first) ?? '');
+            }};
             rows.sort(function(a, b) {{
-                const va = String(a.metadata[samplesMetaSortBy] ?? '');
-                const vb = String(b.metadata[samplesMetaSortBy] ?? '');
+                const va = getSortValue(a);
+                const vb = getSortValue(b);
                 return va.localeCompare(vb) || a.id.localeCompare(b.id);
             }});
         }}
 
         const categories = comp.categories;
         const svgHtml = samplesView === 'heatmap'
-            ? buildSamplesHeatmapSvg(rows, categories, samplesColorCol)
-            : buildSamplesBarsSvg(rows, categories, samplesColorCol);
+            ? buildSamplesHeatmapSvg(rows, categories, colorCol)
+            : buildSamplesBarsSvg(rows, categories, colorCol);
 
         const metaKeys = new Set();
         comp.rows.forEach(function(r) {{ Object.keys(r.metadata).forEach(function(k) {{ metaKeys.add(k); }}); }});
-        const sortOptions = ['<option value="">— original order —</option>'].concat(
-            Array.from(metaKeys).map(function(k) {{
-                const sel = samplesMetaSortBy === k ? ' selected' : '';
-                return '<option value="' + escapeHtml(k) + '"' + sel + '>' + escapeHtml(formatMetadataLabel(k)) + '</option>';
-            }})
-        ).join('');
-        const colorOptions = availableCols.map(function(c) {{
-            const sel = c === samplesColorCol ? ' selected' : '';
-            return '<option value="' + escapeHtml(c) + '"' + sel + '>' + escapeHtml(formatMetadataLabel(c)) + '</option>';
-        }}).join('');
-
+        const sortOptions = '<option value="">— original order —</option>'
+            + renderGroupedAnnotationOptions(samplesMetaSortBy);
         const maxLeg = Math.min(categories.length, 16);
         const legendHtml = categories.slice(0, maxLeg).map(function(cat, idx) {{
-            return '<span class="samples-legend-item"><span class="samples-legend-swatch" style="background:' + getCategoryColor(idx, samplesColorCol) + '"></span>' + escapeHtml(cat) + '</span>';
+            return '<span class="samples-legend-item"><span class="samples-legend-swatch" style="background:' + getCategoryColor(idx, colorCol) + '"></span>' + escapeHtml(cat) + '</span>';
         }}).join('') + (categories.length > maxLeg ? '<span class="samples-legend-item agg-group-meta">+' + (categories.length - maxLeg) + ' more</span>' : '');
 
         container.innerHTML = `
             <div class="samples-controls">
-                <div class="cluster-de-select-row">
-                    <div>
-                        <label>Color column</label>
-                        <select id="samples-color-col">${{colorOptions}}</select>
+                <div class="samples-controls-row">
+                    <div class="cluster-de-select-row">
+                        <div>
+                            <label>Sort sections by</label>
+                            <select id="samples-sort-by">${{sortOptions}}</select>
+                        </div>
                     </div>
-                    <div>
-                        <label>Sort sections by</label>
-                        <select id="samples-sort-by">${{sortOptions}}</select>
+                    <div class="samples-view-toggle samples-view-icon-toggle" role="group" aria-label="Section composition view">
+                        <button class="legend-btn icon-only ${{samplesView === 'bars' ? 'active' : ''}}" data-samples-view="bars" type="button" title="Show stacked bars" aria-label="Show stacked bars" aria-pressed="${{samplesView === 'bars'}}">
+                            <svg class="lucide lucide-chart-bar-stacked" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 13v4"></path><path d="M15 5v4"></path><path d="M3 3v16a2 2 0 0 0 2 2h16"></path><rect x="7" y="13" width="9" height="4" rx="1"></rect><rect x="7" y="5" width="12" height="4" rx="1"></rect></svg>
+                        </button>
+                        <button class="legend-btn icon-only ${{samplesView === 'heatmap' ? 'active' : ''}}" data-samples-view="heatmap" type="button" title="Show heatmap" aria-label="Show heatmap" aria-pressed="${{samplesView === 'heatmap'}}">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path><path d="M3 15h18"></path><path d="M9 3v18"></path><path d="M15 3v18"></path></svg>
+                        </button>
                     </div>
-                </div>
-                <div class="samples-view-toggle">
-                    <button class="legend-btn ${{samplesView === 'bars' ? 'active' : ''}}" data-samples-view="bars" type="button">Bars</button>
-                    <button class="legend-btn ${{samplesView === 'heatmap' ? 'active' : ''}}" data-samples-view="heatmap" type="button">Heatmap</button>
                 </div>
             </div>
+            <div class="gene-distribution-summary">Section composition for <strong>${{escapeHtml(formatMetadataLabel(colorCol))}}</strong>${{renderCalcInfoButton('samples_composition')}}</div>
             <div class="samples-chart-container">
                 ${{svgHtml}}
                 <div class="samples-tooltip"></div>
@@ -19912,11 +23136,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="samples-legend">${{legendHtml}}</div>
         `;
 
-        const colorColSel = container.querySelector('#samples-color-col');
-        colorColSel?.addEventListener('change', function() {{
-            samplesColorCol = colorColSel.value;
-            renderSamplesInsights();
-        }});
         const sortBySel = container.querySelector('#samples-sort-by');
         sortBySel?.addEventListener('change', function() {{
             samplesMetaSortBy = sortBySel.value;
@@ -19975,33 +23194,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const container = document.getElementById('color-aggregation');
         const groupBy = document.getElementById('color-groupby');
         if (!container || !groupBy) return;
-        if (!groupBy.value) {{
-            const firstOption = groupBy.querySelector('option[value]:not([value=""])');
-            if (firstOption) groupBy.value = firstOption.value;
-        }}
         const groupKey = groupBy.value;
-        if (!groupKey) {{
-            container.innerHTML = '<div class="agg-group-meta">Pick a metadata column to summarize.</div>';
-            return;
-        }}
+        const groupSpec = groupKey
+            ? (String(groupKey).startsWith(SECTION_METADATA_COLOR_PREFIX)
+                ? {{ kind: 'metadata', column: String(groupKey).slice(SECTION_METADATA_COLOR_PREFIX.length) }}
+                : {{ kind: 'annotation', column: groupKey }})
+            : null;
+        const shouldGroup = !!groupSpec;
 
-        if (currentGene) {{
-            container.innerHTML = '<div class="agg-group-meta">Aggregation is disabled while a gene is active. Clear the gene input to aggregate by categorical colors.</div>';
-            return;
-        }}
-
-        const config = getColorConfig();
-        const label = currentGene || currentColor;
+        const colorCol = explorationColorCol || currentColor;
+        const baseConfig = DATA.colors_meta[colorCol] || {{ is_continuous: false, categories: [], vmin: 0, vmax: 1 }};
+        const config = Object.assign({{}}, baseConfig, {{ colorCol }});
         const groups = new Map();
 
         DATA.sections.forEach(section => {{
-            const groupVal = section.metadata?.[groupKey] || 'unknown';
-            if (!groups.has(groupVal)) {{
-                groups.set(groupVal, {{ total: 0, counts: {{}}, sum: 0, min: null, max: null }});
-            }}
-            const group = groups.get(groupVal);
-            const values = getSectionValues(section);
-            values.forEach(val => {{
+            const values = getSectionColorValues(section, colorCol);
+            if (!values) return;
+            const groupValues = groupSpec?.kind === 'annotation'
+                ? getSectionColorValues(section, groupSpec.column)
+                : null;
+            const addValue = (groupVal, val) => {{
+                if (!groups.has(groupVal)) groups.set(groupVal, {{ total: 0, counts: {{}}, sum: 0, min: null, max: null }});
+                const group = groups.get(groupVal);
                 if (val === null || val === undefined || Number.isNaN(val)) return;
                 group.total += 1;
                 if (config.is_continuous) {{
@@ -20013,7 +23227,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     const catName = config.categories?.[catIdx] || 'unknown';
                     group.counts[catName] = (group.counts[catName] || 0) + 1;
                 }}
-            }});
+            }};
+            if (groupSpec?.kind === 'annotation' && groupValues) {{
+                for (let i = 0; i < values.length; i++) {{
+                    const groupCat = getCategoricalValueNameFromRaw(DATA.colors_meta?.[groupSpec.column], groupValues[i]) || 'unknown';
+                    addValue(groupCat, values[i]);
+                }}
+            }} else {{
+                const groupVal = groupSpec?.kind === 'metadata'
+                    ? String(section.metadata?.[groupSpec.column] ?? 'unknown')
+                    : 'Overall';
+                values.forEach((val) => addValue(groupVal, val));
+            }}
         }});
 
         if (groups.size === 0) {{
@@ -20022,7 +23247,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         const entries = Array.from(groups.entries());
-        entries.sort((a, b) => a[0].localeCompare(b[0]));
+        if (shouldGroup) entries.sort((a, b) => a[0].localeCompare(b[0]));
+
+        function getAggregationGroupTitle(groupVal, total) {{
+            const titleHtml = shouldGroup
+                ? renderAggGroupTitleChip(groupSpec.column, groupVal)
+                : renderAggChip('Overall statistics', 'var(--input-bg)');
+            return renderAggGroupTitle(titleHtml, total);
+        }}
 
         if (config.is_continuous) {{
             container.innerHTML = entries.map(([groupVal, stats]) => {{
@@ -20031,11 +23263,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const max = stats.max !== null ? stats.max.toFixed(2) : 'n/a';
                 return `
                     <div class="agg-group">
-                        <div class="agg-group-title">${{formatMetadataLabel(groupKey)}}: ${{groupVal}}</div>
-                        <div class="agg-group-meta">${{label}} · n=${{stats.total}}</div>
-                        <div class="agg-row"><span class="agg-label">Mean</span><span class="agg-value">${{mean.toFixed(2)}}</span></div>
-                        <div class="agg-row"><span class="agg-label">Min</span><span class="agg-value">${{min}}</span></div>
-                        <div class="agg-row"><span class="agg-label">Max</span><span class="agg-value">${{max}}</span></div>
+                        ${{getAggregationGroupTitle(groupVal, stats.total)}}
+                        <div class="agg-row"><span class="agg-label">${{renderAggChip('Mean')}}</span><span class="agg-value">${{renderAggMetricChip(mean.toFixed(2))}}</span></div>
+                        <div class="agg-row"><span class="agg-label">${{renderAggChip('Min')}}</span><span class="agg-value">${{renderAggMetricChip(min)}}</span></div>
+                        <div class="agg-row"><span class="agg-label">${{renderAggChip('Max')}}</span><span class="agg-value">${{renderAggMetricChip(max)}}</span></div>
                     </div>
                 `;
             }}).join('');
@@ -20050,7 +23281,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const top = isExpanded ? counts : counts.slice(0, 6);
             const shownTotal = top.reduce((sum, [, c]) => sum + c, 0);
             const other = total - shownTotal;
-            const toggleLabel = isExpanded ? 'Show top 6' : 'Show all';
+            const toggleLabel = isExpanded ? 'Show 6' : 'Show all';
 
             const rows = top.map(([cat, count]) => {{
                 const pct = total > 0 ? Math.round((count / total) * 100) : 0;
@@ -20059,28 +23290,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const isActive = linkedSpotlightEnabled && spotlightPinnedCategory === cat;
                 return `
                     <div class="agg-row${{isActive ? ' is-active' : ''}}" data-agg-cat="${{escapeHtml(cat)}}">
-                        <span class="agg-dot" style="background: ${{color}}"></span>
-                        <span class="agg-label">${{escapeHtml(cat)}}</span>
-                        <span class="agg-value">${{pct}}% (${{count}})</span>
+                        <span class="agg-label">${{renderAggCategoryChip(config.colorCol, cat, catIdx)}}</span>
+                        <span class="agg-value">${{renderAggPercentChip(pct)}}${{renderAggCountChip(count)}}</span>
                     </div>
                 `;
             }}).join('');
 
             const otherRow = other > 0 ? `
                 <div class="agg-row">
-                    <span class="agg-dot" style="background: #bbb"></span>
-                    <span class="agg-label">Other</span>
-                    <span class="agg-value">${{Math.round((other / total) * 100)}}% (${{other}})</span>
+                    <span class="agg-label">${{renderAggChip('Other', 'color-mix(in srgb, #999 24%, transparent)')}}</span>
+                    <span class="agg-value">${{renderAggPercentChip(Math.round((other / total) * 100))}}${{renderAggCountChip(other)}}</span>
                 </div>
             ` : '';
 
             return `
                 <div class="agg-group">
-                    <div class="agg-group-title">${{formatMetadataLabel(groupKey)}}: ${{groupVal}}</div>
-                    <div class="agg-group-meta">${{label}} · n=${{total}}</div>
-                    <button class="legend-btn" data-agg-toggle="${{groupVal}}">${{toggleLabel}}</button>
+                    ${{getAggregationGroupTitle(groupVal, total)}}
                     ${{rows}}
                     ${{otherRow}}
+                    <button class="agg-toggle-link" type="button" data-agg-toggle="${{escapeHtml(groupVal)}}">${{toggleLabel}}</button>
                 </div>
             `;
         }}).join('');
@@ -20110,34 +23338,505 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
+    function getGeneSubtabView(subtab) {{
+        return geneSubtabViews[subtab] === 'graph' ? 'graph' : 'list';
+    }}
+
+    function renderGeneSubtabViewToggle(subtab) {{
+        return '';
+    }}
+
+    function renderGeneSubtabViewToggleButtons(subtab) {{
+        const mode = getGeneSubtabView(subtab);
+        return `
+            <button class="legend-btn ${{mode === 'list' ? 'active' : ''}}" data-gene-subtab-view="list" type="button">List</button>
+            <button class="legend-btn ${{mode === 'graph' ? 'active' : ''}}" data-gene-subtab-view="graph" type="button">Graph</button>
+        `;
+    }}
+
+    function bindGeneSubtabViewToggle(container, subtab, rerenderFn) {{
+        const toggle = document.querySelector(`[data-gene-subtab-toggle="${{subtab}}"]`);
+        if (!toggle) return;
+        toggle.innerHTML = renderGeneSubtabViewToggleButtons(subtab);
+        toggle.querySelectorAll('[data-gene-subtab-view]').forEach((btn) => {{
+            btn.addEventListener('click', () => {{
+                const view = btn.getAttribute('data-gene-subtab-view') === 'graph' ? 'graph' : 'list';
+                geneSubtabViews[subtab] = view;
+                rerenderFn();
+            }});
+        }});
+    }}
+
+    function geneGraphPanel(svgHtml) {{
+        return `<div class="gene-graph-panel">${{svgHtml}}<div class="volcano-tooltip"></div></div>`;
+    }}
+
+    function quantileSorted(sorted, q) {{
+        if (!Array.isArray(sorted) || !sorted.length) return null;
+        if (sorted.length === 1) return sorted[0];
+        const pos = (sorted.length - 1) * Math.max(0, Math.min(1, q));
+        const base = Math.floor(pos);
+        const rest = pos - base;
+        const next = sorted[Math.min(base + 1, sorted.length - 1)];
+        return sorted[base] + rest * (next - sorted[base]);
+    }}
+
+    function getRestOrFallbackDEResults(colorCol, category) {{
+        const byCategory = (DATA.pseudobulk_de || {{}})[colorCol] || {{}};
+        const rawCategory = resolveRawCategoryValue(colorCol, category);
+        const bucket = byCategory[String(rawCategory)] || byCategory[String(category)] || null;
+        if (!bucket || typeof bucket !== 'object') return [];
+        if (bucket.__rest__ && typeof bucket.__rest__ === 'object') {{
+            return [{{ reference: '__rest__', result: bucket.__rest__ }}];
+        }}
+        return Object.entries(bucket)
+            .filter(([reference, result]) => !String(reference).startsWith('_') && result && typeof result === 'object')
+            .map(([reference, result]) => ({{ reference, result }}));
+    }}
+
+    function isDEResultGeneSignificant(result, gene) {{
+        if (!result || result.available === false || !gene) return false;
+        const genes = Array.isArray(result.genes) ? result.genes : [];
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
+        const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
+        const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(result.padj_cutoff, 0.05), 0), 1);
+        const log2fcCutoff = normalizePositiveThreshold(result.log2fc_cutoff, 0.5);
+        const target = String(gene);
+        for (let i = 0; i < genes.length; i++) {{
+            if (String(genes[i]) !== target) continue;
+            const fc = Number(log2fc[i]);
+            const padj = Number(pvalsAdj[i]);
+            return Number.isFinite(fc)
+                && Number.isFinite(padj)
+                && padj <= padjCutoff
+                && fc >= log2fcCutoff;
+        }}
+        return false;
+    }}
+
+    function computeCategoryGeneMeans(colorCol, genes, categories) {{
+        const sums = new Map();
+        const counts = new Map();
+        genes.forEach((gene) => {{
+            categories.forEach((category) => {{
+                const key = `${{gene}}\u0000${{category}}`;
+                sums.set(key, 0);
+                counts.set(key, 0);
+            }});
+        }});
+        (DATA.sections || []).forEach((section) => {{
+            const colVals = getSectionColorValues(section, colorCol);
+            if (!colVals) return;
+            const geneValues = new Map();
+            genes.forEach((gene) => {{
+                const vals = getSectionGeneValues(section, gene);
+                if (vals) geneValues.set(gene, vals);
+            }});
+            if (!geneValues.size) return;
+            const n = Math.min(colVals.length, Math.max(...Array.from(geneValues.values()).map(vals => vals.length)));
+            for (let i = 0; i < n; i++) {{
+                const catIdx = Math.round(colVals[i]);
+                if (catIdx < 0 || catIdx >= categories.length) continue;
+                const category = categories[catIdx];
+                geneValues.forEach((vals, gene) => {{
+                    if (i >= vals.length) return;
+                    const value = Number(vals[i]);
+                    if (!Number.isFinite(value)) return;
+                    const key = `${{gene}}\u0000${{category}}`;
+                    sums.set(key, (sums.get(key) || 0) + value);
+                    counts.set(key, (counts.get(key) || 0) + 1);
+                }});
+            }}
+        }});
+        return genes.map((gene) => categories.map((category) => {{
+            const key = `${{gene}}\u0000${{category}}`;
+            const count = counts.get(key) || 0;
+            return count > 0 ? (sums.get(key) || 0) / count : null;
+        }}));
+    }}
+
+    function getClusterGeneMeansColumn(colorCol) {{
+        const data = DATA.cluster_gene_means;
+        const genes = Array.isArray(data?.genes) ? data.genes.map(g => String(g)) : [];
+        const columns = data?.columns || {{}};
+        const column = columns[colorCol] || null;
+        if (!genes.length || !column || !column.means) return null;
+        return {{ genes, column }};
+    }}
+
+    function computeClusterGeneMeanMatrix(colorCol, genes, categories) {{
+        const payload = getClusterGeneMeansColumn(colorCol);
+        if (!payload) return null;
+        const meanGenes = payload.genes;
+        const colData = payload.column;
+        const geneIndex = new Map(meanGenes.map((gene, idx) => [gene, idx]));
+        return genes.map((gene) => {{
+            const idx = geneIndex.get(String(gene));
+            return categories.map((category) => {{
+                if (idx === undefined) return null;
+                const values = colData.means?.[String(category)] || colData.means?.[String(resolveRawCategoryValue(colorCol, category))] || [];
+                const value = Number(values[idx]);
+                return Number.isFinite(value) ? value : null;
+            }});
+        }});
+    }}
+
+    function getGeneDEHeatmapData(colorCol, selectedGene = '') {{
+        const colorMeta = DATA.colors_meta?.[colorCol];
+        if (!colorMeta || colorMeta.is_continuous) return null;
+        const meanPayload = getClusterGeneMeansColumn(colorCol);
+        if (!meanPayload) return null;
+        const meanGeneSet = new Set(meanPayload.genes);
+        const meanGeneByLower = new Map(meanPayload.genes.map(gene => [String(gene).toLowerCase(), gene]));
+        function resolveMeanGeneToken(gene) {{
+            const token = String(gene || '').trim();
+            if (!token) return '';
+            if (meanGeneSet.has(token)) return token;
+            const canonical = resolveCanonicalGeneName(token);
+            if (canonical && meanGeneSet.has(canonical)) return canonical;
+            return meanGeneByLower.get(token.toLowerCase()) || '';
+        }}
+        const meanCategories = (meanPayload.column.categories || Object.keys(meanPayload.column.means || {{}})).map(cat => String(cat));
+        const categories = meanCategories.length
+            ? meanCategories
+            : (colorMeta.categories || getClusterDECategories(colorCol)).map(cat => String(cat));
+        const selected = String(selectedGene || '').trim();
+        const selectedMeanGene = resolveMeanGeneToken(selected);
+        const fullGeneSet = new Set();
+        const visibleGeneSet = new Set();
+        const deStars = new Set();
+        categories.forEach((category) => {{
+            getMarkerGenesForColorCategory(colorCol, category).forEach((gene) => {{
+                const token = String(gene || '').trim();
+                if (!token) return;
+                const meanToken = resolveMeanGeneToken(token);
+                if (!meanToken) return;
+                fullGeneSet.add(meanToken);
+                if (!selected || meanToken === selectedMeanGene || token === selected || resolveCanonicalGeneName(token) === selected) visibleGeneSet.add(meanToken);
+            }});
+            getRestOrFallbackDEResults(colorCol, category).forEach((comparison) => {{
+                if (comparison.reference !== '__rest__') return;
+                const result = comparison.result || {{}};
+                (Array.isArray(result.genes) ? result.genes : []).forEach((gene) => {{
+                    const token = String(gene || '').trim();
+                    if (!token) return;
+                    const meanToken = resolveMeanGeneToken(token);
+                    if (!meanToken) return;
+                    if (isDEResultGeneSignificant(result, token)) {{
+                        fullGeneSet.add(meanToken);
+                        if (!selected || meanToken === selectedMeanGene || token === selected || resolveCanonicalGeneName(token) === selected) visibleGeneSet.add(meanToken);
+                        deStars.add(`${{meanToken}}\u0000${{category}}`);
+                    }}
+                }});
+            }});
+        }});
+        if (selectedMeanGene) {{
+            fullGeneSet.add(selectedMeanGene);
+            visibleGeneSet.add(selectedMeanGene);
+        }}
+        const fullGenes = Array.from(fullGeneSet);
+        const genes = Array.from(visibleGeneSet).slice(0, selected ? 1 : 50);
+        if (!genes.length || !fullGenes.length) {{
+            return {{ categories, genes: [], means: [], zscores: [], deStars, source: 'cluster_gene_means' }};
+        }}
+        const fullMeans = computeClusterGeneMeanMatrix(colorCol, fullGenes, categories);
+        const values = fullMeans.flat().filter(Number.isFinite);
+        const mean = values.reduce((sum, value) => sum + value, 0) / Math.max(values.length, 1);
+        const variance = values.reduce((sum, value) => sum + Math.pow(value - mean, 2), 0) / Math.max(values.length, 1);
+        const sd = Math.sqrt(variance) || 1;
+        const means = computeClusterGeneMeanMatrix(colorCol, genes, categories);
+        return {{ categories, genes, means, zscores: means.map(row => row.map(value => Number.isFinite(value) ? (value - mean) / sd : null)), deStars, source: 'cluster_gene_means' }};
+    }}
+
+    function heatmapZColor(value) {{
+        if (!Number.isFinite(value)) return '#f1f1f1';
+        const t = Math.min(1, Math.abs(value) / 2.5);
+        const white = [255, 255, 255];
+        const target = value < 0 ? [217, 79, 79] : [79, 130, 217];
+        const rgb = target.map((channel, idx) => Math.round(white[idx] + (channel - white[idx]) * t));
+        return `rgb(${{rgb[0]}},${{rgb[1]}},${{rgb[2]}})`;
+    }}
+
+    function buildGeneDEHeatmap(data, colorCol) {{
+        if (!data || !data.genes.length || !data.categories.length) {{
+            return '<div class="marker-empty">No DE genes available for heatmap view.</div>';
+        }}
+        const cellW = 30, cellH = 16, mt = 82, mr = 8, mb = 22;
+        const maxGeneLabelChars = data.genes.length <= 1 ? 10 : 12;
+        const ml = Math.max(28, Math.min(42, maxGeneLabelChars * 3 + 6));
+        const labelChipW = 16, labelChipH = 64;
+        const W = Math.max(160, ml + mr + data.categories.length * cellW);
+        const H = Math.max(140, mt + mb + data.genes.length * cellH);
+        const parts = [];
+        parts.push(`<svg class="gene-graph-svg cluster-de-qc-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        data.categories.forEach((category, colIdx) => {{
+            const x = ml + colIdx * cellW;
+            const categoryColor = getCategoryColorForValue(colorCol, category) || getCategoryColor(colIdx, colorCol);
+            const chipX = x + (cellW - labelChipW) / 2;
+            const chipY = 8;
+            const labelCx = x + cellW / 2;
+            const labelCy = chipY + labelChipH / 2;
+            parts.push(`<rect x="${{chipX.toFixed(1)}}" y="${{chipY}}" width="${{labelChipW}}" height="${{labelChipH}}" rx="8" fill="${{colorToRgbaCss(categoryColor, 0.18)}}" stroke="${{categoryColor}}" stroke-opacity="0.65"/>`);
+            parts.push(`<text x="${{labelCx.toFixed(1)}}" y="${{labelCy.toFixed(1)}}" text-anchor="middle" dominant-baseline="middle" font-size="7" fill="var(--text-color)" transform="rotate(-90 ${{labelCx.toFixed(1)}} ${{labelCy.toFixed(1)}})">${{escapeHtml(formatCategoryLabel(colorCol, category).slice(0, 12))}}</text>`);
+        }});
+        data.genes.forEach((gene, rowIdx) => {{
+            const y = mt + rowIdx * cellH;
+            parts.push(`<text class="volcano-axis-label" x="${{ml - 5}}" y="${{(y + cellH / 2).toFixed(1)}}" text-anchor="end" dy="0.35em">${{escapeHtml(gene.slice(0, maxGeneLabelChars))}}</text>`);
+            data.categories.forEach((category, colIdx) => {{
+                const x = ml + colIdx * cellW;
+                const z = data.zscores[rowIdx]?.[colIdx];
+                const mean = data.means[rowIdx]?.[colIdx];
+                const star = data.deStars.has(`${{gene}}\u0000${{category}}`);
+                parts.push(`<rect x="${{x}}" y="${{y}}" width="${{cellW - 1}}" height="${{cellH - 1}}" fill="${{heatmapZColor(z)}}" stroke="var(--input-bg)" data-volcano-gene="${{escapeHtml(gene)}}" data-tooltip-title="${{escapeHtml(gene)}}" data-tooltip-line1="Category: ${{escapeHtml(formatCategoryLabel(colorCol, category))}}" data-tooltip-line2="Mean expression: ${{escapeHtml(Number.isFinite(mean) ? formatScaleNumber(mean) : 'n/a')}}" data-tooltip-line3="Z-score: ${{escapeHtml(Number.isFinite(z) ? z.toFixed(3) : 'n/a')}}" data-tooltip-line4="${{star ? 'DE vs rest' : 'Not DE vs rest'}}"/>`);
+                if (star) {{
+                    parts.push(`<text x="${{(x + cellW / 2).toFixed(1)}}" y="${{(y + cellH / 2 + 4).toFixed(1)}}" text-anchor="middle" font-size="11" fill="#111">*</text>`);
+                }}
+            }});
+        }});
+        parts.push(`<text class="volcano-axis-label" x="${{ml}}" y="${{H - 8}}" text-anchor="start">z-score of category mean expression: negative red, positive blue</text>`);
+        parts.push('</svg>');
+        return geneGraphPanel(parts.join(''));
+    }}
+
+    function buildSpatialMoranGraph(entries) {{
+        if (!entries.length) return '<div class="marker-empty">No Moran index values available for graph view.</div>';
+        const visible = entries.slice(0, 30);
+        const W = 390, rowH = 24, ml = 28, mr = 18, mt = 20, mb = 30;
+        const H = Math.max(170, mt + mb + visible.length * rowH);
+        const iw = W - ml - mr;
+        const scores = visible.map(e => Number(e.score)).filter(Number.isFinite);
+        const maxScore = Math.max.apply(null, scores.concat([1e-6]));
+        function xs(v) {{ return ml + (Math.max(0, v) / maxScore) * iw; }}
+        const parts = [];
+        parts.push(`<svg class="gene-graph-svg cluster-de-qc-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        parts.push(`<line x1="${{ml}}" y1="${{H - mb}}" x2="${{W - mr}}" y2="${{H - mb}}" stroke="var(--border-color)"/>`);
+        [0, maxScore / 2, maxScore].forEach((tick) => {{
+            const x = xs(tick);
+            parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{H - mb - 4}}" x2="${{x.toFixed(1)}}" y2="${{H - mb + 4}}" stroke="var(--border-color)"/>`);
+            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 12}}" text-anchor="middle">${{formatScaleNumber(tick)}}</text>`);
+        }});
+        visible.forEach((entry, idx) => {{
+            const y = mt + idx * rowH + rowH / 2;
+            const x = xs(entry.score);
+            const label = entry.gene.slice(0, 18);
+            const chipW = Math.max(34, Math.min(86, label.length * 6.1 + 14));
+            const chipX = Math.max(ml, Math.min(W - mr - chipW, x - chipW / 2));
+            parts.push(`<rect x="${{chipX.toFixed(1)}}" y="${{(y - 8).toFixed(1)}}" width="${{chipW.toFixed(1)}}" height="16" rx="8" fill="#e7f0fa" stroke="#5d8fcb" data-volcano-gene="${{escapeHtml(entry.gene)}}" data-tooltip-title="${{escapeHtml(entry.gene)}}" data-tooltip-line1="Moran Index: ${{escapeHtml(entry.score.toFixed(4))}}" data-tooltip-line2="Rank: #${{entry.rank}}"/>`);
+            parts.push(`<text x="${{(chipX + chipW / 2).toFixed(1)}}" y="${{(y + 3.5).toFixed(1)}}" text-anchor="middle" font-size="9" fill="var(--text-color)" pointer-events="none">${{escapeHtml(label)}}</text>`);
+        }});
+        parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 2}}" text-anchor="middle">Moran Index</text>`);
+        parts.push('</svg>');
+        return geneGraphPanel(parts.join(''));
+    }}
+
+    function buildGeneDistributionBoxplot(stats, spec) {{
+        const rows = (Array.isArray(stats) ? stats : []).filter(s => s && s.n > 0 && Number.isFinite(Number(s.min)) && Number.isFinite(Number(s.max)));
+        if (!rows.length) return '<div class="marker-empty">No distribution values available for graph view.</div>';
+        const W = 390, rowH = 28, ml = 132, mr = 18, mt = 18, mb = 30;
+        const H = Math.max(170, mt + mb + rows.length * rowH);
+        const iw = W - ml - mr;
+        const values = rows.flatMap(r => [Number(r.min), Number(r.max), Number(r.q1), Number(r.q3), Number(r.median)]).filter(Number.isFinite);
+        const minV = Math.min.apply(null, values.concat([0]));
+        const maxV = Math.max.apply(null, values.concat([1]));
+        const pad = Math.max((maxV - minV) * 0.06, 1e-6);
+        function xs(v) {{ return ml + ((v - minV + pad) / (maxV - minV + 2 * pad)) * iw; }}
+        const isCellKind = spec?.kind === 'cell';
+        const parts = [];
+        function buildViolinPath(row, centerY, halfH) {{
+            const vals = Array.isArray(row.values) ? row.values.map(Number).filter(Number.isFinite) : [];
+            if (vals.length < 2 || !Number.isFinite(row.min) || !Number.isFinite(row.max) || row.min === row.max) return '';
+            const samples = 30;
+            const range = Math.max(row.max - row.min, 1e-6);
+            const iqr = Number.isFinite(row.q1) && Number.isFinite(row.q3) ? Math.max(row.q3 - row.q1, 0) : 0;
+            const bandwidth = Math.max(iqr / 1.34, range / 12, 1e-6);
+            const points = [];
+            let maxDensity = 0;
+            for (let i = 0; i < samples; i++) {{
+                const value = row.min + (range * i) / (samples - 1);
+                let density = 0;
+                for (let j = 0; j < vals.length; j++) {{
+                    const z = (value - vals[j]) / bandwidth;
+                    density += Math.exp(-0.5 * z * z);
+                }}
+                density = density / vals.length;
+                if (density > maxDensity) maxDensity = density;
+                points.push({{ value, density }});
+            }}
+            if (!(maxDensity > 0)) return '';
+            const upper = points.map(p => {{
+                const h = Math.max(0.5, (p.density / maxDensity) * halfH);
+                return [xs(p.value), centerY - h];
+            }});
+            const lower = points.slice().reverse().map(p => {{
+                const h = Math.max(0.5, (p.density / maxDensity) * halfH);
+                return [xs(p.value), centerY + h];
+            }});
+            const all = upper.concat(lower);
+            return all.map((pt, idx) => `${{idx === 0 ? 'M' : 'L'}}${{pt[0].toFixed(1)}},${{pt[1].toFixed(1)}}`).join(' ') + ' Z';
+        }}
+        parts.push(`<svg class="gene-graph-svg cluster-de-qc-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        rows.forEach((row, idx) => {{
+            const y = mt + idx * rowH + rowH / 2;
+            const label = String(row.cat);
+            const color = isCellKind ? getCategoryColorForValue(spec.key, label) : (getMetadataValueColor(spec?.key, label) || '#8c8c8c');
+            const xQ1 = xs(row.q1), xMed = xs(row.median), xQ3 = xs(row.q3);
+            const violinPath = buildViolinPath(row, y, 9);
+            parts.push(`<text class="volcano-axis-label" x="${{ml - 6}}" y="${{y.toFixed(1)}}" text-anchor="end" dy="0.35em" font-size="7">${{escapeHtml(label.slice(0, 24))}}</text>`);
+            if (violinPath) {{
+                parts.push(`<path d="${{violinPath}}" fill="${{color}}" fill-opacity="0.16" stroke="${{color}}" stroke-opacity="0.35" stroke-width="1" data-tooltip-title="${{escapeHtml(label)}}" data-tooltip-line1="n: ${{Number(row.n).toLocaleString()}}" data-tooltip-line2="median: ${{escapeHtml(formatScaleNumber(row.median))}}" data-tooltip-line3="Q1-Q3: ${{escapeHtml(formatScaleNumber(row.q1))}} - ${{escapeHtml(formatScaleNumber(row.q3))}}" data-tooltip-line4="min-max: ${{escapeHtml(formatScaleNumber(row.min))}} - ${{escapeHtml(formatScaleNumber(row.max))}}"/>`);
+            }}
+            parts.push(`<rect x="${{xQ1.toFixed(1)}}" y="${{(y - 6).toFixed(1)}}" width="${{Math.max(1, xQ3 - xQ1).toFixed(1)}}" height="12" rx="3" fill="${{color}}" fill-opacity="0.28" stroke="${{color}}" data-tooltip-title="${{escapeHtml(label)}}" data-tooltip-line1="n: ${{Number(row.n).toLocaleString()}}" data-tooltip-line2="median: ${{escapeHtml(formatScaleNumber(row.median))}}" data-tooltip-line3="Q1-Q3: ${{escapeHtml(formatScaleNumber(row.q1))}} - ${{escapeHtml(formatScaleNumber(row.q3))}}" data-tooltip-line4="min-max: ${{escapeHtml(formatScaleNumber(row.min))}} - ${{escapeHtml(formatScaleNumber(row.max))}}"/>`);
+            parts.push(`<line x1="${{xMed.toFixed(1)}}" y1="${{(y - 7).toFixed(1)}}" x2="${{xMed.toFixed(1)}}" y2="${{(y + 7).toFixed(1)}}" stroke="${{color}}" stroke-width="2"/>`);
+        }});
+        [minV, (minV + maxV) / 2, maxV].forEach((tick) => {{
+            const x = xs(tick);
+            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 12}}" text-anchor="middle">${{formatScaleNumber(tick)}}</text>`);
+        }});
+        parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 1}}" text-anchor="middle">expression</text>`);
+        parts.push('</svg>');
+        return geneGraphPanel(parts.join(''));
+    }}
+
+    function buildGeneDistributionMeanPlot(stats, spec) {{
+        const rows = (Array.isArray(stats) ? stats : []).filter(s => s && Number.isFinite(Number(s.mean)));
+        if (!rows.length) return '<div class="marker-empty">No pseudobulk aggregate means available for graph view.</div>';
+        const W = 390, rowH = 24, ml = 132, mr = 18, mt = 18, mb = 30;
+        const H = Math.max(170, mt + mb + rows.length * rowH);
+        const iw = W - ml - mr;
+        const values = rows.map(r => Number(r.mean)).filter(Number.isFinite);
+        const maxV = Math.max.apply(null, values.concat([1e-6]));
+        function xs(v) {{ return ml + (Math.max(0, v) / maxV) * iw; }}
+        const isCellKind = spec?.kind === 'cell';
+        const parts = [];
+        parts.push(`<svg class="gene-graph-svg cluster-de-qc-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        parts.push(`<line x1="${{ml}}" y1="${{H - mb}}" x2="${{W - mr}}" y2="${{H - mb}}" stroke="var(--border-color)"/>`);
+        [0, maxV / 2, maxV].forEach((tick) => {{
+            const x = xs(tick);
+            parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{H - mb - 4}}" x2="${{x.toFixed(1)}}" y2="${{H - mb + 4}}" stroke="var(--border-color)"/>`);
+            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 12}}" text-anchor="middle">${{formatScaleNumber(tick)}}</text>`);
+        }});
+        rows.forEach((row, idx) => {{
+            const y = mt + idx * rowH + rowH / 2;
+            const label = String(row.cat);
+            const color = isCellKind ? getCategoryColorForValue(spec.key, label) : (getMetadataValueColor(spec?.key, label) || '#8c8c8c');
+            const x = xs(Number(row.mean));
+            parts.push(`<text class="volcano-axis-label" x="${{ml - 6}}" y="${{y.toFixed(1)}}" text-anchor="end" dy="0.35em" font-size="7">${{escapeHtml(label.slice(0, 24))}}</text>`);
+            parts.push(`<line x1="${{ml}}" y1="${{y.toFixed(1)}}" x2="${{x.toFixed(1)}}" y2="${{y.toFixed(1)}}" stroke="${{color}}" stroke-width="4" stroke-linecap="butt" data-tooltip-title="${{escapeHtml(label)}}" data-tooltip-line1="Pseudobulk mean: ${{escapeHtml(formatScaleNumber(row.mean))}}" data-tooltip-line2="Cells: ${{Number.isFinite(Number(row.n)) ? Number(row.n).toLocaleString() : 'n/a'}}"/>`);
+            parts.push(`<circle cx="${{x.toFixed(1)}}" cy="${{y.toFixed(1)}}" r="4" fill="${{color}}" data-tooltip-title="${{escapeHtml(label)}}" data-tooltip-line1="Pseudobulk mean: ${{escapeHtml(formatScaleNumber(row.mean))}}" data-tooltip-line2="Cells: ${{Number.isFinite(Number(row.n)) ? Number(row.n).toLocaleString() : 'n/a'}}"/>`);
+        }});
+        parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 1}}" text-anchor="middle">pseudobulk aggregate mean</text>`);
+        parts.push('</svg>');
+        return geneGraphPanel(parts.join(''));
+    }}
+
+    function buildPseudobulkMeanDeviationPlot(rows, background, colorCol) {{
+        const cleanRows = (Array.isArray(rows) ? rows : []).filter(row => row && Number.isFinite(Number(row.mean)));
+        if (!cleanRows.length || !Number.isFinite(background)) {{
+            return '<div class="marker-empty">No pseudobulk mean values available for graph view.</div>';
+        }}
+        const W = 390, rowH = 24, labelW = 104, ml = 124, mr = 18, mt = 18, mb = 38;
+        const H = Math.max(170, mt + mb + cleanRows.length * rowH);
+        const iw = W - ml - mr;
+        const centerX = ml + iw / 2;
+        const maxDelta = Math.max.apply(null, cleanRows.map(row => Math.abs(Number(row.mean) - background)).concat([1e-6]));
+        function dx(delta) {{ return (delta / maxDelta) * (iw / 2); }}
+        const parts = [];
+        parts.push(`<svg class="gene-graph-svg cluster-de-qc-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        parts.push(`<line x1="${{centerX.toFixed(1)}}" y1="${{mt - 6}}" x2="${{centerX.toFixed(1)}}" y2="${{H - mb + 6}}" stroke="var(--text-color)" stroke-opacity="0.42" stroke-width="1.5"/>`);
+        [-maxDelta, 0, maxDelta].forEach((tick) => {{
+            const x = centerX + dx(tick);
+            parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{H - mb}}" x2="${{x.toFixed(1)}}" y2="${{H - mb + 4}}" stroke="var(--border-color)"/>`);
+            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 14}}" text-anchor="middle">${{formatScaleNumber(tick)}}</text>`);
+        }});
+        parts.push(`<line x1="${{ml}}" y1="${{H - mb}}" x2="${{W - mr}}" y2="${{H - mb}}" stroke="var(--border-color)"/>`);
+        cleanRows.forEach((row, idx) => {{
+            const y = mt + idx * rowH + rowH / 2;
+            const mean = Number(row.mean);
+            const delta = mean - background;
+            const x2 = centerX + dx(delta);
+            const color = delta >= 0 ? '#2f9e67' : '#d94f4f';
+            const category = String(row.category);
+            const categoryColor = getCategoryColorForValue(colorCol, category) || getCategoryColor(idx, colorCol);
+            const chipY = y - 8;
+            parts.push(`<rect x="6" y="${{chipY.toFixed(1)}}" width="${{labelW}}" height="16" rx="8" fill="${{colorToRgbaCss(categoryColor, 0.18)}}" stroke="${{categoryColor}}" stroke-opacity="0.65"/>`);
+            parts.push(`<text x="${{(6 + labelW / 2).toFixed(1)}}" y="${{(y + 3.5).toFixed(1)}}" text-anchor="middle" font-size="9" fill="var(--text-color)">${{escapeHtml(formatCategoryLabel(colorCol, category).slice(0, 18))}}</text>`);
+            parts.push(`<line x1="${{centerX.toFixed(1)}}" y1="${{y.toFixed(1)}}" x2="${{x2.toFixed(1)}}" y2="${{y.toFixed(1)}}" stroke="${{color}}" stroke-width="4" stroke-linecap="butt" data-tooltip-title="${{escapeHtml(formatCategoryLabel(colorCol, category))}}" data-tooltip-line1="Mean: ${{escapeHtml(formatScaleNumber(mean))}}" data-tooltip-line2="Background: ${{escapeHtml(formatScaleNumber(background))}}" data-tooltip-line3="Delta: ${{escapeHtml(formatScaleNumber(delta))}}" data-tooltip-line4="Cells: ${{Number.isFinite(Number(row.nCells)) ? Number(row.nCells).toLocaleString() : 'n/a'}}"/>`);
+        }});
+        parts.push(`<text class="volcano-axis-label" x="${{centerX.toFixed(1)}}" y="${{H - 2}}" text-anchor="middle">mean - background</text>`);
+        parts.push('</svg>');
+        return geneGraphPanel(parts.join(''));
+    }}
+
     function renderMarkerGenes() {{
         const container = document.getElementById('marker-genes');
         if (!container) return;
-        const searchInput = document.getElementById('marker-gene-search');
-        const query = (searchInput?.value || '').trim().toLowerCase();
+        const subtab = 'de-genes';
+        const toggleHtml = renderGeneSubtabViewToggle(subtab);
+        const exportBtn = document.getElementById('marker-genes-export-btn');
+        const calcInfo = document.getElementById('marker-genes-calc-info');
+        const selectedGene = getInsightsSelectedGene();
         const markers = DATA.marker_genes || {{}};
+        const viewMode = getGeneSubtabView(subtab);
+        if (calcInfo) calcInfo.innerHTML = renderCalcInfoButton(viewMode === 'graph' ? 'de_heatmap' : 'de_genes');
+        renderGenesDetailsWarnings();
 
-        const colorMeta = DATA.colors_meta?.[currentColor];
+        const markerColorCol = explorationColorCol || currentColor;
+        const colorMeta = DATA.colors_meta?.[markerColorCol];
         if (!colorMeta || colorMeta.is_continuous) {{
-            container.innerHTML = '<div class="agg-group-meta">Pseudobulk DE genes are available for categorical colors only.</div>';
+            if (exportBtn) exportBtn.disabled = true;
+            container.innerHTML = toggleHtml + '<div class="marker-empty">Pseudobulk DE genes are available for categorical annotations only.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderMarkerGenes);
             return;
         }}
 
-        const groupMarkers = markers[currentColor];
-        if (!groupMarkers || Object.keys(groupMarkers).length === 0) {{
+        const deForColor = (DATA.pseudobulk_de || {{}})[markerColorCol] || null;
+        const hasDEForColor = !!(deForColor && typeof deForColor === 'object' && Object.keys(deForColor).some((key) => !String(key).startsWith('_')));
+        const groupMarkers = markers[markerColorCol] || {{}};
+        if (!hasDEForColor && Object.keys(groupMarkers).length === 0) {{
             const availableColors = getAvailableMarkerGeneColors();
             const extra = availableColors.length
                 ? ` Available for: ${{availableColors.join(', ')}}.`
                 : ' No pseudobulk DE genes were embedded in this viewer.';
-            container.innerHTML = `<div class="agg-group-meta">No pseudobulk DE genes available for this color.${{escapeHtml(extra)}}</div>`;
+            if (exportBtn) exportBtn.disabled = true;
+            container.innerHTML = toggleHtml + `<div class="marker-empty">No pseudobulk DE genes available for this color.${{escapeHtml(extra)}}</div>`;
+            bindGeneSubtabViewToggle(container, subtab, renderMarkerGenes);
+            return;
+        }}
+        if (exportBtn) {{
+            exportBtn.disabled = false;
+            if (viewMode === 'graph') {{
+                exportBtn.title = 'Download DE heatmap SVG';
+                exportBtn.setAttribute('aria-label', 'Download DE heatmap SVG');
+                exportBtn.onclick = (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    downloadGeneGraphSvg('marker-genes', `karospace-de-heatmap-${{sanitizeFilenamePart(markerColorCol || 'color')}}`, 'No DE heatmap is available to export.');
+                }};
+            }} else {{
+                exportBtn.title = `Download full pseudobulk DE analysis for every ${{formatMetadataLabel(markerColorCol)}} category as a CSV`;
+                exportBtn.setAttribute('aria-label', 'Download full pseudobulk DE analysis CSV');
+                exportBtn.onclick = (e) => {{
+                    e.preventDefault();
+                    e.stopPropagation();
+                    exportMarkerGenesCsv(markerColorCol);
+                }};
+            }}
+        }}
+
+        if (viewMode === 'graph') {{
+            const heatmapData = getGeneDEHeatmapData(markerColorCol, selectedGene);
+            container.innerHTML = toggleHtml + buildGeneDEHeatmap(heatmapData, markerColorCol);
+            bindGeneSubtabViewToggle(container, subtab, renderMarkerGenes);
+            bindClusterDEPlotInteractions(container, renderMarkerGenes);
             return;
         }}
 
         const categories = colorMeta.categories || Object.keys(groupMarkers);
         const rows = categories.map((cat, catIdx) => {{
             const key = String(cat);
-            const categoryColor = getCategoryColorForValue(currentColor, key);
-            const genes = getMarkerGenesForColorCategory(currentColor, key)
+            const genes = getMarkerGenesForColorCategory(markerColorCol, key)
                 .map((gene) => {{
                     const raw = String(gene || '').trim();
                     if (!raw) return null;
@@ -20147,13 +23846,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     }};
                 }})
                 .filter(Boolean);
-            if (query) {{
+            if (selectedGene) {{
                 const hasMatch = genes.some((entry) => {{
-                    const rawMatch = entry.raw.toLowerCase().includes(query);
-                    const canonicalMatch = entry.canonical
-                        ? entry.canonical.toLowerCase().includes(query)
-                        : false;
-                    return rawMatch || canonicalMatch;
+                    return entry.raw === selectedGene || entry.canonical === selectedGene;
                 }});
                 if (!hasMatch) return '';
             }}
@@ -20161,47 +23856,35 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 ? genes.map((entry) => renderGeneTokenButton(entry.raw, {{
                     allowUnknown: true,
                     isActive: !!entry.canonical && entry.canonical === currentGene,
+                    isSearchActive: !!selectedGene && (entry.raw === selectedGene || entry.canonical === selectedGene),
                     showMeta: false,
                     title: entry.canonical
                         ? 'Load pseudobulk DE gene into the viewer'
                         : 'DE gene name only; this gene was not embedded in the viewer',
                 }})).join('')
-                : '<div class="agg-group-meta">No pseudobulk DE genes found.</div>';
+                : '<div class="marker-empty">No pseudobulk DE genes found.</div>';
             const isSpotlit = linkedSpotlightEnabled && spotlightPinnedCategory === key;
             return `
                 <div class="marker-group">
-                    <div class="marker-group-title${{isSpotlit ? ' is-spotlit' : ''}}" data-marker-category="${{escapeHtml(key)}}" title="Click to highlight this annotation in the viewer"><span class="agg-dot" style="background: ${{categoryColor}}"></span><input type="text" class="marker-group-label-editor" data-marker-category-label-idx="${{catIdx}}" value="${{escapeHtml(key)}}" title="Rename this annotation; the new name propagates to the legend and viewer"></div>
+                    <div class="marker-group-title${{isSpotlit ? ' is-spotlit' : ''}}" data-marker-category="${{escapeHtml(key)}}" title="Click to highlight this annotation in the viewer">${{renderAggCategoryChip(markerColorCol, key, catIdx)}}</div>
                     <div class="gene-token-grid">${{geneButtons}}</div>
                 </div>
             `;
         }}).filter(Boolean);
 
         if (rows.length === 0) {{
-            container.innerHTML = '<div class="agg-group-meta">No pseudobulk DE genes match your search.</div>';
+            if (exportBtn) exportBtn.disabled = false;
+            container.innerHTML = toggleHtml + '<div class="marker-empty">No pseudobulk DE genes match your selection.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderMarkerGenes);
             return;
         }}
 
-        const loadedGeneNote = currentGene
-            ? `<div class="agg-group-meta">Loaded gene: <strong>${{escapeHtml(currentGene)}}</strong>. Click another DE gene to switch.</div>`
-            : '<div class="agg-group-meta">Click a pseudobulk DE gene to load it in the viewer. Genes not embedded in this viewer are shown as names only.</div>';
-
-        const exportBar = `<div class="marker-genes-export"><button class="selection-summary-compare-btn" type="button" id="marker-genes-export-btn" title="Download pseudobulk DE genes for every ${{escapeHtml(formatMetadataLabel(currentColor))}} category as a CSV">Export DE genes (CSV)</button></div>`;
-
-        container.innerHTML = loadedGeneNote + exportBar + rows.join('');
+        container.innerHTML = toggleHtml + rows.join('');
+        bindGeneSubtabViewToggle(container, subtab, renderMarkerGenes);
         bindGeneActivateButtons(container, renderMarkerGenes);
-
-        const exportBtn = container.querySelector('#marker-genes-export-btn');
-        if (exportBtn) {{
-            exportBtn.addEventListener('click', (e) => {{
-                e.preventDefault();
-                e.stopPropagation();
-                exportMarkerGenesCsv();
-            }});
-        }}
 
         container.querySelectorAll('[data-marker-category]').forEach(title => {{
             title.addEventListener('click', (event) => {{
-                if (event.target && event.target.closest('.marker-group-label-editor')) return;
                 const cat = title.getAttribute('data-marker-category');
                 if (!cat) return;
                 linkedSpotlightEnabled = true;
@@ -20211,44 +23894,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 updateAllLegendSpotlightClasses();
                 rerenderForSpotlightChange();
                 renderMarkerGenes();
-            }});
-        }});
-
-        container.querySelectorAll('.marker-group-label-editor').forEach((input) => {{
-            input.addEventListener('click', (event) => event.stopPropagation());
-            input.addEventListener('mousedown', (event) => event.stopPropagation());
-            input.addEventListener('keydown', (event) => {{
-                event.stopPropagation();
-                if (event.key === 'Enter') input.blur();
-                if (event.key === 'Escape') {{
-                    const idx = Number(input.getAttribute('data-marker-category-label-idx'));
-                    input.value = String((colorMeta.categories || [])[idx] || '');
-                    input.blur();
-                }}
-            }});
-            input.addEventListener('change', (event) => {{
-                event.stopPropagation();
-                const idx = Number(input.getAttribute('data-marker-category-label-idx'));
-                if (!Number.isInteger(idx) || !currentColor) return;
-                const result = setCategoryLabelOverride(currentColor, idx, input.value);
-                if (!result.ok) {{
-                    if (result.reason === 'duplicate-label') {{
-                        alert(`Category label "${{result.label}}" is already in use for this annotation.`);
-                    }}
-                    input.value = String((colorMeta.categories || [])[idx] || '');
-                    return;
-                }}
-                if (!result.changed) {{
-                    input.value = result.label || input.value;
-                    return;
-                }}
-                comparisonCountsCache.delete(String(currentColor || ''));
-                renderLegend('legend');
-                renderLegend('modal-legend');
-                renderAllSections();
-                if (modalSection) renderModalSection();
-                if (umapVisible) renderUMAP();
-                renderActiveInsightsPanel();
             }});
         }});
     }}
@@ -20300,19 +23945,31 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function finalizeDistributionBuckets(groups) {{
         return Array.from(groups.entries()).map(([cat, arr]) => {{
             const n = arr.length;
-            if (n === 0) return {{ cat, n: 0, mean: null, median: null, pctExpr: null, max: null }};
-            let sum = 0, nnz = 0, max = -Infinity;
+            if (n === 0) return {{ cat, n: 0, mean: null, median: null, pctExpr: null, min: null, q1: null, q3: null, max: null, values: [] }};
+            let sum = 0, nnz = 0, min = Infinity, max = -Infinity;
             for (let i = 0; i < n; i++) {{
                 const v = arr[i];
                 sum += v;
                 if (v > 0) nnz++;
+                if (v < min) min = v;
                 if (v > max) max = v;
             }}
             const mean = sum / n;
             const sorted = arr.slice().sort((a, b) => a - b);
             const mid = Math.floor(n / 2);
             const median = n % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
-            return {{ cat, n, mean, median, pctExpr: (nnz / n) * 100, max }};
+            return {{
+                cat,
+                n,
+                mean,
+                median,
+                pctExpr: (nnz / n) * 100,
+                min,
+                q1: quantileSorted(sorted, 0.25),
+                q3: quantileSorted(sorted, 0.75),
+                max,
+                values: sorted,
+            }};
         }});
     }}
 
@@ -20396,20 +24053,48 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return finalizeDistributionBuckets(groups);
     }}
 
-    function wireGeneDistributionInputs(container) {{
-        const geneInput = container.querySelector('#gene-distribution-input');
-        if (geneInput) {{
-            const activate = () => {{
-                const val = geneInput.value.trim();
-                if (val !== (currentGene || '')) {{
-                    activateViewerGene(val);
-                }}
-            }};
-            geneInput.addEventListener('keydown', (e) => {{
-                if (e.key === 'Enter') {{ e.preventDefault(); activate(); }}
-            }});
-            geneInput.addEventListener('change', activate);
+    function computePseudobulkGeneDistributionStats(gene, colorCol) {{
+        const payload = getClusterGeneMeansColumn(colorCol);
+        if (!gene || !payload) return null;
+        const geneToken = String(gene || '').trim();
+        const geneIndex = new Map(payload.genes.map((g, idx) => [String(g), idx]));
+        let idx = geneIndex.get(geneToken);
+        if (idx === undefined) {{
+            const canonical = resolveCanonicalGeneName(geneToken);
+            if (canonical) idx = geneIndex.get(canonical);
         }}
+        if (idx === undefined) {{
+            const lower = geneToken.toLowerCase();
+            const match = payload.genes.find(g => String(g).toLowerCase() === lower);
+            if (match) idx = geneIndex.get(match);
+        }}
+        if (idx === undefined) return null;
+
+        const colData = payload.column || {{}};
+        const meansByCategory = colData.means || {{}};
+        const nCellsByCategory = colData.n_cells || {{}};
+        const categories = (colData.categories || Object.keys(meansByCategory)).map(cat => String(cat));
+        return categories.map((category) => {{
+            const rawCategory = String(resolveRawCategoryValue(colorCol, category));
+            const values = meansByCategory[category] || meansByCategory[rawCategory] || [];
+            const mean = Number(values[idx]);
+            const n = Number(nCellsByCategory[category] ?? nCellsByCategory[rawCategory] ?? NaN);
+            return {{
+                cat: category,
+                n: Number.isFinite(n) ? n : null,
+                mean: Number.isFinite(mean) ? mean : null,
+                median: null,
+                pctExpr: null,
+                min: null,
+                q1: null,
+                q3: null,
+                max: null,
+                source: 'cluster_gene_means',
+            }};
+        }});
+    }}
+
+    function wireGeneDistributionInputs(container) {{
         const groupSel = container.querySelector('#gene-distribution-groupby');
         if (groupSel) {{
             groupSel.addEventListener('change', () => {{
@@ -20449,8 +24134,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             tr.addEventListener('click', () => {{
                 const cat = tr.getAttribute('data-gene-dist-cat');
                 if (!cat) return;
-                const spec = parseGeneDistributionGroupSpec(geneDistributionGroupBy);
-                if (!spec || spec.kind !== 'cell') return;
+                const colorCol = explorationColorCol || currentColor;
+                const meta = DATA.colors_meta?.[colorCol];
+                if (!colorCol || !meta || meta.is_continuous) return;
+                const spec = {{ kind: 'cell', key: colorCol }};
                 if (currentColor !== spec.key) {{
                     setViewerColorColumn(spec.key);
                 }}
@@ -20466,43 +24153,48 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderGeneDistributionInsights() {{
         const container = document.getElementById('gene-distribution-panel');
         if (!container) return;
+        const subtab = 'distribution';
+        const toggleHtml = renderGeneSubtabViewToggle(subtab);
+        const isGraphView = getGeneSubtabView(subtab) === 'graph';
+        const exportBtn = document.getElementById('gene-distribution-export-svg');
+        if (exportBtn) {{
+            exportBtn.style.display = isGraphView ? '' : 'none';
+            exportBtn.onclick = (event) => {{
+                event.preventDefault();
+                event.stopPropagation();
+                const gene = sanitizeFilenamePart(getInsightsSelectedGene() || 'gene');
+                downloadGeneGraphSvg('gene-distribution-panel', `karospace-gene-distribution-${{gene}}`, 'No distribution graph is available to export.');
+            }};
+        }}
 
         const availableCellCols = (DATA.available_colors || []).filter(c => {{
             const meta = DATA.colors_meta?.[c];
             return meta && !meta.is_continuous && (meta.categories || []).length > 0;
         }});
         const availableMetaKeys = getAvailableSectionMetadataKeys();
+        const colorCol = explorationColorCol || currentColor;
+        const colorMeta = DATA.colors_meta?.[colorCol];
 
-        if (!availableCellCols.length && !availableMetaKeys.length) {{
-            container.innerHTML = '<div class="agg-group-meta">No categorical columns or section metadata available.</div>';
+        if (!availableCellCols.length) {{
+            container.innerHTML = toggleHtml + '<div class="marker-empty">No categorical Exploration annotations are available.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderGeneDistributionInsights);
+            return;
+        }}
+        if (!colorCol || !colorMeta || colorMeta.is_continuous || !(colorMeta.categories || []).length) {{
+            container.innerHTML = toggleHtml + '<div class="marker-empty">Choose a categorical Exploration annotation to view gene distribution.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderGeneDistributionInsights);
             return;
         }}
 
         const validSpecs = new Set();
         availableCellCols.forEach(c => validSpecs.add(encodeGeneDistributionGroupSpec('cell', c)));
         availableMetaKeys.forEach(k => validSpecs.add(encodeGeneDistributionGroupSpec('meta', k)));
-
-        const currentSpec = parseGeneDistributionGroupSpec(geneDistributionGroupBy);
-        const currentEncoded = currentSpec ? encodeGeneDistributionGroupSpec(currentSpec.kind, currentSpec.key) : '';
-        if (!currentEncoded || !validSpecs.has(currentEncoded)) {{
-            const curMeta = DATA.colors_meta?.[currentColor];
-            const fallback = (curMeta && !curMeta.is_continuous && availableCellCols.includes(currentColor))
-                ? encodeGeneDistributionGroupSpec('cell', currentColor)
-                : (availableCellCols.length
-                    ? encodeGeneDistributionGroupSpec('cell', availableCellCols[0])
-                    : encodeGeneDistributionGroupSpec('meta', availableMetaKeys[0]));
-            geneDistributionGroupBy = fallback;
-        }}
-
-        const spec = parseGeneDistributionGroupSpec(geneDistributionGroupBy);
+        const spec = {{ kind: 'cell', key: colorCol }};
         const buildOptions = (kind, keys, selectedEncoded) => keys.map(k => {{
             const enc = encodeGeneDistributionGroupSpec(kind, k);
             const sel = enc === selectedEncoded ? ' selected' : '';
             return '<option value="' + escapeHtml(enc) + '"' + sel + '>' + escapeHtml(formatMetadataLabel(k)) + '</option>';
         }}).join('');
-        let optionsHtml = '';
-        if (availableCellCols.length) optionsHtml += '<optgroup label="Cell annotations">' + buildOptions('cell', availableCellCols, geneDistributionGroupBy) + '</optgroup>';
-        if (availableMetaKeys.length) optionsHtml += '<optgroup label="Sample metadata">' + buildOptions('meta', availableMetaKeys, geneDistributionGroupBy) + '</optgroup>';
 
         const restrictSpec = parseGeneDistributionGroupSpec(geneDistributionRestrictBy);
         const restrictEnabled = !!(restrictSpec && restrictSpec.key && validSpecs.has(encodeGeneDistributionGroupSpec(restrictSpec.kind, restrictSpec.key)));
@@ -20528,18 +24220,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const activeRestrict = restrictEnabled && geneDistributionRestrictValue;
 
-        const geneVal = currentGene || '';
         const controlsHtml = `
-            <div class="cluster-de-controls">
-                <div>
-                    <label>Gene</label>
-                    <input type="text" id="gene-distribution-input" list="gene-list" placeholder="e.g. Dbp" value="${{escapeHtml(geneVal)}}" autocomplete="off" spellcheck="false">
-                </div>
-                <div>
-                    <label>Group by</label>
-                    <select id="gene-distribution-groupby">${{optionsHtml}}</select>
-                </div>
-            </div>
             <div class="cluster-de-controls">
                 <div>
                     <label>Restrict to</label>
@@ -20551,27 +24232,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
             </div>
         `;
+        const selectedGene = getInsightsSelectedGene();
 
-        if (!currentGene) {{
-            container.innerHTML = controlsHtml + '<div class="agg-group-meta">Type a gene name and press Enter to see per-group expression stats. The viewer will recolor by that gene.</div>';
+        if (!selectedGene) {{
+            container.innerHTML = toggleHtml + controlsHtml + '<div class="marker-empty">Select a gene to see per-group expression stats.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderGeneDistributionInsights);
             wireGeneDistributionInputs(container);
             return;
         }}
 
         const stats = computeGeneDistributionStats(
-            currentGene,
+            selectedGene,
             spec,
             activeRestrict ? restrictSpec : null,
             activeRestrict ? geneDistributionRestrictValue : null,
         );
         if (!stats || !stats.length) {{
-            container.innerHTML = controlsHtml + '<div class="agg-group-meta">No data available for this gene \u00d7 group combination.</div>';
+            container.innerHTML = toggleHtml + controlsHtml + '<div class="marker-empty">No data available for this gene × group combination.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderGeneDistributionInsights);
             wireGeneDistributionInputs(container);
             return;
         }}
 
         const sortDir = geneDistributionSortDir === 'asc' ? 1 : -1;
-        const sortKey = geneDistributionSortKey;
+        const sortKey = ['cat', 'n', 'mean', 'median', 'pctExpr'].includes(geneDistributionSortKey) ? geneDistributionSortKey : 'mean';
         const sorted = stats.slice().sort((a, b) => {{
             if (sortKey === 'cat') return String(a.cat).localeCompare(String(b.cat)) * sortDir;
             const va = a[sortKey];
@@ -20588,20 +24272,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const fmtN = n => n == null ? '\u2014' : Number(n).toLocaleString();
         const fmtF = v => v == null ? '\u2014' : Number(v).toFixed(3);
         const fmtP = v => v == null ? '\u2014' : Number(v).toFixed(1) + '%';
-        const arrow = k => geneDistributionSortKey === k ? (geneDistributionSortDir === 'asc' ? ' \u2191' : ' \u2193') : '';
+        const arrow = k => sortKey === k ? (geneDistributionSortDir === 'asc' ? ' \u2191' : ' \u2193') : '';
 
         const isCellKind = spec.kind === 'cell';
-        const dotColorFor = (cat, idx) => isCellKind
-            ? getCategoryColorForValue(spec.key, cat)
-            : getCategoryColor(idx);
         const rows = sorted.map((s, idx) => `
             <tr data-gene-dist-cat="${{escapeHtml(String(s.cat))}}" ${{isCellKind ? 'style="cursor:pointer"' : 'style="cursor:default"'}} title="${{isCellKind ? `Click to spotlight \\"${{escapeHtml(String(s.cat))}}\\" in the viewer` : 'Sample-metadata group (not linked to spatial view)'}}">
-                <td><span class="agg-dot" style="background:${{dotColorFor(String(s.cat), idx)}}"></span>${{escapeHtml(String(s.cat))}}</td>
+                <td>${{isCellKind ? renderAggCategoryChip(spec.key, String(s.cat), idx) : renderAggChip(String(s.cat), getMetadataValueTagBg(spec.key, s.cat))}}</td>
                 <td>${{fmtN(s.n)}}</td>
                 <td>${{fmtF(s.mean)}}</td>
                 <td>${{fmtF(s.median)}}</td>
                 <td>${{fmtP(s.pctExpr)}}</td>
-                <td>${{fmtF(s.max)}}</td>
             </tr>
         `).join('');
 
@@ -20610,7 +24290,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ? ` \u2014 restricted to ${{escapeHtml(formatMetadataLabel(restrictSpec.key))}} = <strong>${{escapeHtml(String(geneDistributionRestrictValue))}}</strong>`
             : '';
         const tableHtml = `
-            <div class="gene-distribution-summary">Expression of <strong>${{escapeHtml(currentGene)}}</strong> across ${{escapeHtml(formatMetadataLabel(spec.key))}} (${{scopeLabel}}, ${{stats.length}} groups)${{restrictLabel}}</div>
+            <div class="gene-distribution-summary">Expression of <strong>${{escapeHtml(selectedGene)}}</strong> across ${{escapeHtml(formatMetadataLabel(spec.key))}} (${{scopeLabel}}, ${{stats.length}} groups)${{restrictLabel}}</div>
             <table class="gene-distribution-table">
                 <thead>
                     <tr>
@@ -20619,69 +24299,105 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <th data-gene-dist-sort="mean">Mean${{arrow('mean')}}</th>
                         <th data-gene-dist-sort="median">Median${{arrow('median')}}</th>
                         <th data-gene-dist-sort="pctExpr">% Expr${{arrow('pctExpr')}}</th>
-                        <th data-gene-dist-sort="max">Max${{arrow('max')}}</th>
                     </tr>
                 </thead>
                 <tbody>${{rows}}</tbody>
             </table>
         `;
 
-        container.innerHTML = controlsHtml + tableHtml;
+        const graphHtml = `
+            <div class="gene-distribution-summary">Expression of <strong>${{escapeHtml(selectedGene)}}</strong> across ${{escapeHtml(formatMetadataLabel(spec.key))}} (${{scopeLabel}}, ${{stats.length}} groups)${{restrictLabel}}</div>
+            ${{buildGeneDistributionBoxplot(sorted, spec)}}
+        `;
+        container.innerHTML = toggleHtml + controlsHtml + (isGraphView ? graphHtml : tableHtml);
+        bindGeneSubtabViewToggle(container, subtab, renderGeneDistributionInsights);
         wireGeneDistributionInputs(container);
+        if (isGraphView) bindClusterDEPlotInteractions(container, renderGeneDistributionInsights);
     }}
 
     function renderPseudobulkGeneMeans() {{
         const container = document.getElementById('pseudobulk-gene-means');
         if (!container) return;
+        const subtab = 'means';
+        const toggleHtml = renderGeneSubtabViewToggle(subtab);
+        const isGraphView = getGeneSubtabView(subtab) === 'graph';
+        const exportBtn = document.getElementById('gene-means-export-svg');
+        if (exportBtn) {{
+            exportBtn.style.display = isGraphView ? '' : 'none';
+            exportBtn.onclick = (event) => {{
+                event.preventDefault();
+                event.stopPropagation();
+                const gene = sanitizeFilenamePart(getInsightsSelectedGene() || 'gene');
+                downloadGeneGraphSvg('pseudobulk-gene-means', `karospace-gene-means-${{gene}}`, 'No means graph is available to export.');
+            }};
+        }}
         const data = DATA.cluster_gene_means;
         const columns = data?.columns || {{}};
         const genes = Array.isArray(data?.genes) ? data.genes.map(g => String(g)) : [];
         const availableCols = Object.keys(columns).filter(col => columns[col]?.means);
         if (!genes.length || !availableCols.length) {{
-            container.innerHTML = '<div class="agg-group-meta">No pseudobulk-derived category means are available. They are created from embedded significant DE genes.</div>';
+            container.innerHTML = toggleHtml + '<div class="marker-empty">No pseudobulk-derived category means are available.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
             return;
         }}
 
-        const selectedColRaw = document.getElementById('pseudobulk-means-color')?.value || currentColor || availableCols[0];
-        const selectedCol = availableCols.includes(selectedColRaw) ? selectedColRaw : availableCols[0];
-        const geneRaw = document.getElementById('pseudobulk-means-gene')?.value || currentGene || genes[0];
-        const selectedGene = genes.includes(geneRaw) ? geneRaw : genes[0];
+        const selectedCol = explorationColorCol || currentColor || '';
+        if (!selectedCol || !availableCols.includes(selectedCol)) {{
+            const selectedLabel = selectedCol ? formatMetadataLabel(selectedCol) : 'the selected Exploration annotation';
+            const availableLabel = availableCols.length
+                ? ` Available colors with means: ${{availableCols.map(col => formatMetadataLabel(col)).join(', ')}}.`
+                : '';
+            container.innerHTML = toggleHtml + `<div class="marker-empty">No pseudobulk-derived category means are available for ${{escapeHtml(selectedLabel)}}.${{escapeHtml(availableLabel)}}</div>`;
+            bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
+            return;
+        }}
+        const geneRaw = getInsightsSelectedGene();
+        if (!geneRaw) {{
+            container.innerHTML = toggleHtml + '<div class="marker-empty">Select a gene to view pseudobulk-derived category means.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
+            return;
+        }}
+        if (!genes.includes(geneRaw)) {{
+            container.innerHTML = toggleHtml + '<div class="marker-empty">No pseudobulk-derived category means are available for the selected gene.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
+            return;
+        }}
+        const selectedGene = geneRaw;
         const geneIdx = genes.indexOf(selectedGene);
         const colData = columns[selectedCol] || {{}};
         const categories = (colData.categories || Object.keys(colData.means || {{}})).map(cat => String(cat));
+        const background = Number(colData.background?.[geneIdx] ?? NaN);
+        const meanRows = categories.map((category) => {{
+            const rawCategory = String(resolveRawCategoryValue(selectedCol, category));
+            const values = colData.means?.[category] || colData.means?.[rawCategory] || [];
+            return {{
+                category,
+                mean: Number(values[geneIdx] ?? NaN),
+                nCells: Number(colData.n_cells?.[category] ?? colData.n_cells?.[rawCategory] ?? NaN),
+            }};
+        }}).sort((a, b) => {{
+            const av = Number(a.mean);
+            const bv = Number(b.mean);
+            const aFinite = Number.isFinite(av);
+            const bFinite = Number.isFinite(bv);
+            if (aFinite && bFinite && av !== bv) return bv - av;
+            if (aFinite !== bFinite) return aFinite ? -1 : 1;
+            return String(a.category).localeCompare(String(b.category));
+        }});
 
-        const colorOptions = availableCols.map((col) => `
-            <option value="${{escapeHtml(col)}}"${{col === selectedCol ? ' selected' : ''}}>${{escapeHtml(formatMetadataLabel(col))}}</option>
-        `).join('');
-        const geneOptions = genes.map((gene) => `<option value="${{escapeHtml(gene)}}"></option>`).join('');
-
-        const rows = categories.map((category, idx) => {{
-            const values = colData.means?.[category] || [];
-            const mean = Number(values[geneIdx] ?? 0);
-            const nCells = Number(colData.n_cells?.[category] ?? NaN);
-            const color = getCategoryColorForValue(selectedCol, category);
+        const rows = meanRows.map((row, idx) => {{
+            const mean = Number(row.mean);
+            const nCells = Number(row.nCells);
             return `
-                <tr data-pseudobulk-mean-category="${{escapeHtml(category)}}" style="cursor:pointer">
-                    <td><span class="agg-dot" style="background:${{color}}"></span>${{escapeHtml(formatCategoryLabel(selectedCol, category))}}</td>
+                <tr data-pseudobulk-mean-category="${{escapeHtml(row.category)}}" style="cursor:pointer">
+                    <td>${{renderAggCategoryChip(selectedCol, row.category, idx)}}</td>
                     <td>${{Number.isFinite(mean) ? mean.toFixed(4) : 'n/a'}}</td>
                     <td>${{Number.isFinite(nCells) ? nCells.toLocaleString() : 'n/a'}}</td>
                 </tr>
             `;
         }}).join('');
 
-        const background = Number(colData.background?.[geneIdx] ?? NaN);
-        container.innerHTML = `
-            <div class="cluster-de-controls">
-                <div>
-                    <label>Annotation</label>
-                    <select id="pseudobulk-means-color">${{colorOptions}}</select>
-                </div>
-                <div>
-                    <label>Gene</label>
-                    <input type="text" id="pseudobulk-means-gene" list="pseudobulk-means-gene-list" value="${{escapeHtml(selectedGene)}}" autocomplete="off" spellcheck="false">
-                    <datalist id="pseudobulk-means-gene-list">${{geneOptions}}</datalist>
-                </div>
-            </div>
+        const listHtml = `
             <div class="gene-distribution-summary">Pseudobulk-derived category means for <strong>${{escapeHtml(selectedGene)}}</strong>. Background mean: ${{Number.isFinite(background) ? background.toFixed(4) : 'n/a'}}.</div>
             <table class="gene-distribution-table">
                 <thead>
@@ -20690,22 +24406,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <tbody>${{rows}}</tbody>
             </table>
         `;
+        const graphHtml = `
+            <div class="gene-distribution-summary">Pseudobulk-derived category means for <strong>${{escapeHtml(selectedGene)}}</strong>. Background mean: ${{Number.isFinite(background) ? background.toFixed(4) : 'n/a'}}.</div>
+            ${{buildPseudobulkMeanDeviationPlot(meanRows, background, selectedCol)}}
+        `;
+        container.innerHTML = toggleHtml + (isGraphView ? graphHtml : listHtml);
+        bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
 
-        container.querySelector('#pseudobulk-means-color')?.addEventListener('change', renderPseudobulkGeneMeans);
-        const geneInput = container.querySelector('#pseudobulk-means-gene');
-        geneInput?.addEventListener('keydown', async (event) => {{
-            if (event.key !== 'Enter') return;
-            event.preventDefault();
-            const gene = resolveCanonicalGeneName(geneInput.value) || String(geneInput.value || '').trim();
-            if (!genes.includes(gene)) return;
-            const ok = await activateViewerGene(gene, {{ showErrors: true }});
-            if (ok) renderPseudobulkGeneMeans();
-        }});
-        geneInput?.addEventListener('change', renderPseudobulkGeneMeans);
         container.querySelectorAll('[data-pseudobulk-mean-category]').forEach((row) => {{
             row.addEventListener('click', () => {{
                 const cat = row.getAttribute('data-pseudobulk-mean-category');
                 if (!cat) return;
+                if (currentColor !== selectedCol) {{
+                    setViewerColorColumn(selectedCol);
+                }}
                 linkedSpotlightEnabled = true;
                 neighborNetworkFocusCategories = null;
                 spotlightPinnedCategory = spotlightPinnedCategory === cat ? null : cat;
@@ -20714,17 +24428,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 rerenderForSpotlightChange();
             }});
         }});
+        if (isGraphView) bindClusterDEPlotInteractions(container, renderPseudobulkGeneMeans);
     }}
 
     function renderSpatialVariableGenes() {{
         const container = document.getElementById('spatially-variable-genes');
         if (!container) return;
-        const searchInput = document.getElementById('spatial-gene-search');
-        const query = (searchInput?.value || '').trim().toLowerCase();
+        const subtab = 'spatial';
+        const toggleHtml = renderGeneSubtabViewToggle(subtab);
+        const selectedGene = getInsightsSelectedGene();
         const entries = Array.isArray(DATA.spatial_variable_genes) ? DATA.spatial_variable_genes : [];
 
         if (!entries.length) {{
-            container.innerHTML = '<div class="agg-group-meta">No spatially variable genes were precomputed for this viewer.</div>';
+            container.innerHTML = toggleHtml + '<div class="marker-empty">No spatially variable genes were precomputed for this viewer.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderSpatialVariableGenes);
             return;
         }}
 
@@ -20740,14 +24457,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }};
             }})
             .filter(Boolean)
-            .filter((entry) => !query || entry.gene.toLowerCase().includes(query));
+            .filter((entry) => !selectedGene || entry.gene === selectedGene);
 
         if (!filtered.length) {{
-            container.innerHTML = '<div class="agg-group-meta">No spatially variable genes match your search.</div>';
+            container.innerHTML = toggleHtml + '<div class="marker-empty">No spatially variable genes match your selected gene.</div>';
+            bindGeneSubtabViewToggle(container, subtab, renderSpatialVariableGenes);
             return;
         }}
 
-        const summaryNote = `<div class="agg-group-meta">Global Moran&apos;s I ranking precomputed at export. Click a gene to load it into the viewer.</div>`;
+        if (getGeneSubtabView(subtab) === 'graph') {{
+            container.innerHTML = toggleHtml + buildSpatialMoranGraph(filtered);
+            bindGeneSubtabViewToggle(container, subtab, renderSpatialVariableGenes);
+            bindClusterDEPlotInteractions(container, renderSpatialVariableGenes);
+            return;
+        }}
+
         const rows = filtered.map((entry) => {{
             const scoreLabel = `I=${{entry.score.toFixed(4)}}`;
             return `
@@ -20763,7 +24487,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             `;
         }}).join('');
 
-        container.innerHTML = summaryNote + rows;
+        container.innerHTML = toggleHtml + `<div class="gene-distribution-summary">Moran Index for ${{filtered.length.toLocaleString()}} gene${{filtered.length === 1 ? '' : 's'}}</div>` + rows;
+        bindGeneSubtabViewToggle(container, subtab, renderSpatialVariableGenes);
         bindGeneActivateButtons(container, renderSpatialVariableGenes);
     }}
 
@@ -20814,14 +24539,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const cards = [sourceToReference, referenceToSource]
             .filter(Boolean)
             .map((entry) => {{
-                const targetColor = getCategoryColorForValue(colorCol, entry.targetCategory);
                 const zLabel = entry.z === null ? 'n/a' : entry.z.toFixed(2);
                 const degreeLabel = Number.isFinite(entry.meanDegree) ? entry.meanDegree.toFixed(2) : 'n/a';
                 return `
                     <div class="comparison-card">
                         <div class="comparison-card-title">
-                            <span class="agg-dot" style="background: ${{targetColor}}"></span>
-                            <span>${{escapeHtml(entry.sourceCategory)}} → ${{escapeHtml(entry.targetCategory)}}</span>
+                            <span>${{renderAggCategoryChip(colorCol, entry.sourceCategory)}} → ${{renderAggCategoryChip(colorCol, entry.targetCategory)}}</span>
                         </div>
                         <div class="comparison-metric-grid">
                             <div class="comparison-metric">
@@ -20867,9 +24590,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sourceMarkers = getMarkerGeneEntries(colorCol, sourceCategory, 6);
         const referenceMarkers = getMarkerGeneEntries(colorCol, referenceCategory, 6);
         const overlap = getMarkerOverlapEntries(colorCol, sourceCategory, referenceCategory, 6);
-        const sourceColor = getCategoryColorForValue(colorCol, sourceCategory);
-        const referenceColor = getCategoryColorForValue(colorCol, referenceCategory);
-
         if (!sourceMarkers.length && !referenceMarkers.length) {{
             return `
                 <div class="agg-group">
@@ -20885,11 +24605,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <div class="agg-group-meta">Top pseudobulk DE genes for each category. Click a gene to load it when available.</div>
             </div>
             <div class="agg-group">
-                <div class="agg-group-title"><span class="agg-dot" style="background: ${{sourceColor}}"></span>${{escapeHtml(sourceCategory)}} DE genes</div>
+                <div class="agg-group-title">${{renderAggCategoryChip(colorCol, sourceCategory)}} DE genes</div>
                 ${{renderComparisonGeneTokenGrid(sourceMarkers, 'No pseudobulk DE genes available for Category A.', 'Load Category A DE gene into the viewer')}}
             </div>
             <div class="agg-group">
-                <div class="agg-group-title"><span class="agg-dot" style="background: ${{referenceColor}}"></span>${{escapeHtml(referenceCategory)}} DE genes</div>
+                <div class="agg-group-title">${{renderAggCategoryChip(colorCol, referenceCategory)}} DE genes</div>
                 ${{renderComparisonGeneTokenGrid(referenceMarkers, 'No pseudobulk DE genes available for Category B.', 'Load Category B DE gene into the viewer')}}
             </div>
             <div class="agg-group">
@@ -20999,7 +24719,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!svgText) return '';
         return `
             <div class="cluster-de-plot-panel">
-                <div class="cluster-de-plot-title">${{escapeHtml(title)}}</div>
+                <div class="cluster-de-plot-title">${{escapeHtml(title)}}${{renderCalcInfoButton('de_genes')}}</div>
                 ${{meta ? `<div class="cluster-de-plot-meta">${{escapeHtml(meta)}}</div>` : ''}}
                 ${{svgText}}
                 <div class="volcano-tooltip"></div>
@@ -21229,7 +24949,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             buildClusterDESummaryItem(greyLabel, 'var(--border-color)', counts.grey),
             '</div>',
         ].join('');
-        return '<div class="volcano-container">' + parts.join('') + summary + '<div class="volcano-tooltip"></div></div>';
+        return '<div class="volcano-container"><div style="display:flex;justify-content:flex-end;">' + renderCalcInfoButton('de_genes') + '</div>' + parts.join('') + summary + '<div class="volcano-tooltip"></div></div>';
     }}
 
     function buildGroupVolcanoPlot(entries) {{
@@ -21275,7 +24995,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             parts.push('<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(sc).toFixed(1) + '" r="3.5" fill="' + col + '" fill-opacity="0.82" data-volcano-gene="' + escapeHtml(entry.gene) + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-score="' + sc.toFixed(3) + '"/>');
         }});
         parts.push('</svg>');
-        return '<div class="volcano-container">' + parts.join('') + '<div class="volcano-tooltip"></div></div>';
+        return '<div class="volcano-container"><div style="display:flex;justify-content:flex-end;">' + renderCalcInfoButton('group_de') + '</div>' + parts.join('') + '<div class="volcano-tooltip"></div></div>';
     }}
 
     function bindVolcanoGroupInteraction(container, rerenderFn) {{
@@ -21291,14 +25011,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const score = dot.getAttribute('data-volcano-score') || '';
             volcanoTooltip.innerHTML = '<strong>' + escapeHtml(gene) + '</strong><br>log\u2082FC: ' + fc + '<br>score: ' + score;
             volcanoTooltip.style.display = 'block';
-            const cRect = volcanoContainer.getBoundingClientRect();
-            const dRect = dot.getBoundingClientRect();
-            let left = dRect.left - cRect.left + 10;
-            let top = dRect.top - cRect.top - 8;
-            if (left + volcanoTooltip.offsetWidth > cRect.width - 4) left -= volcanoTooltip.offsetWidth + 16;
-            if (top < 0) top = dRect.bottom - cRect.top + 4;
-            volcanoTooltip.style.left = left + 'px';
-            volcanoTooltip.style.top = top + 'px';
+            positionClusterDEDotTooltip(volcanoContainer, volcanoTooltip, dot);
         }});
         volcanoContainer.addEventListener('mouseleave', () => {{
             volcanoTooltip.style.display = 'none';
@@ -21334,10 +25047,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function positionClusterDEDotTooltip(plotContainer, tooltip, dot) {{
         const cRect = plotContainer.getBoundingClientRect();
         const dRect = dot.getBoundingClientRect();
-        let left = dRect.left - cRect.left + 10;
-        let top = dRect.top - cRect.top - 8;
-        if (left + tooltip.offsetWidth > cRect.width - 4) left -= tooltip.offsetWidth + 16;
-        if (top < 0) top = dRect.bottom - cRect.top + 4;
+        const scrollLeft = plotContainer.scrollLeft || 0;
+        const scrollTop = plotContainer.scrollTop || 0;
+        const visibleWidth = plotContainer.clientWidth || cRect.width;
+        const visibleHeight = plotContainer.clientHeight || cRect.height;
+        const viewportLeft = scrollLeft + 4;
+        const viewportTop = scrollTop + 4;
+        const viewportRight = scrollLeft + visibleWidth - 4;
+        const viewportBottom = scrollTop + visibleHeight - 4;
+        tooltip.style.maxWidth = Math.max(120, Math.min(240, visibleWidth - 12)) + 'px';
+        const dotLeft = dRect.left - cRect.left + scrollLeft;
+        const dotRight = dRect.right - cRect.left + scrollLeft;
+        const dotTop = dRect.top - cRect.top + scrollTop;
+        const dotBottom = dRect.bottom - cRect.top + scrollTop;
+        const tooltipWidth = tooltip.offsetWidth;
+        const tooltipHeight = tooltip.offsetHeight;
+        let left = dotRight + 8;
+        if (left + tooltipWidth > viewportRight) left = dotLeft - tooltipWidth - 8;
+        left = Math.max(viewportLeft, Math.min(left, viewportRight - tooltipWidth));
+        let top = dotTop - 6;
+        if (top + tooltipHeight > viewportBottom) top = dotBottom - tooltipHeight + 6;
+        if (top < viewportTop) top = Math.min(dotBottom + 6, viewportBottom - tooltipHeight);
+        top = Math.max(viewportTop, Math.min(top, viewportBottom - tooltipHeight));
         tooltip.style.left = left + 'px';
         tooltip.style.top = top + 'px';
     }}
@@ -21638,13 +25369,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             buildPseudobulkDistanceHeatmap(sampleInfo, colorCol),
         ].filter(Boolean).join('');
         const diagnosticPlots = plotPanels
-            ? `<div class="cluster-de-plot-grid"><div class="cluster-de-plot-grid-title">Pseudobulk Analysis Diagnostics</div>${{plotPanels}}</div>`
+            ? `<div class="cluster-de-plot-grid"><div class="cluster-de-plot-grid-title">Pseudobulk Analysis Diagnostics${{renderCalcInfoButton('de_genes')}}</div>${{plotPanels}}</div>`
             : '';
 
         return `
             <div class="cluster-de-result">
                 ${{diagnosticPlots}}
                 ${{buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff, log2fcCutoff, colorCol, sourceCategory, referenceCategory)}}
+                <div class="cluster-de-meta">Differential expression table${{renderCalcInfoButton('de_genes')}}</div>
                 <div class="cluster-de-actions">
                     <button type="button" class="legend-btn" data-cluster-de-download-volcano>Save Volcano SVG</button>
                     <button type="button" class="legend-btn" data-cluster-de-download-volcano-png>Save Volcano PNG</button>
@@ -21668,7 +25400,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const availableGroupbys = getAvailableComparisonColors();
 
         if (groupbySelect) {{
-            groupbySelect.innerHTML = availableGroupbys.map(col => `<option value="${{col}}">${{col}}</option>`).join('');
+            groupbySelect.innerHTML = availableGroupbys.length
+                ? `<optgroup label="Cell annotations">${{availableGroupbys.map(col => `<option value="${{escapeHtml(col)}}">${{escapeHtml(getAnnotationColumnLabel(col))}}</option>`).join('')}}</optgroup>`
+                : '';
         }}
 
         if (!availableGroupbys.length) {{
@@ -21719,7 +25453,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const {{ availableGroupbys, categories }} = syncClusterDEControls();
         if (!availableGroupbys.length) {{
             setCompareSectionSummary('cluster-de-summary', 'Available for categorical annotations only.');
-            container.innerHTML = '<div class="agg-group-meta">Category comparison is available for categorical colors only.</div>';
+            container.innerHTML = '<div class="agg-group-meta">Category comparison is available for categorical annotations only.</div>';
             return;
         }}
         if (!clusterDeGroupby) {{
@@ -22589,7 +26323,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 `;
             }}
 
-            resultsDiv.innerHTML = resultHtml;
+            resultsDiv.innerHTML = `<div class="gene-distribution-summary">Group differential expression${{renderCalcInfoButton('group_de')}}</div>` + resultHtml;
 
             const runFullBtn = resultsDiv.querySelector('#group-de-run-full');
             if (runFullBtn && groupA && groupB) {{
@@ -22654,33 +26388,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const container = document.getElementById('celltype-trend');
         const groupBy = document.getElementById('color-groupby');
         const select = document.getElementById('celltype-select');
+        const selectRow = document.getElementById('celltype-select-row');
         if (!container || !groupBy) return;
         const groupKey = groupBy.value;
         if (!groupKey) {{
+            if (selectRow) selectRow.style.display = 'none';
             if (select) {{
-                select.innerHTML = '<option value="">Pick aggregate metadata first</option>';
+                select.innerHTML = '';
                 select.disabled = true;
             }}
-            container.innerHTML = '<div class="agg-group-meta">Pick a metadata column to summarize.</div>';
+            container.innerHTML = '';
             return;
         }}
+        if (selectRow) selectRow.style.display = '';
 
-        if (currentGene) {{
-            if (select) {{
-                select.innerHTML = '<option value="">Clear gene input first</option>';
-                select.disabled = true;
-            }}
-            container.innerHTML = '<div class="agg-group-meta">Clear the gene input to view categorical trends.</div>';
-            return;
-        }}
-
-        const config = getColorConfig();
+        const colorCol = explorationColorCol || currentColor;
+        const config = DATA.colors_meta[colorCol] || {{ is_continuous: false, categories: [], vmin: 0, vmax: 1 }};
         if (config.is_continuous) {{
             if (select) {{
                 select.innerHTML = '<option value="">Categorical colors only</option>';
                 select.disabled = true;
             }}
-            container.innerHTML = '<div class="agg-group-meta">Trends are available for categorical colors only.</div>';
+            container.innerHTML = '<div class="agg-group-meta">Trends are available for categorical annotations only.</div>';
             return;
         }}
 
@@ -22702,7 +26431,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             select.disabled = false;
             select.innerHTML = categories.map(cat => {{
                 const selected = cat === target ? ' selected' : '';
-                return `<option value="${{escapeHtml(cat)}}"${{selected}}>${{escapeHtml(formatCategoryLabel(currentColor, cat))}}</option>`;
+                return `<option value="${{escapeHtml(cat)}}"${{selected}}>${{escapeHtml(formatCategoryLabel(colorCol, cat))}}</option>`;
             }}).join('');
         }}
 
@@ -22714,7 +26443,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 groups.set(groupVal, {{ total: 0, count: 0 }});
             }}
             const group = groups.get(groupVal);
-            const values = getSectionValues(section);
+            const values = getSectionColorValues(section, colorCol);
+            if (!values) return;
             values.forEach(val => {{
                 if (val === null || val === undefined || Number.isNaN(val)) return;
                 group.total += 1;
@@ -22738,6 +26468,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}).join('');
 
         container.innerHTML = `
+            <div class="gene-distribution-summary">Per Annotation trend for <strong>${{escapeHtml(formatCategoryLabel(colorCol, target))}}</strong>${{renderCalcInfoButton('color_trend')}}</div>
             <table class="trend-table">
                 <thead>
                     <tr>
@@ -22951,7 +26682,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const config = getColorConfig();
         if (config.is_continuous) {{
-            return {{ error: 'Neighbor stats are available for categorical colors only.' }};
+            return {{ error: 'Neighbor stats are available for categorical annotations only.' }};
         }}
 
         const stats = (DATA.neighbor_stats || {{}})[currentColor];
@@ -23363,7 +27094,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const zoomLabel = `${{Math.round(state.zoom * 100)}}%`;
         return `
             <div class="neighbor-visualization-toolbar">
-                <div class="neighbor-view-note">${{escapeHtml(label)}}</div>
+                <div class="neighbor-view-note">${{escapeHtml(label)}}${{renderCalcInfoButton('neighbor_stats')}}</div>
                 <div class="neighbor-zoom-controls">
                     <button type="button" class="legend-btn" data-neighbor-zoom-action="out">-</button>
                     <span class="neighbor-zoom-label" data-neighbor-zoom-label>${{zoomLabel}}</span>
@@ -23840,7 +27571,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const top = isExpanded ? entries : entries.slice(0, 6);
             const shownTotal = top.reduce((sum, [, v]) => sum + v, 0);
             const other = total - shownTotal;
-            const toggleLabel = isExpanded ? 'Show top 6' : 'Show all';
+            const toggleLabel = isExpanded ? 'Show 6' : 'Show all';
             const formatCount = (value) => {{
                 if (!Number.isFinite(value)) return '0';
                 if (Math.abs(value - Math.round(value)) < 1e-6) return Math.round(value).toLocaleString();
@@ -23857,8 +27588,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }}
                 return `
                     <div class="agg-row" data-target-cat="${{escapeHtml(target)}}">
-                        <span class="agg-dot" style="background: ${{color}}"></span>
-                        <span class="agg-label">${{target}}</span>
+                        <span class="agg-label">${{renderAggCategoryChip(currentColor, target, j)}}</span>
                         <span class="agg-value">${{pct.toFixed(1)}}% (${{formatCount(val)}})${{zLabel}}</span>
                     </div>
                 `;
@@ -23866,8 +27596,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             const otherRow = other > 0 ? `
                 <div class="agg-row">
-                    <span class="agg-dot" style="background: #bbb"></span>
-                    <span class="agg-label">Other</span>
+                    <span class="agg-label">${{renderAggChip('Other', 'color-mix(in srgb, #999 24%, transparent)')}}</span>
                     <span class="agg-value">${{((other / total) * 100).toFixed(1)}}% (${{formatCount(other)}})</span>
                 </div>
             ` : '';
@@ -23880,7 +27609,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (entries.length === 0) {{
                 return `
                     <div class="agg-group">
-                        <div class="agg-group-title">${{source}}</div>
+                        <div class="agg-group-title">${{renderAggCategoryChip(currentColor, source, idx)}}${{renderCalcInfoButton('neighbor_stats')}}</div>
                         <div class="agg-group-meta">n=${{nLabel}} | mean degree=${{degreeLabel}}</div>
                         <div class="agg-group-meta">No neighbors found for this cell type.</div>
                     </div>
@@ -23889,11 +27618,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             return `
                 <div class="agg-group" data-source-cat="${{escapeHtml(source)}}">
-                    <div class="agg-group-title">${{escapeHtml(source)}}</div>
+                    <div class="agg-group-title">${{renderAggCategoryChip(currentColor, source, idx)}}${{renderCalcInfoButton('neighbor_stats')}}</div>
                     <div class="agg-group-meta">n=${{nLabel}} | mean degree=${{degreeLabel}} | neighbor edges=${{totalLabel}}${{permLabel}}</div>
-                    <button class="legend-btn" data-neighbor-toggle="${{idx}}">${{toggleLabel}}</button>
                     ${{rowsHtml}}
                     ${{otherRow}}
+                    <button class="agg-toggle-link" type="button" data-neighbor-toggle="${{idx}}">${{toggleLabel}}</button>
                 </div>
             `;
         }}).join('');
@@ -24269,8 +27998,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const legend = indices.map((categoryIdx, pos) => {{
             return `
                 <div class="neighbor-chord-legend-item neighbor-interactive" data-neighbor-kind="category" data-neighbor-source-idx="${{categoryIdx}}" role="button" tabindex="0">
-                    <span class="agg-dot" style="background:${{getCategoryColor(categoryIdx, currentColor)}}"></span>
-                    <span>${{escapeHtml(categories[categoryIdx])}} · n=${{Number(nCells[categoryIdx] ?? 0).toLocaleString()}} · ${{formatNeighborMetricLabel(controls.metric)}}=${{formatNeighborMetricValue(controls.metric, totals[pos])}}</span>
+                    <span>${{renderAggCategoryChip(currentColor, categories[categoryIdx], categoryIdx)}} · n=${{Number(nCells[categoryIdx] ?? 0).toLocaleString()}} · ${{formatNeighborMetricLabel(controls.metric)}}=${{formatNeighborMetricValue(controls.metric, totals[pos])}}</span>
                 </div>
             `;
         }}).join('');
@@ -24474,7 +28202,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const container = document.getElementById('dispersion-panel');
         if (!container) return;
         if (currentGene || getColorConfig().is_continuous) {{
-            container.innerHTML = '<div class="agg-group-meta">Pick a categorical color (not a gene) to view spatial dispersion metrics.</div>';
+            container.innerHTML = '<div class="agg-group-meta">Pick a categorical annotation (not a gene) to view spatial dispersion metrics.</div>';
             return;
         }}
         const config = getColorConfig();
@@ -24491,7 +28219,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             // Bail if anything that invalidates this run changed while deferred:
             // a gene was loaded, the color switched, or the user left the tab.
             // (Missing the currentGene check let a stale table overwrite the
-            // "pick a categorical color" message.)
+            // "pick a categorical annotation" message.)
             if (currentGene || currentColor !== colorAtRequest
                 || insightsTopLevelTab !== 'neighbors' || insightsNeighborsTab !== 'dispersion') return;
             const rows = computeDispersionInsights(currentColor);
@@ -24524,11 +28252,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const hasAdj = !!DATA.has_neighbors;
 
             const tbody = sorted.map((r) => {{
-                const color = getCategoryColorForValue(currentColor, r.catName);
                 const lbl = label(r.nni);
                 const saiCell = hasAdj ? `<td>${{fmtPct(r.sai)}}</td>` : '<td>—</td>';
                 return `<tr data-dispersion-cat="${{escapeHtml(r.catName)}}" title="Click to spotlight ${{escapeHtml(r.catName)}}">
-                    <td><span class="agg-dot" style="background:${{color}}"></span>${{escapeHtml(r.catName)}}</td>
+                    <td>${{renderAggCategoryChip(currentColor, r.catName)}}</td>
                     <td>${{fmtN(r.n)}}</td>
                     ${{saiCell}}
                     <td>${{fmtNNI(r.nni)}}</td>
@@ -24542,7 +28269,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
             container.innerHTML = `
                 <div class="dispersion-summary">
-                    Spatial pattern per cell type &mdash; ${{sorted.length}} types. NNI &lt;0.9 clustered/restricted, ~1 random, &gt;1.1 dispersed.
+                    Spatial pattern per cell type &mdash; ${{sorted.length}} types. NNI &lt;0.9 clustered/restricted, ~1 random, &gt;1.1 dispersed.${{renderCalcInfoButton('dispersion')}}
                     ${{hasAdj ? '' : '<span style="margin-left:6px;">(no neighbour graph: Self-Agg% unavailable)</span>'}}
                 </div>
                 <table class="gene-distribution-table">
@@ -24673,8 +28400,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         const config = getColorConfig();
+        const colorCol = currentColor;
         if (config.is_continuous) {{
-            container.innerHTML = '<div class="agg-group-meta">Interaction browser is available for categorical colors only.</div>';
+            container.innerHTML = '<div class="agg-group-meta">Interaction browser is available for categorical annotations only.</div>';
             sourceSelect.innerHTML = '';
             return;
         }}
@@ -24794,8 +28522,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <tr>
                     <td>
                         <div class="interaction-target">
-                            <span class="agg-dot" style="background: ${{color}}"></span>
-                            <span>${{entry.target}}</span>
+                            <span>${{renderAggCategoryChip(colorCol, entry.target)}}</span>
                         </div>
                     </td>
                     <td>${{entry.pct.toFixed(1)}}%</td>
@@ -24809,11 +28536,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         container.innerHTML = `
             <div class="agg-group">
-                <div class="agg-group-title"><span class="agg-dot" style="background: ${{sourceColor}}"></span>${{source}} → targets</div>
+                <div class="agg-group-title">${{renderAggCategoryChip(colorCol, source)}} → targets${{renderCalcInfoButton('neighbor_stats')}}</div>
                 <div class="agg-group-meta">n=${{sourceN}} | mean degree=${{degreeLabel}} | neighbor edges=${{formatNeighborCount(total)}}</div>
                 <div class="agg-group-meta">Source DE genes: ${{sourceMarkerLabel}}</div>
                 <div class="agg-group-meta">Contact-conditioned DE genes available for ${{withContactMarkers}}/${{topEntries.length}} shown targets.</div>
-                ${{hasInteractionMarkers ? '' : '<div class="agg-group-meta">Contact DE genes not precomputed for this color (use pseudobulk_additional_colors during export for extra annotations).</div>'}}
+                ${{hasInteractionMarkers ? '' : '<div class="agg-group-meta">Contact DE genes not precomputed for this annotation (use pseudobulk_additional_annotations during export for extra annotations).</div>'}}
             </div>
             <table class="trend-table">
                 <thead>
@@ -24958,6 +28685,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             btn.textContent = heAlignModeActive ? 'Align ▴' : 'Align ▾';
             btn.setAttribute('aria-expanded', heAlignModeActive ? 'true' : 'false');
         }}
+        updateFocusedHePanelState();
         if (typeof updateModalCanvasCursor === 'function') updateModalCanvasCursor();
     }}
 
@@ -24967,7 +28695,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (group) group.hidden = !modalHeOptionsVisible;
         const btn = document.getElementById('focused-modal-he-toggle');
         if (btn) btn.classList.toggle('active', modalHeOptionsVisible);
+        document.getElementById('grid-side-toolbar')?.classList.toggle('he-open', modalHeOptionsVisible);
         if (!modalHeOptionsVisible) setHeAlignPanelOpen(false);
+        updateFocusedHePanelState();
         if (modalSection) {{
             layoutModalControls();
             layoutModalAnnotationPanel();
@@ -24981,12 +28711,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             isDrawingModalLasso = false;
             modalLassoPath = [];
         }}
-        if (except !== 'annotation') {{
-            modalAnnotationModeActive = false;
-            isDrawingModalAnnotation = false;
-            modalAnnotationPath = [];
-            setModalAnnotationPanelOpen(false);
-        }}
+        setModalAnnotationPanelOpen(false);
         if (except !== 'graph') {{
             graphChanged = graphChanged || showGraph;
             showGraph = false;
@@ -24997,8 +28722,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             hoverNeighbors = null;
             document.getElementById('modal-neighbor-hover-toggle')?.classList.remove('active');
         }}
+        if (except !== 'graph' && except !== 'neighbors') {{
+            document.getElementById('grid-side-toolbar')?.classList.remove('neighbor-open');
+        }}
         if (except !== 'he') {{
             setModalHeOptionsVisible(false);
+        }} else {{
+            document.getElementById('grid-side-toolbar')?.classList.remove('visual-open', 'gene-open', 'neighbor-open');
         }}
         updateModalToolbarState();
         updateModalCanvasCursor();
@@ -25048,6 +28778,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 ? `${{st.img.naturalWidth}}×${{st.img.naturalHeight}}px — drag in Align mode to reposition`
                 : 'No image loaded';
         }}
+        updateFocusedHePanelState();
     }}
 
     function createSourcePanelGhost(sourcePanel) {{
@@ -25294,9 +29025,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalMagicWandActive = false;
         isDrawingModalLasso = false;
         modalLassoPath = [];
-        modalAnnotationModeActive = false;
-        isDrawingModalAnnotation = false;
-        modalAnnotationPath = [];
         setModalAnnotationPanelOpen(false);
 
         updateModalHeader();
@@ -25342,9 +29070,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalMagicWandActive = false;
         isDrawingModalLasso = false;
         modalLassoPath = [];
-        modalAnnotationModeActive = false;
-        isDrawingModalAnnotation = false;
-        modalAnnotationPath = [];
         setModalAnnotationPanelOpen(false);
         modalPointerMoved = false;
         getModalControlsElement()?.classList.remove('dragging');
@@ -25364,7 +29089,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function setModalAnnotationPanelOpen(open) {{
         const section = document.getElementById('modal-annotation-section');
-        const btn = document.getElementById('focused-modal-annotation-toggle');
         const insightsBtn = document.getElementById('insights-annotate-toggle');
         if (!section) {{
             if (open) insightsMode = 'annotate';
@@ -25373,7 +29097,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (open) insightsMode = 'annotate';
         else if (insightsMode === 'annotate') insightsMode = 'selection';
         section.classList.toggle('active', !!open);
-        btn?.setAttribute('aria-expanded', open ? 'true' : 'false');
         insightsBtn?.classList.toggle('active', !!open);
         insightsBtn?.setAttribute('aria-expanded', open ? 'true' : 'false');
         syncInsightsModeClasses();
@@ -25595,13 +29318,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         const colorSelect = document.getElementById('color-select');
-        DATA.available_colors.forEach(col => {{
-            const opt = document.createElement('option');
-            opt.value = col;
-            opt.textContent = col;
-            opt.selected = col === currentColor;
-            colorSelect.appendChild(opt);
-        }});
+        if (colorSelect) colorSelect.innerHTML = renderGroupedAnnotationOptions(currentColor);
 
         const isInsightsVisible = () => {{
             const panel = document.getElementById('color-panel');
@@ -25610,7 +29327,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const refreshInsights = () => {{
             if (!isInsightsVisible()) return;
-            renderColorList(document.getElementById('color-search')?.value || '');
             renderActiveInsightsPanel();
         }};
 
@@ -25634,63 +29350,63 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         visualParamsToggle?.addEventListener('click', () => {{
             const open = !gridSideToolbar?.classList.contains('visual-open');
             gridSideToolbar?.classList.toggle('visual-open', open);
-            if (open) gridSideToolbar?.classList.remove('gene-open');
+            if (open) {{
+                gridSideToolbar?.classList.remove('gene-open', 'neighbor-open');
+                setModalHeOptionsVisible(false);
+            }}
             visualParamsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
             geneParamsToggle?.setAttribute('aria-expanded', 'false');
         }});
         geneParamsToggle?.addEventListener('click', () => {{
             const open = !gridSideToolbar?.classList.contains('gene-open');
             gridSideToolbar?.classList.toggle('gene-open', open);
-            if (open) gridSideToolbar?.classList.remove('visual-open');
+            if (open) {{
+                gridSideToolbar?.classList.remove('visual-open', 'neighbor-open');
+                setModalHeOptionsVisible(false);
+            }}
             geneParamsToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
             visualParamsToggle?.setAttribute('aria-expanded', 'false');
         }});
         document.addEventListener('mousedown', (event) => {{
             if (!gridSideToolbar) return;
             if (gridSideToolbar.contains(event.target)) return;
-            gridSideToolbar.classList.remove('visual-open', 'gene-open');
+            gridSideToolbar.classList.remove('visual-open', 'gene-open', 'neighbor-open');
+            setModalHeOptionsVisible(false);
             visualParamsToggle?.setAttribute('aria-expanded', 'false');
             geneParamsToggle?.setAttribute('aria-expanded', 'false');
         }});
-        document.getElementById('focused-modal-annotation-toggle')?.addEventListener('click', () => {{
-            if (!modalSection) return;
-            const enable = !modalAnnotationModeActive;
-            resetFocusedModalTools(enable ? 'annotation' : null);
-            modalAnnotationModeActive = enable;
-            if (modalAnnotationModeActive) {{
-                modalMagicWandActive = false;
-                isDrawingModalLasso = false;
-                modalLassoPath = [];
-                setModalAnnotationPanelOpen(true);
-            }} else {{
-                isDrawingModalAnnotation = false;
-                modalAnnotationPath = [];
-                setModalAnnotationPanelOpen(false);
-            }}
-            updateModalToolbarState();
-            if (typeof updateModalCanvasCursor === 'function') updateModalCanvasCursor();
-            renderModalSection();
-        }});
         document.getElementById('focused-modal-neighbor-toggle')?.addEventListener('click', () => {{
             if (!modalSection || !DATA.has_neighbors) return;
-            const enable = !neighborHoverEnabled;
-            resetFocusedModalTools(enable ? 'neighbors' : null);
-            if (enable) document.getElementById('modal-neighbor-hover-toggle')?.click();
-            else {{
-                updateModalToolbarState();
-                renderModalSection();
+            const open = !gridSideToolbar?.classList.contains('neighbor-open');
+            gridSideToolbar?.classList.toggle('neighbor-open', open);
+            if (open) {{
+                gridSideToolbar?.classList.remove('visual-open', 'gene-open');
+                setModalHeOptionsVisible(false);
             }}
+            visualParamsToggle?.setAttribute('aria-expanded', 'false');
+            geneParamsToggle?.setAttribute('aria-expanded', 'false');
+            updateFocusedNeighborPanelState();
+            updateModalToolbarState();
         }});
-        document.getElementById('focused-modal-graph-toggle')?.addEventListener('click', () => {{
-            if (!modalSection || !DATA.has_neighbors) return;
-            const enable = !showGraph;
-            resetFocusedModalTools(enable ? 'graph' : null);
-            if (enable) document.getElementById('modal-graph-toggle')?.click();
-            else {{
-                updateModalToolbarState();
-                renderAllSections();
-                renderModalSection();
+        document.getElementById('focused-neighbor-panel-graph')?.addEventListener('click', () => {{
+            document.getElementById('modal-graph-toggle')?.click();
+            updateFocusedNeighborPanelState();
+        }});
+        document.getElementById('focused-neighbor-panel-neighbors')?.addEventListener('click', () => {{
+            document.getElementById('modal-neighbor-hover-toggle')?.click();
+            updateFocusedNeighborPanelState();
+        }});
+        document.getElementById('focused-neighbor-hop-select')?.addEventListener('change', (event) => {{
+            const value = event.target.value;
+            const modalHopSelect = document.getElementById('modal-neighbor-hop-select');
+            if (modalHopSelect) {{
+                modalHopSelect.value = value;
+                modalHopSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            }} else {{
+                neighborHopMode = value;
+                if (modalSection) renderModalSection();
             }}
+            updateFocusedNeighborPanelState();
         }});
         document.getElementById('focused-modal-he-toggle')?.addEventListener('click', () => {{
             if (!modalSection) return;
@@ -25698,6 +29414,42 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             resetFocusedModalTools(enable ? 'he' : null);
             setModalHeOptionsVisible(enable);
             updateModalToolbarState();
+        }});
+        document.getElementById('focused-he-layer-select')?.addEventListener('change', (event) => {{
+            const modalLayerSelect = document.getElementById('modal-he-layer-select');
+            if (!modalLayerSelect) return;
+            modalLayerSelect.value = event.target.value;
+            modalLayerSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            updateFocusedHePanelState();
+        }});
+        document.getElementById('focused-he-eye-btn')?.addEventListener('click', () => {{
+            document.getElementById('modal-he-eye-btn')?.click();
+            updateFocusedHePanelState();
+        }});
+        document.getElementById('focused-he-load-btn')?.addEventListener('click', () => {{
+            document.getElementById('modal-he-load-btn')?.click();
+            updateFocusedHePanelState();
+        }});
+        document.getElementById('focused-he-align-btn')?.addEventListener('click', () => {{
+            document.getElementById('modal-he-align-btn')?.click();
+            updateFocusedHePanelState();
+        }});
+        document.getElementById('focused-he-fliph-btn')?.addEventListener('click', () => {{
+            document.getElementById('modal-he-fliph-btn')?.click();
+            updateFocusedHePanelState();
+        }});
+        document.getElementById('focused-he-export-btn')?.addEventListener('click', () => {{
+            document.getElementById('modal-he-export-btn')?.click();
+            updateFocusedHePanelState();
+        }});
+        [
+            ['focused-he-opacity', 'modal-he-opacity', 'modal-he-opacity-num'],
+            ['focused-he-scale', 'modal-he-scale', 'modal-he-scale-num'],
+            ['focused-he-rotation', 'modal-he-rotation', 'modal-he-rotation-num'],
+        ].forEach(([sourceId, targetRangeId, targetNumId]) => {{
+            document.getElementById(sourceId)?.addEventListener('input', () => {{
+                syncFocusedInputPair(sourceId, targetRangeId, targetNumId);
+            }});
         }});
 
         const visualDefaultControls = document.getElementById('visual-default-controls');
@@ -25719,7 +29471,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
             const geneInput = document.getElementById('gene-input');
             const requested = resolveCanonicalGeneName(geneInput?.value || '')
-                || currentGene
+                || resolveCanonicalGeneName(currentGene)
                 || getActiveFeatureList()[0]
                 || '';
             if (!requested) return;
@@ -25733,12 +29485,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             applyDefaultVisualSource('gene').catch(error => console.warn(error));
         }});
 
-        const geneList = document.getElementById('gene-list');
-        getActiveFeatureList().forEach(gene => {{
-            const opt = document.createElement('option');
-            opt.value = gene;
-            geneList.appendChild(opt);
-        }});
+        populateGeneInputDatalist();
 
         // Modality picker: only render when more than one modality is exported.
         const modalityControl = document.getElementById('modality-control-group');
@@ -25820,7 +29567,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
         genePanelNew?.addEventListener('click', () => {{
-            const suggestedName = currentGene ? `${{currentGene}} panel` : '';
+            const seedGene = resolveCanonicalGeneName(currentGene);
+            const suggestedName = seedGene ? `${{seedGene}} panel` : '';
             const panelName = prompt('Panel name', suggestedName);
             if (!panelName) return;
             upsertSavedGenePanel(panelName, getGenePanelSeedToken());
@@ -25937,19 +29685,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     }}
                     if (entry.kind !== 'cell') {{
                         const modName = entry.kind;
-                        const features = getLoadedFeaturesForModality(modName);
+                        const features = getFeatureDatalistValuesForModality(modName);
                         
                         if (!features.length && catCols.length) {{
                             entry.kind = 'cell';
                             return normalize(entry, preferSecond);
                         }}
 
-                        const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
-                            ? DATA.genes_meta
-                            : (MODALITY_GENE_STATE[modName]?.genes_meta);
-                        
-                        if ((!entry.gene || !(meta && meta[entry.gene])) && !entry.geneCleared) {{
-                            entry.gene = features[preferSecond && features.length > 1 ? 1 : 0] || '';
+                        if ((!entry.gene || !isFeatureLoadedForModality(entry.gene, modName)) && !entry.geneCleared) {{
+                            const defaultFeature = features[preferSecond && features.length > 1 ? 1 : 0] || '';
+                            entry.gene = resolveFeatureTokenForModality(defaultFeature, modName) || defaultFeature;
                         }}
                     }}
                 }};
@@ -25962,16 +29707,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const spec = overviewBlendSpec[side];
                 if (!controls || !spec) return;
 
-                // Populate kind select
-                const kindOptions = [{{ value: 'cell', label: 'Cell type' }}];
-                if (MODALITY_DESCRIPTORS.length > 0) {{
-                    for (const mod of MODALITY_DESCRIPTORS) {{
-                        kindOptions.push({{ value: mod.name, label: mod.label || mod.name }});
-                    }}
-                }} else {{
-                    kindOptions.push({{ value: 'gene', label: 'Gene' }});
-                }}
-                setSelectOptions(controls.kind, kindOptions, spec.kind);
+                setSelectOptions(controls.kind, getBlendKindOptions(), spec.kind);
 
                 const isCell = spec.kind === 'cell';
                 controls.color.style.display = isCell ? '' : 'none';
@@ -25986,16 +29722,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     setSelectOptions(controls.category, catOpts, spec.category);
                 }} else {{
                     const modName = spec.kind;
-                    const modDesc = MODALITY_DESCRIPTORS.find(m => m.name === modName);
-                    const modLabel = modDesc?.label || (modName === 'gene' ? 'Gene' : modName);
+                    const modLabel = getModalityDisplayLabel(modName);
                     controls.gene.placeholder = `${{modLabel}} feature`;
-                    controls.gene.value = spec.gene || '';
+                    controls.gene.value = getGeneDisplayLabel(spec.gene);
 
                     // Populate side-specific feature datalist
                     const listId = `overview-blend-${{side}}-gene-list`;
                     const listEl = document.getElementById(listId);
                     if (listEl) {{
-                        const features = getLoadedFeaturesForModality(modName);
+                        const features = getFeatureDatalistValuesForModality(modName);
                         const fragment = document.createDocumentFragment();
                         for (const f of features) {{
                             const opt = document.createElement('option');
@@ -26073,23 +29808,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }});
                 controls.gene?.addEventListener('change', async () => {{
                     await runAsyncUIAction(`Overview split feature (${{side.toUpperCase()}})`, async () => {{
-                        const gene = controls.gene.value.trim();
                         const modName = overviewBlendSpec[side].kind;
+                        const gene = resolveFeatureTokenForModality(controls.gene.value.trim(), modName) || controls.gene.value.trim();
                         if (!gene) {{
                             overviewBlendSpec[side].gene = '';
                             overviewBlendSpec[side].geneCleared = true;
                             applyOverviewBlendChange();
                             return;
                         }}
-                        const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
-                            ? DATA.genes_meta
-                            : (MODALITY_GENE_STATE[modName]?.genes_meta);
-                        if (!(meta && meta[gene])) {{
-                            controls.gene.value = overviewBlendSpec[side].gene || '';
+                        if (!isFeatureLoadedForModality(gene, modName)) {{
+                            controls.gene.value = getGeneDisplayLabel(overviewBlendSpec[side].gene);
                             return;
                         }}
                         if (!await ensureGeneAvailable(gene, {{ modality: modName }})) {{
-                            controls.gene.value = overviewBlendSpec[side].gene || '';
+                            controls.gene.value = getGeneDisplayLabel(overviewBlendSpec[side].gene);
                             return;
                         }}
                         overviewBlendSpec[side].gene = gene;
@@ -26219,6 +29951,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         initLegendResizer();
 
         // Insights panel toggle
+        geneModules = loadGeneModules();
         buildColorPanel();
         const colorToggle = document.getElementById('color-toggle');
         colorToggle.addEventListener('click', toggleInsightsPanel);
@@ -26523,6 +30256,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 scaleAuto: document.getElementById('modal-blend-b-auto'),
             }},
         }};
+        const modalAnnotationCreateGroupBtn = document.getElementById('modal-annotations-create-group');
         const modalAnnotationExportBtn = document.getElementById('modal-annotations-export');
         const modalAnnotationClearAllBtn = document.getElementById('modal-annotations-clear-all');
         initModalControlsDragging();
@@ -26539,7 +30273,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 canvas.style.cursor = 'move';
             }} else if (modalSpacePanActive) {{
                 canvas.style.cursor = 'grab';
-            }} else if (modalMagicWandActive || modalAnnotationModeActive) {{
+            }} else if (modalMagicWandActive) {{
                 canvas.style.cursor = 'crosshair';
             }} else {{
                 canvas.style.cursor = 'grab';
@@ -26573,20 +30307,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
                 if (entry.kind !== 'cell') {{
                     const modName = entry.kind;
-                    const features = getLoadedFeaturesForModality(modName);
+                    const features = getFeatureDatalistValuesForModality(modName);
 
                     if (!features.length && catCols.length) {{
                         entry.kind = 'cell';
                         return normalize(entry, preferSecondCategory);
                     }}
                     
-                    const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
-                        ? DATA.genes_meta
-                        : (MODALITY_GENE_STATE[modName]?.genes_meta);
-
-                    if (!entry.gene || !(meta && meta[entry.gene])) {{
-                        if (preferSecondCategory && features.length > 1) entry.gene = features[1];
-                        else entry.gene = features[0] || '';
+                    if (!entry.gene || !isFeatureLoadedForModality(entry.gene, modName)) {{
+                        const defaultFeature = preferSecondCategory && features.length > 1 ? features[1] : (features[0] || '');
+                        entry.gene = resolveFeatureTokenForModality(defaultFeature, modName) || defaultFeature;
                     }}
                 }}
             }};
@@ -26667,16 +30397,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const spec = modalBlendSpec[side];
             if (!controls || !spec) return;
 
-            // Populate kind select
-            const kindOptions = [{{ value: 'cell', label: 'Cell type' }}];
-            if (MODALITY_DESCRIPTORS.length > 0) {{
-                for (const mod of MODALITY_DESCRIPTORS) {{
-                    kindOptions.push({{ value: mod.name, label: mod.label || mod.name }});
-                }}
-            }} else {{
-                kindOptions.push({{ value: 'gene', label: 'Gene' }});
-            }}
-            setSelectOptions(controls.kind, kindOptions, spec.kind);
+            setSelectOptions(controls.kind, getBlendKindOptions(), spec.kind);
 
             const isCell = spec.kind === 'cell';
             controls.color.style.display = isCell ? '' : 'none';
@@ -26693,16 +30414,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 setSelectOptions(controls.category, catOptions, spec.category);
             }} else {{
                 const modName = spec.kind;
-                const modDesc = MODALITY_DESCRIPTORS.find(m => m.name === modName);
-                const modLabel = modDesc?.label || (modName === 'gene' ? 'Gene' : modName);
+                const modLabel = getModalityDisplayLabel(modName);
                 controls.gene.placeholder = `${{modLabel}} feature`;
-                controls.gene.value = spec.gene || '';
+                controls.gene.value = getGeneDisplayLabel(spec.gene);
 
                 // Populate side-specific feature datalist
                 const listId = `modal-blend-${{side}}-gene-list`;
                 const listEl = document.getElementById(listId);
                 if (listEl) {{
-                    const features = getLoadedFeaturesForModality(modName);
+                    const features = getFeatureDatalistValuesForModality(modName);
                     const fragment = document.createDocumentFragment();
                     for (const f of features) {{
                         const opt = document.createElement('option');
@@ -26713,10 +30433,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 }}
                 
                 const gene = (spec.gene || '').trim();
-                const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
-                    ? DATA.genes_meta
-                    : (MODALITY_GENE_STATE[modName]?.genes_meta);
-                const hasGene = !!(gene && meta && meta[gene]);
+                const hasGene = !!(gene && isFeatureLoadedForModality(gene, modName));
                 
                 if (hasGene) ensureGeneAutoScale(gene, modName);
                 const scale = hasGene ? getGeneScaleRange(gene, modName) : null;
@@ -26755,11 +30472,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (!controls || !spec || isCell) return;
             const gene = (spec.gene || '').trim();
             const modName = spec.kind;
-            const meta = (modName === CURRENT_MODALITY) ? DATA.genes_meta : (MODALITY_GENE_STATE[modName]?.genes_meta);
-            if (!gene || !(meta && meta[gene])) return;
+            if (!gene || !isFeatureLoadedForModality(gene, modName)) return;
 
             if (useAuto) {{
-                const autoScale = computeGenePercentiles(gene);
+                const autoScale = computeGenePercentiles(gene, GENE_SCALE_PMIN, GENE_SCALE_PMAX, modName);
                 if (!autoScale) return;
                 geneScaleAuto[gene] = autoScale;
                 delete geneScaleOverrides[gene];
@@ -26807,22 +30523,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }});
             controls.gene?.addEventListener('change', async () => {{
                 await runAsyncUIAction(`Modal gene selection (${{side.toUpperCase()}})`, async () => {{
-                        const gene = controls.gene.value.trim();
                         const modName = modalBlendSpec[side].kind;
+                        const gene = resolveFeatureTokenForModality(controls.gene.value.trim(), modName) || controls.gene.value.trim();
                         if (!gene) {{
                             modalBlendSpec[side].gene = '';
                             applyModalBlendControlChange();
                             return;
                         }}
-                        const meta = (modName === CURRENT_MODALITY || (modName === 'gene' && CURRENT_MODALITY === 'rna'))
-                            ? DATA.genes_meta
-                            : (MODALITY_GENE_STATE[modName]?.genes_meta);
-                        if (!(meta && meta[gene])) {{
-                            controls.gene.value = modalBlendSpec[side].gene || '';
+                        if (!isFeatureLoadedForModality(gene, modName)) {{
+                            controls.gene.value = getGeneDisplayLabel(modalBlendSpec[side].gene);
                             return;
                         }}
                         if (!await ensureGeneAvailable(gene, {{ modality: modName }})) {{
-                            controls.gene.value = modalBlendSpec[side].gene || '';
+                            controls.gene.value = getGeneDisplayLabel(modalBlendSpec[side].gene);
                         return;
                     }}
                     modalBlendSpec[side].gene = gene;
@@ -26847,6 +30560,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         layoutModalAnnotationPanel();
         updateModalToolbarState();
 
+        modalAnnotationCreateGroupBtn?.addEventListener('click', () => {{
+            createModalAnnotationGroup();
+        }});
         modalAnnotationExportBtn?.addEventListener('click', () => {{
             exportModalAnnotations();
         }});
@@ -26878,16 +30594,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 e.preventDefault();
                 return;
             }}
-            if (modalAnnotationModeActive) {{
-                if (!modalSection) return;
-                const rect = container.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                isDrawingModalAnnotation = true;
-                modalAnnotationPath = [{{ x, y }}];
-                renderModalSection();
-                return;
-            }}
             if (modalMagicWandActive) {{
                 if (!modalSection) return;
                 const rect = container.getBoundingClientRect();
@@ -26905,7 +30611,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             updateModalCanvasCursor();
         }});
         canvas.addEventListener('pointerdown', (e) => {{
-            if (modalAnnotationModeActive || modalMagicWandActive) return;
+            if (modalMagicWandActive) return;
             const blendActiveNow = !!(modalSection && getModalBlendRuntimes(modalSection));
             if (!blendActiveNow) return;
             const rect = container.getBoundingClientRect();
@@ -26934,18 +30640,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             e.preventDefault();
         }});
         document.addEventListener('mousemove', (e) => {{
-            if (isDrawingModalAnnotation) {{
-                const rect = container.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const last = modalAnnotationPath[modalAnnotationPath.length - 1];
-                if (!last || Math.abs(x - last.x) + Math.abs(y - last.y) >= 1) {{
-                    modalAnnotationPath.push({{ x, y }});
-                    modalPointerMoved = true;
-                    renderModalSection();
-                }}
-                return;
-            }}
             if (isDrawingModalLasso) {{
                 const rect = container.getBoundingClientRect();
                 const x = e.clientX - rect.left;
@@ -26988,11 +30682,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 heIsDragging = false;
                 updateModalCanvasCursor();
             }}
-            if (isDrawingModalAnnotation) {{
-                isDrawingModalAnnotation = false;
-                createModalAnnotationFromPath();
-                modalAnnotationPath = [];
-            }}
             if (isDrawingModalLasso) {{
                 isDrawingModalLasso = false;
                 performModalLassoSelection();
@@ -27008,7 +30697,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         // Tooltip on hover in modal
         canvas.addEventListener('mousemove', (e) => {{
-            if (isDragging || isDrawingModalLasso || isDrawingModalAnnotation || modalMagicWandActive || modalAnnotationModeActive || !modalSection) return;
+            if (isDragging || isDrawingModalLasso || modalMagicWandActive || !modalSection) return;
 
             const rect = container.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
@@ -27103,6 +30792,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             initShortcutsOverlay();
             initKeyboardShortcuts();
             initHelpTooltips();
+            initCalcInfoPopovers();
             updateSectionRotationIndicators();
             updateStickyOffsets();
             renderLegend('legend');
@@ -27140,7 +30830,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 def export_to_html(
     dataset: SpatialDataset,
     output_path: str,
-    color: str = "leiden",
+    annotation: str = "leiden",
     title: str = "Spatial Viewer",
     min_panel_size: int = 150,
     spot_size: Union[float, str, None] = "auto",
@@ -27148,7 +30838,7 @@ def export_to_html(
     outline_by: Optional[str] = "course",
     metadata_labels: Optional[Mapping[str, str]] = None,
     viewer_info_html: Optional[str] = None,
-    additional_colors: Optional[List[str]] = None,
+    additional_annotations: Optional[List[str]] = None,
     genes: Optional[List[str]] = None,
     gene_encoding: str = "auto",
     gene_value_encoding: str = "uint16",
@@ -27156,7 +30846,8 @@ def export_to_html(
     gene_aux_path: Optional[str] = None,
     gene_sidecar_shard_size: int = GENE_SIDECAR_SHARD_SIZE,
     gene_sparse_zero_threshold: float = 0.8,
-    pseudobulk_additional_colors: Optional[List[str]] = None,
+    pseudobulk: Optional[str] = "auto",
+    pseudobulk_additional_annotations: Optional[List[str]] = None,
     pseudobulk_counts_layer: Optional[str] = "counts",
     pseudobulk_min_replicates: int = 2,
     pseudobulk_min_pct_expressed: float = 0.0,
@@ -27171,6 +30862,7 @@ def export_to_html(
     interaction_markers_top_genes: int = 20,
     interaction_markers_min_cells: int = 30,
     interaction_markers_min_neighbors: int = 1,
+    interaction_markers: Optional[str] = "auto",
     section_rotations: Optional[Mapping[str, Union[int, float]]] = None,
     deconvolutions: Optional[Dict[str, str]] = None,
     gene_correlation_top_n: int = 10,
@@ -27191,8 +30883,8 @@ def export_to_html(
     output_path : str
         Path for output HTML file, or a `.karospace` package when
         `gene_storage="sidecar"`.
-    color : str
-        Initial color column or gene name
+    annotation : str
+        Initial cell annotation column or gene name
     title : str
         Page title
     min_panel_size : int
@@ -27210,8 +30902,8 @@ def export_to_html(
         UI without renaming the underlying obs/metadata columns.
     viewer_info_html : str, optional
         HTML string shown in the Info tab of the color panel.
-    additional_colors : list, optional
-        Additional obs columns to include for color switching
+    additional_annotations : list, optional
+        Additional obs columns to include for annotation switching.
     genes : list, optional
         Gene names to include for expression visualization
     gene_encoding : str
@@ -27242,9 +30934,12 @@ def export_to_html(
     spatial_variable_genes_n : int
         Number of top variable genes to score with Moran's I spatial autocorrelation
         (default 200). Requires a spatial weight matrix in adata.obsp. Set to 0 to disable.
-    pseudobulk_additional_colors : list, optional
-        Additional color columns to analyze with category pseudobulk DE and
-        interaction pseudobulk DE. The initial color is always analyzed automatically.
+    pseudobulk : str, optional
+        Category pseudobulk DE mode. Use "auto" to analyze the initial annotation and
+        pseudobulk_additional_annotations, or None/"None" to disable.
+    pseudobulk_additional_annotations : list, optional
+        Additional annotation columns to analyze with category pseudobulk DE and
+        interaction pseudobulk DE when their modes are enabled.
     pseudobulk_counts_layer : str, optional
         Raw-count AnnData layer for pseudobulk aggregation. Defaults to "counts";
         falls back to adata.X with a warning if absent.
@@ -27277,6 +30972,9 @@ def export_to_html(
         pseudobulk samples.
     interaction_markers_min_neighbors : int
         Minimum target neighbors to classify source cells as contact+.
+    interaction_markers : str, optional
+        Contact-conditioned interaction marker mode. Use "auto" to analyze the
+        initial annotation and pseudobulk_additional_annotations, or None/"None" to disable.
     section_rotations : mapping, optional
         Optional mapping of section_id -> initial rotation angle in degrees.
         Angles are stored exactly (normalized modulo 360) for the interactive viewer.
@@ -27358,6 +31056,18 @@ def export_to_html(
 
     if outline_by and outline_by not in dataset.metadata_columns:
         print(f"  Warning: outline_by '{outline_by}' not in metadata columns; no outlines will be shown.")
+    def _analysis_mode_enabled(value: Optional[str], name: str) -> bool:
+        if value is None:
+            return False
+        token = str(value).strip().lower()
+        if token in {"", "auto"}:
+            return True
+        if token in {"none", "null"}:
+            return False
+        raise ValueError(f"{name} must be 'auto' or None")
+
+    pseudobulk_enabled = _analysis_mode_enabled(pseudobulk, "pseudobulk")
+    interaction_markers_enabled = _analysis_mode_enabled(interaction_markers, "interaction_markers")
     if int(pseudobulk_min_replicates) < 1:
         raise ValueError("pseudobulk_min_replicates must be >= 1")
     correction_method = str(pseudobulk_p_adjust_method or "fdr_bh").strip().lower().replace("-", "_")
@@ -27404,26 +31114,32 @@ def export_to_html(
         neighbor_stats_permutations = 0 if int(dataset.adata.n_obs) >= 200_000 else 20
 
     companion_analytics = dataset.get_companion_analytics()
-    pseudobulk_de_groupby = []
-    for col in [color, *(pseudobulk_additional_colors or [])]:
-        if col and col not in pseudobulk_de_groupby:
-            pseudobulk_de_groupby.append(col)
+    pseudobulk_analysis_groupby = []
+    for col in [annotation, *(pseudobulk_additional_annotations or [])]:
+        if col and col not in pseudobulk_analysis_groupby:
+            pseudobulk_analysis_groupby.append(col)
+    pseudobulk_de_groupby = list(pseudobulk_analysis_groupby) if pseudobulk_enabled else []
+    interaction_markers_groupby = list(pseudobulk_analysis_groupby) if interaction_markers_enabled else []
+    analytics_groupby = list(pseudobulk_de_groupby)
+    analytics_groupby.extend(
+        col for col in interaction_markers_groupby if col and col not in analytics_groupby
+    )
     if neighbor_stats_groupby is None:
-        neighbor_stats_groupby = list(pseudobulk_de_groupby)
-        if additional_colors:
+        neighbor_stats_groupby = list(analytics_groupby)
+        if additional_annotations:
             neighbor_stats_groupby.extend(
-                col for col in additional_colors if col and col not in neighbor_stats_groupby
+                col for col in additional_annotations if col and col not in neighbor_stats_groupby
             )
     else:
         neighbor_stats_groupby = list(neighbor_stats_groupby)
         neighbor_stats_groupby.extend(
-            col for col in pseudobulk_de_groupby if col and col not in neighbor_stats_groupby
+            col for col in analytics_groupby if col and col not in neighbor_stats_groupby
         )
 
     data = dataset.to_json_data(
-        color,
+        annotation,
         downsample=downsample,
-        additional_colors=additional_colors,
+        additional_annotations=additional_annotations,
         genes=embedded_genes,
         gene_encoding=gene_encoding,
         gene_sparse_zero_threshold=gene_sparse_zero_threshold,
@@ -27435,6 +31151,7 @@ def export_to_html(
         pseudobulk_padj_cutoff=pseudobulk_padj_cutoff,
         pseudobulk_log2fc_cutoff=pseudobulk_log2fc_cutoff,
         pseudobulk_deseq2_fit_type=fit_type,
+        interaction_markers_groupby=interaction_markers_groupby,
         neighbor_stats_groupby=neighbor_stats_groupby,
         neighbor_stats_permutations=neighbor_stats_permutations,
         neighbor_stats_seed=neighbor_stats_seed,
@@ -27613,11 +31330,7 @@ def export_to_html(
             + f'">{_escape_html_attr(percent_label)}% downsampled</div>'
         )
 
-    data_json_safe = json.dumps(
-        _json_sanitize_nonfinite(data),
-        separators=(',', ':'),
-        allow_nan=False,
-    ).replace("</", "<\\/")
+    data_json_safe, section_data_scripts = _serialize_embedded_viewer_data(data)
 
     html = HTML_TEMPLATE.format(
         title=title,
@@ -27628,6 +31341,7 @@ def export_to_html(
         modal_spot_size=modal_spot_size,
         modal_spot_slider_max=modal_spot_slider_max,
         data_json=data_json_safe,
+        section_data_scripts=section_data_scripts,
         palette_json=json.dumps(DEFAULT_CATEGORICAL_PALETTE),
         downsample_warning_html=downsample_warning_html,
         metadata_labels_json=json.dumps(resolved_metadata_labels),
