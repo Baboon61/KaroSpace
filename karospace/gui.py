@@ -103,7 +103,7 @@ Dataset Loading Options
 Annotation & Gene Content
 - Additional annotations: Comma/newline-separated obs columns to include in the annotation dropdown.
 - Genes: Hand-picked gene symbols (comma/newline-separated) to pre-load for expression view.
-- Significant pseudobulk DE genes are embedded automatically when they pass the configured thresholds.
+- Significant shared-fit pseudobulk DE genes are embedded automatically up to the per-comparison cap.
 
 Advanced Options
 - Gene encoding: auto | dense | sparse.
@@ -117,7 +117,7 @@ Advanced Options
 - Interaction top genes: Integer > 0.
 - Interaction min cells: Integer > 0.
 - Interaction min neighbors: Integer > 0.
-- Pseudobulk DE is computed for the initial annotation and selected additional annotations.
+- Pseudobulk DE uses one shared replicate + annotation fit for each selected annotation, with category-versus-category and balanced-rest contrasts. Non-embedded DE genes remain visible but cannot be clicked for expression.
 - Interaction markers use the same pseudobulk counts layer and groupby replicate.
 """
 

@@ -1,9 +1,40 @@
+import os
+import warnings
+
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 from anndata import AnnData
 
-from karospace.pseudobulk import compute_pseudobulk_interaction_markers
+from karospace.pseudobulk import (
+    _NUMPY_SLOGDET_PYTHONWARNINGS_FILTERS,
+    _install_numpy_slogdet_warning_filter,
+    _suppress_numpy_slogdet_warnings,
+    compute_pseudobulk_interaction_markers,
+)
+
+
+def test_suppress_numpy_slogdet_warnings_keeps_other_runtime_warnings():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        with _suppress_numpy_slogdet_warnings():
+            warnings.warn("divide by zero encountered in slogdet", RuntimeWarning)
+            warnings.warn("overflow encountered in slogdet", RuntimeWarning)
+            warnings.warn("invalid value encountered in slogdet", RuntimeWarning)
+            warnings.warn("other runtime warning", RuntimeWarning)
+
+    assert [str(warning.message) for warning in caught] == ["other runtime warning"]
+
+
+def test_numpy_slogdet_warning_filter_is_exported_to_child_processes(monkeypatch):
+    monkeypatch.setenv("PYTHONWARNINGS", "default")
+
+    _install_numpy_slogdet_warning_filter()
+    _install_numpy_slogdet_warning_filter()
+
+    filters = [part.strip() for part in os.environ["PYTHONWARNINGS"].split(",") if part.strip()]
+    for filter_spec in _NUMPY_SLOGDET_PYTHONWARNINGS_FILTERS:
+        assert filters.count(filter_spec) == 1
 
 
 def test_pseudobulk_interaction_markers_aggregate_contact_status_by_replicate(monkeypatch):
@@ -48,7 +79,7 @@ def test_pseudobulk_interaction_markers_aggregate_contact_status_by_replicate(mo
 
     captured = {}
 
-    def fake_fit(pair_counts, metadata, source, reference, fit_type="parametric"):
+    def fake_fit(pair_counts, metadata, source, reference, fit_type="parametric", **kwargs):
         captured["pair_counts"] = pair_counts.copy()
         captured["metadata"] = metadata.copy()
         captured["source"] = source
@@ -128,7 +159,7 @@ def test_pseudobulk_interaction_markers_count_weighted_edges_as_neighbors(monkey
 
     captured = {}
 
-    def fake_fit(pair_counts, metadata, source, reference, fit_type="parametric"):
+    def fake_fit(pair_counts, metadata, source, reference, fit_type="parametric", **kwargs):
         captured["metadata"] = metadata.copy()
         return pd.DataFrame(
             {
@@ -200,7 +231,7 @@ def test_pseudobulk_interaction_markers_compact_kept_paired_samples(monkeypatch)
 
     captured = {}
 
-    def fake_fit(pair_counts, metadata, source, reference, fit_type="parametric"):
+    def fake_fit(pair_counts, metadata, source, reference, fit_type="parametric", **kwargs):
         captured["pair_counts"] = pair_counts.copy()
         captured["metadata"] = metadata.copy()
         return pd.DataFrame(

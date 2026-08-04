@@ -57,6 +57,7 @@ pip install -e .
 - numpy >= 1.20.0
 - pandas >= 1.3.0
 - scipy >= 1.7.0
+- gseapy >= 1.1.0
 
 ## Quick Start
 
@@ -138,6 +139,13 @@ export_to_html(
     pseudobulk_padj_cutoff=0.05,
     pseudobulk_log2fc_cutoff=0.5,
     pseudobulk_deseq2_fit_type="parametric",
+    pseudobulk_n_cpus=1,
+    pseudobulk_embed_top_n_per_comparison=20,
+    pathway_gmt=None,            # default Reactome via GSEApy; or "reactome.gmt"
+    pathway_organism="Human",
+    pathway_top_n=20,
+    pathway_min_overlap=3,
+    pathway_gsea_permutations=100,
     interaction_markers="auto",  # Use None to disable contact-conditioned marker DE
     section_rotations={
         "sample_a": 37.5,
@@ -159,7 +167,7 @@ karospace your_data.h5ad -o viewer.html --annotation leiden
 | `-o, --output` | Output HTML file path | `karospace.html` |
 | `--annotation` | Initial cell-annotation column | `leiden` |
 | `--additional-annotations` | Comma-separated extra obs columns to embed as selectable annotations (needed to compare two annotations in the River plot) | empty |
-| `--genes` | Comma-separated genes to preload; significant pseudobulk DE genes are embedded automatically | empty |
+| `--genes` | Comma-separated genes to preload; significant pseudobulk DE genes are embedded automatically up to the per-comparison cap | empty |
 | `--metadata-labels` | JSON object mapping metadata/obs column keys to display labels in the viewer UI | empty |
 | `--metadata-columns` | Comma-separated obs columns to use as section metadata and filter chips | loader defaults |
 | `--metadata-value-order` | JSON object mapping metadata columns to ordered value lists | empty |
@@ -194,12 +202,20 @@ karospace your_data.h5ad -o viewer.html --annotation leiden
 | `--pseudobulk` | Category pseudobulk DE mode (`auto`, `None`) | `auto` |
 | `--pseudobulk-additional-annotations` | Additional annotation columns to analyze when pseudobulk or interaction markers are enabled. The initial `--annotation` is included automatically | empty |
 | `--pseudobulk-counts-layer` | Raw-count AnnData layer for pseudobulk aggregation; use `None` for `adata.X` | `counts` |
-| `--pseudobulk-min-replicates` | Minimum paired replicates required for each contrast | `2` |
+| `--pseudobulk-simple-constrast-categories` | Categories to report in category-versus-category contrasts; all retained categories stay in the shared fit and receive balanced-rest contrasts | empty |
+| `--pseudobulk-min-replicates` | Minimum paired replicates required for each reported contrast | `2` |
 | `--pseudobulk-min-pct-expressed` | Minimum fraction of cells expressing a gene required in both compared groups; values >1 are interpreted as percentages | `0` |
 | `--pseudobulk-p-adjust-method` | Multiple-testing correction method (`fdr_bh`, `bonferroni`, `holm`, `none`) | `fdr_bh` |
 | `--pseudobulk-padj-cutoff` | Adjusted p-value cutoff for volcano highlighting and DE table inclusion | `0.05` |
 | `--pseudobulk-log2fc-cutoff` | Absolute log2FC cutoff for volcano highlighting and DE table inclusion | `0.5` |
 | `--pseudobulk-deseq2-fit-type` | PyDESeq2 dispersion trend fit type; use `mean` to avoid parametric trend fallback warnings | `parametric` |
+| `--pseudobulk-n-cpus` | CPU workers used for pseudobulk DESeq2 fitting and contrasts | `1` |
+| `--pseudobulk-embed-top-n-per-comparison` | Significant DE genes to auto-embed per category/contact comparison; full DE tables still display non-embedded genes as disabled expression links | `20` |
+| `--pathway-gmt` | GMT pathway file(s) for ORA/GSEA after Simple design DE; omitted uses Reactome via GSEApy | Reactome |
+| `--pathway-organism` | Organism passed to GSEApy for default Reactome loading, e.g. `Human` or `Mouse` | `Human` |
+| `--pathway-top-n` | Maximum ORA/GSEA pathways stored per direction and comparison | `20` |
+| `--pathway-min-overlap` | Minimum pathway/query gene overlap for ORA/GSEA reporting | `3` |
+| `--pathway-gsea-permutations` | Permutations for compact preranked GSEA p-values; use `0` for ES/NES only | `100` |
 | `--section-rotations` | Comma-separated `section_id:angle` pairs | empty |
 | `--gene-correlation-top-n` | Correlated genes shown per embedded gene in discovery panel | `10` |
 | `--cluster-means-n-genes` | Maximum embedded pseudobulk-DE genes used for category mean summaries; use `0` to disable | `500` |
@@ -252,7 +268,7 @@ If `adata.obsp` contains a neighbor graph (`spatial_connectivities`, `connectivi
 
 Contact-conditioned interaction markers are computed automatically for the initial `color` column and for `pseudobulk_additional_annotations` unless `interaction_markers=None` / `--interaction-markers None` is used. KaroSpace classifies source cells as contact+ or contact- within each `groupby` replicate, aggregates raw counts by replicate/contact status, and fits pseudobulk DESeq2 with a paired replicate design.
 
-Pseudobulk category-vs-category DE is precomputed automatically for the initial `color` column unless `pseudobulk=None` / `--pseudobulk None` is used, and shown in `Insights → Compare → Cell DE`. It aggregates raw counts by `groupby` replicate and category. Significant genes passing both adjusted p-value and log2FC thresholds are embedded automatically, exposed in `Insights → Genes → DE Genes`, and reused for category means/correlations. Use `pseudobulk_additional_annotations=[...]` or `--pseudobulk-additional-annotations ...` to compute category DE and interaction pseudobulk DE for extra annotation columns.
+Pseudobulk category DE is precomputed automatically for the initial `color` column unless `pseudobulk=None` / `--pseudobulk None` is used, and shown in `Insights → Compare → Cell DE`. KaroSpace aggregates raw counts by replicate and annotation, fits one shared `~ replicate + annotation` DESeq2 model per annotation column, then extracts category-versus-category contrasts. It also extracts a balanced-rest contrast for every category: the category minus the equally weighted mean of all other retained annotation categories. Pairwise PCA/distance diagnostics are generated automatically for selected category pairs. ORA and compact preranked GSEA pathway summaries are generated for each available Simple design comparison and shown as pathway figures in `Compare → Per sample → Simple design`; pass `--pathway-gmt` for local GMT collections, or omit it to use Reactome via GSEApy. Significant genes passing both adjusted p-value and log2FC thresholds are embedded automatically up to `pseudobulk_embed_top_n_per_comparison` / `--pseudobulk-embed-top-n-per-comparison` per comparison, exposed in `Insights → Genes → DE Genes`, and reused for category means/correlations. Full DE tables still list non-embedded genes, but their expression links are disabled. Use `pseudobulk_additional_annotations=[...]` or `--pseudobulk-additional-annotations ...` to compute category DE and interaction pseudobulk DE for extra annotation columns.
 
 ## Examples
 

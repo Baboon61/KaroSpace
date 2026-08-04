@@ -62,6 +62,13 @@ def _run_export_cli(argv=None):
         default="karospace.html",
         help="Output HTML file path (default: karospace.html)"
     )
+    io_args.add_argument(
+        "--inspect-input",
+        action="store_true",
+        help=(
+            "Inspect the input h5ad metadata and exit without building a viewer or running analytics."
+        ),
+    )
     viewer_args.add_argument(
         "--annotation",
         type=str,
@@ -278,16 +285,68 @@ def _run_export_cli(argv=None):
         )
     )
     pseudobulk_args.add_argument(
+        "--pseudobulk-replicate-annotation",
+        type=str,
+        default=None,
+        help=(
+            "Obs annotation to use as the biological replicate in pseudobulk analyses. "
+            "Defaults to --groupby."
+        )
+    )
+    pseudobulk_args.add_argument(
+        "--pseudobulk-simple-constrast-categories",
+        type=str,
+        default="",
+        help=(
+            "Comma-separated categories to include in Simple design category-versus-category contrasts. "
+            "All retained categories remain in the shared DESeq2 fit and balanced-rest contrasts "
+            "still run for every category. Empty includes all categories."
+        ),
+    )
+    pseudobulk_args.add_argument(
         "--pseudobulk-counts-layer",
         type=str,
         default="counts",
         help="AnnData layer containing raw counts for pseudobulk DE. Use 'None' for adata.X. (default: counts)"
     )
     pseudobulk_args.add_argument(
+        "--pseudobulk-min-cell-counts",
+        type=int,
+        default=0,
+        help=(
+            "Exclude cells with fewer than this many total raw counts before pseudobulk aggregation. "
+            "Use 0 to disable. (default: 0)"
+        ),
+    )
+    pseudobulk_args.add_argument(
+        "--pseudobulk-min-gene-counts",
+        type=int,
+        default=0,
+        help=(
+            "Exclude genes with fewer than this many total raw pseudobulk counts in the shared DESeq2 fit. "
+            "Use 0 to disable. (default: 0)"
+        ),
+    )
+    pseudobulk_args.add_argument(
+        "--pseudobulk-n-cpus",
+        type=int,
+        default=1,
+        help="CPU workers used for PyDESeq2 pseudobulk fitting and contrasts. Use 1 to avoid parallel workers. (default: 1)",
+    )
+    pseudobulk_args.add_argument(
+        "--pseudobulk-embed-top-n-per-comparison",
+        type=int,
+        default=20,
+        help=(
+            "Maximum significant DE genes to auto-embed per category/contact comparison. "
+            "Explicit --genes are still embedded. Use 0 to disable automatic DE-gene embedding. (default: 20)"
+        ),
+    )
+    pseudobulk_args.add_argument(
         "--pseudobulk-min-replicates",
         type=int,
         default=2,
-        help="Minimum paired replicates required for each pseudobulk contrast. (default: 2)"
+        help="Minimum paired replicates required for each reported pseudobulk contrast; at least 2 are always required. (default: 2)"
     )
     pseudobulk_args.add_argument(
         "--pseudobulk-min-pct-expressed",
@@ -318,6 +377,39 @@ def _run_export_cli(argv=None):
         choices=["parametric", "mean"],
         default="parametric",
         help="PyDESeq2 dispersion trend fit type. Use 'mean' to avoid parametric trend fallback warnings. (default: parametric)"
+    )
+    pseudobulk_args.add_argument(
+        "--pathway-gmt",
+        type=str,
+        default="",
+        help=(
+            "Comma-separated GMT pathway files for ORA/GSEA after Simple design pseudobulk DE. "
+            "When omitted, KaroSpace uses the default Reactome library via GSEApy."
+        ),
+    )
+    pseudobulk_args.add_argument(
+        "--pathway-organism",
+        type=str,
+        default="Human",
+        help="Organism passed to GSEApy for default Reactome loading, e.g. Human or Mouse. (default: Human)",
+    )
+    pseudobulk_args.add_argument(
+        "--pathway-top-n",
+        type=int,
+        default=20,
+        help="Maximum ORA/GSEA pathways stored per direction and comparison. (default: 20)",
+    )
+    pseudobulk_args.add_argument(
+        "--pathway-min-overlap",
+        type=int,
+        default=3,
+        help="Minimum pathway/query gene overlap for ORA/GSEA reporting. (default: 3)",
+    )
+    pseudobulk_args.add_argument(
+        "--pathway-gsea-permutations",
+        type=int,
+        default=100,
+        help="Permutations for compact preranked GSEA p-values. Use 0 for ES/NES only. (default: 100)",
     )
     neighborhood_args.add_argument(
         "--neighbor-stats-seed",
@@ -409,6 +501,21 @@ def _run_export_cli(argv=None):
 
     args = parser.parse_args(argv)
 
+    if args.pseudobulk_min_cell_counts < 0:
+        parser.error("--pseudobulk-min-cell-counts must be >= 0")
+    if args.pseudobulk_min_gene_counts < 0:
+        parser.error("--pseudobulk-min-gene-counts must be >= 0")
+    if args.pseudobulk_n_cpus < 1:
+        parser.error("--pseudobulk-n-cpus must be >= 1")
+    if args.pseudobulk_embed_top_n_per_comparison < 0:
+        parser.error("--pseudobulk-embed-top-n-per-comparison must be >= 0")
+    if args.pathway_top_n < 1:
+        parser.error("--pathway-top-n must be >= 1")
+    if args.pathway_min_overlap < 1:
+        parser.error("--pathway-min-overlap must be >= 1")
+    if args.pathway_gsea_permutations < 0:
+        parser.error("--pathway-gsea-permutations must be >= 0")
+
     # Check input file
     input_path = Path(args.input)
     if not input_path.exists():
@@ -419,8 +526,23 @@ def _run_export_cli(argv=None):
         print(f"Warning: Expected .h5ad file, got: {input_path.suffix}", file=sys.stderr)
 
     # Import here to avoid slow startup for --help
-    from .data_loader import load_spatial_data
+    from .data_loader import inspect_input_file, load_spatial_data
     from .exporter import export_to_html
+
+    if args.inspect_input:
+        report = inspect_input_file(args.input)
+        print(f"Input: {report['path']}")
+        print(f"Cells: {report['n_cells']:,} | Genes: {report['n_genes']:,}")
+        print("Available cell metadata (adata.obs):")
+        for entry in report["metadata"]:
+            examples = ", ".join(json.dumps(value, ensure_ascii=False) for value in entry["examples"])
+            example_text = examples or "—"
+            missing = f"; {entry['n_missing']:,} missing" if entry["n_missing"] else ""
+            print(
+                f"  - {entry['name']} [{entry['type']}; {entry['n_unique']:,} values{missing}] "
+                f"examples: {example_text}"
+            )
+        return
 
     neighbor_perms: Optional[int]
     if str(args.neighbor_permutations).lower() == "auto":
@@ -485,6 +607,9 @@ def _run_export_cli(argv=None):
     pseudobulk_mode = _parse_auto_or_none(args.pseudobulk, "--pseudobulk")
     interaction_markers_mode = _parse_auto_or_none(args.interaction_markers, "--interaction-markers")
     pseudobulk_additional_annotations = _parse_csv(args.pseudobulk_additional_annotations)
+    pseudobulk_simple_constrast_categories = _parse_csv(args.pseudobulk_simple_constrast_categories)
+    pathway_gmt = _parse_csv(args.pathway_gmt) or None
+    pathway_organism = str(args.pathway_organism or "Human").strip() or "Human"
     additional_annotations = _parse_csv(args.additional_annotations)
     genes = _parse_csv(args.genes)
     group_order = _parse_csv(args.group_order)
@@ -534,7 +659,6 @@ def _run_export_cli(argv=None):
     outline_by = None if outline_token.lower() in {"", "none", "null"} else outline_token
 
     # Load and export
-    print(f"Loading data from: {args.input}")
     load_kwargs = {
         "groupby": args.groupby,
         "spatial_key": args.spatial_key,
@@ -555,7 +679,6 @@ def _run_export_cli(argv=None):
     if args.modalities:
         modalities_arg = [m.strip() for m in args.modalities.split(",") if m.strip()]
 
-    print(f"Exporting to HTML...")
     output_path = export_to_html(
         dataset,
         output_path=args.output,
@@ -585,13 +708,24 @@ def _run_export_cli(argv=None):
         interaction_markers_min_neighbors=args.interaction_markers_min_neighbors,
         pseudobulk=pseudobulk_mode,
         pseudobulk_additional_annotations=pseudobulk_additional_annotations,
+        pseudobulk_replicate_annotation=args.pseudobulk_replicate_annotation,
+        pseudobulk_simple_constrast_categories=pseudobulk_simple_constrast_categories,
         pseudobulk_counts_layer=_parse_optional_layer(args.pseudobulk_counts_layer),
+        pseudobulk_min_cell_counts=args.pseudobulk_min_cell_counts,
+        pseudobulk_min_gene_counts=args.pseudobulk_min_gene_counts,
         pseudobulk_min_replicates=args.pseudobulk_min_replicates,
         pseudobulk_min_pct_expressed=args.pseudobulk_min_pct_expressed,
         pseudobulk_p_adjust_method=args.pseudobulk_p_adjust_method,
         pseudobulk_padj_cutoff=args.pseudobulk_padj_cutoff,
         pseudobulk_log2fc_cutoff=args.pseudobulk_log2fc_cutoff,
         pseudobulk_deseq2_fit_type=args.pseudobulk_deseq2_fit_type,
+        pseudobulk_n_cpus=args.pseudobulk_n_cpus,
+        pseudobulk_embed_top_n_per_comparison=args.pseudobulk_embed_top_n_per_comparison,
+        pathway_gmt=pathway_gmt,
+        pathway_organism=pathway_organism,
+        pathway_top_n=args.pathway_top_n,
+        pathway_min_overlap=args.pathway_min_overlap,
+        pathway_gsea_permutations=args.pathway_gsea_permutations,
         interaction_markers=interaction_markers_mode,
         section_rotations=section_rotations,
         deconvolutions=deconvolutions,

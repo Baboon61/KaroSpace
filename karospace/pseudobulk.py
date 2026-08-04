@@ -2,13 +2,46 @@
 
 from __future__ import annotations
 
+import os
+import re
+import time
+import warnings
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from scipy import stats
 from pandas.api.types import CategoricalDtype
+
+
+_NUMPY_SLOGDET_WARNING_MESSAGE = r".*encountered in slogdet"
+_NUMPY_SLOGDET_PYTHONWARNINGS_FILTERS = (
+    "ignore:divide by zero encountered in slogdet:RuntimeWarning",
+    "ignore:overflow encountered in slogdet:RuntimeWarning",
+    "ignore:invalid value encountered in slogdet:RuntimeWarning",
+)
+
+
+def _install_numpy_slogdet_warning_filter() -> None:
+    """Install a targeted slogdet warning filter for this process and child workers."""
+    warnings.filterwarnings(
+        "ignore",
+        message=_NUMPY_SLOGDET_WARNING_MESSAGE,
+        category=RuntimeWarning,
+    )
+    existing = os.environ.get("PYTHONWARNINGS", "")
+    filters = [part.strip() for part in existing.split(",") if part.strip()]
+    updated = False
+    for filter_spec in _NUMPY_SLOGDET_PYTHONWARNINGS_FILTERS:
+        if filter_spec not in filters:
+            filters.append(filter_spec)
+            updated = True
+    if updated:
+        os.environ["PYTHONWARNINGS"] = ",".join(filters)
+
+
+_install_numpy_slogdet_warning_filter()
 
 
 def _as_count_matrix(adata, counts_layer: Optional[str]) -> Tuple[Any, str, Optional[str]]:
@@ -25,6 +58,36 @@ def _to_dense_counts(matrix) -> np.ndarray:
     dense[~np.isfinite(dense)] = 0
     dense[dense < 0] = 0
     return np.rint(dense).astype(np.int64, copy=False)
+
+
+def _cell_count_mask(matrix, min_cell_counts: int) -> np.ndarray:
+    """Return cells meeting a raw total-count threshold without densifying cells x genes."""
+    threshold = max(0, int(min_cell_counts))
+    if threshold == 0:
+        return np.ones(int(matrix.shape[0]), dtype=bool)
+    totals = np.asarray(matrix.sum(axis=1)).ravel() if sp.issparse(matrix) else np.asarray(matrix).sum(axis=1)
+    totals = np.asarray(totals, dtype=float)
+    return np.isfinite(totals) & (totals >= threshold)
+
+
+def _filter_pseudobulk_genes(
+    counts: np.ndarray,
+    metadata: pd.DataFrame,
+    min_gene_counts: int,
+) -> Tuple[np.ndarray, pd.DataFrame]:
+    """Drop genes below a raw aggregate-count threshold for one DESeq2 fit."""
+    threshold = max(0, int(min_gene_counts))
+    if threshold == 0:
+        return counts, metadata
+    totals = np.asarray(counts, dtype=float).sum(axis=0)
+    keep = np.isfinite(totals) & (totals >= threshold)
+    filtered_counts = np.asarray(counts)[:, keep]
+    filtered_meta = metadata.copy()
+    gene_names = [str(g) for g in metadata.attrs.get("gene_names", [])]
+    filtered_meta.attrs["gene_names"] = [
+        gene for gene, include in zip(gene_names, keep) if include
+    ]
+    return filtered_counts, filtered_meta
 
 
 def _positive_fraction(matrix, mask: np.ndarray, gene_indices: Sequence[int]) -> List[Optional[float]]:
@@ -89,6 +152,50 @@ def _json_float(value: float, digits: int = 6) -> Optional[float]:
     if not np.isfinite(val):
         return None
     return float(round(val, digits))
+
+
+@contextmanager
+def _suppress_numpy_slogdet_warnings():
+    """Mute expected singular-design warnings emitted inside PyDESeq2 stats."""
+    _install_numpy_slogdet_warning_filter()
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=_NUMPY_SLOGDET_WARNING_MESSAGE,
+            category=RuntimeWarning,
+        )
+        yield
+
+
+def _format_duration(seconds: float) -> str:
+    """Format a short, human-readable elapsed or estimated duration."""
+    value = max(0.0, float(seconds))
+    if value < 90.0:
+        return f"{max(1, int(round(value)))} seconds"
+    minutes, remainder = divmod(int(round(value)), 60)
+    if minutes < 60:
+        return f"{minutes} min" if remainder < 30 else f"{minutes} min {remainder} sec"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes} min"
+
+
+def _estimate_shared_deseq2_fit_seconds(
+    n_samples: int,
+    n_genes: int,
+    design_columns: int,
+    n_cpus: int = 1,
+) -> Tuple[float, float]:
+    """Return a deliberately broad pre-fit runtime estimate.
+
+    This is a workload heuristic, not a benchmark: DESeq2 convergence, BLAS,
+    available memory, and CPU speed can substantially change the duration.
+    """
+    sample_gene_millions = (max(1, int(n_samples)) * max(1, int(n_genes))) / 1_000_000.0
+    design_factor = 1.0 + 0.08 * max(0, int(design_columns) - 2)
+    workers = max(1, int(n_cpus))
+    parallel_speedup = 1.0 + 0.75 * (workers - 1)
+    central_seconds = max(60.0, 6.0 * sample_gene_millions * design_factor / parallel_speedup)
+    return 0.7 * central_seconds, 3.5 * central_seconds
 
 
 def _compute_pseudobulk_sample_diagnostics(
@@ -296,6 +403,8 @@ def _fit_deseq2_pair(
     source: str,
     reference: str,
     fit_type: str = "parametric",
+    min_gene_counts: int = 0,
+    n_cpus: int = 1,
 ) -> pd.DataFrame:
     try:
         from pydeseq2.dds import DeseqDataSet
@@ -306,7 +415,10 @@ def _fit_deseq2_pair(
             "pydeseq2 support or run `pip install pydeseq2`."
         ) from exc
 
+    counts, metadata = _filter_pseudobulk_genes(counts, metadata, min_gene_counts)
     gene_names = [str(g) for g in metadata.attrs["gene_names"]]
+    if not gene_names:
+        return pd.DataFrame(columns=["log2FoldChange", "pvalue", "padj", "stat", "baseMean"])
     counts_df = pd.DataFrame(counts, index=metadata.index, columns=gene_names)
     meta = metadata[["_pb_replicate", "_pb_group"]].copy()
     meta["_pb_replicate"] = pd.Categorical(meta["_pb_replicate"])
@@ -321,6 +433,7 @@ def _fit_deseq2_pair(
             metadata=meta,
             design="~ _pb_replicate + _pb_group",
             fit_type=fit_type,
+            n_cpus=max(1, int(n_cpus)),
             quiet=True,
         )
     except TypeError:
@@ -330,23 +443,27 @@ def _fit_deseq2_pair(
             design_factors=["_pb_replicate", "_pb_group"],
             fit_type=fit_type,
             refit_cooks=True,
-            n_cpus=1,
+            n_cpus=max(1, int(n_cpus)),
         )
-    dds.deseq2()
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        dds.deseq2()
 
-    try:
-        stat_res = DeseqStats(
-            dds,
-            contrast=["_pb_group", str(source), str(reference)],
-            quiet=True,
-        )
-    except TypeError:
-        stat_res = DeseqStats(
-            dds,
-            contrast=["_pb_group", str(source), str(reference)],
-            n_cpus=1,
-        )
-    stat_res.summary()
+    with _suppress_numpy_slogdet_warnings():
+        try:
+            stat_res = DeseqStats(
+                dds,
+                contrast=["_pb_group", str(source), str(reference)],
+                quiet=True,
+                n_cpus=max(1, int(n_cpus)),
+            )
+        except TypeError:
+            stat_res = DeseqStats(
+                dds,
+                contrast=["_pb_group", str(source), str(reference)],
+                n_cpus=max(1, int(n_cpus)),
+            )
+        stat_res.summary()
     result = stat_res.results_df.copy()
     gene_names = [str(g) for g in metadata.attrs["gene_names"]]
     mean_log2fc = _log2fc_from_pseudobulk_means(counts, metadata, source, reference)
@@ -355,73 +472,398 @@ def _fit_deseq2_pair(
     return result
 
 
-def _matrix_mean_var(matrix, mask: np.ndarray) -> Tuple[np.ndarray, np.ndarray, int]:
-    n = int(np.count_nonzero(mask))
-    n_vars = int(matrix.shape[1])
-    if n <= 0:
-        return np.zeros(n_vars, dtype=float), np.zeros(n_vars, dtype=float), n
-    subset = matrix[mask]
-    if sp.issparse(subset):
-        mean = np.asarray(subset.mean(axis=0)).ravel().astype(float, copy=False)
-        mean_sq = np.asarray(subset.power(2).mean(axis=0)).ravel().astype(float, copy=False)
-    else:
-        arr = np.asarray(subset, dtype=float)
-        arr[~np.isfinite(arr)] = 0
-        mean = arr.mean(axis=0)
-        mean_sq = np.square(arr).mean(axis=0)
-    var = mean_sq - np.square(mean)
-    var[~np.isfinite(var)] = 0
-    var[var < 0] = 0
-    if n > 1:
-        var = var * (float(n) / float(n - 1))
-    else:
-        var = np.zeros_like(var)
-    return mean, var, n
+def _fit_deseq2_shared_categories(
+    counts: np.ndarray,
+    metadata: pd.DataFrame,
+    categories: Sequence[str],
+    *,
+    fit_type: str = "parametric",
+    min_gene_counts: int = 0,
+    n_cpus: int = 1,
+) -> Tuple[Any, np.ndarray, pd.DataFrame]:
+    """Fit one replicate-adjusted DESeq2 model for every retained category.
 
+    The returned fitted dataset is deliberately reused for all pairwise and
+    balanced-rest contrasts.  This keeps normalization and dispersion estimates
+    common to the annotation column instead of re-estimating them per contrast.
+    """
+    try:
+        from pydeseq2.dds import DeseqDataSet
+    except Exception as exc:  # pragma: no cover - depends on optional runtime import
+        raise RuntimeError(
+            "PyDESeq2 is required for pseudobulk category DE. Install KaroSpace with "
+            "pydeseq2 support or run `pip install pydeseq2`."
+        ) from exc
 
-def _fit_welch_pair(
-    expression_matrix,
-    source_mask: np.ndarray,
-    reference_mask: np.ndarray,
-    var_names: Sequence[str],
-) -> pd.DataFrame:
-    source_mean, source_var, n_source = _matrix_mean_var(expression_matrix, source_mask)
-    reference_mean, reference_var, n_reference = _matrix_mean_var(expression_matrix, reference_mask)
-    denom_sq = (source_var / max(n_source, 1)) + (reference_var / max(n_reference, 1))
-    denom = np.sqrt(denom_sq)
-    stat = np.zeros_like(source_mean, dtype=float)
-    valid = np.isfinite(denom) & (denom > 0)
-    stat[valid] = (source_mean[valid] - reference_mean[valid]) / denom[valid]
+    fit_counts, fit_meta = _filter_pseudobulk_genes(counts, metadata, min_gene_counts)
+    gene_names = [str(gene) for gene in fit_meta.attrs.get("gene_names", [])]
+    if not gene_names:
+        raise ValueError("no genes meet the raw pseudobulk count threshold")
 
-    df = np.ones_like(source_mean, dtype=float)
-    if n_source > 1 and n_reference > 1:
-        a = source_var / n_source
-        b = reference_var / n_reference
-        denom_df = (np.square(a) / (n_source - 1)) + (np.square(b) / (n_reference - 1))
-        valid_df = denom_df > 0
-        df[valid_df] = np.square(a[valid_df] + b[valid_df]) / denom_df[valid_df]
-
-    pvalue = np.ones_like(source_mean, dtype=float)
-    valid_p = valid & np.isfinite(df) & (df > 0)
-    pvalue[valid_p] = 2.0 * stats.t.sf(np.abs(stat[valid_p]), df[valid_p])
-    pvalue[~np.isfinite(pvalue)] = 1.0
-
-    tiny = np.nextafter(0.0, 1.0)
-    log2fc = np.log2(np.maximum(source_mean, 0.0) + tiny) - np.log2(
-        np.maximum(reference_mean, 0.0) + tiny
+    counts_df = pd.DataFrame(fit_counts, index=fit_meta.index, columns=gene_names)
+    design_meta = fit_meta[["_pb_replicate", "_pb_group"]].copy()
+    design_meta["_pb_replicate"] = pd.Categorical(design_meta["_pb_replicate"].astype(str))
+    design_meta["_pb_group"] = pd.Categorical(
+        design_meta["_pb_group"].astype(str),
+        categories=[str(category) for category in categories],
     )
-    log2fc[~np.isfinite(log2fc)] = 0.0
-    base_mean = (source_mean + reference_mean) / 2.0
+    try:
+        dds = DeseqDataSet(
+            counts=counts_df,
+            metadata=design_meta,
+            design="~ _pb_replicate + _pb_group",
+            fit_type=fit_type,
+            n_cpus=max(1, int(n_cpus)),
+            quiet=True,
+        )
+    except TypeError:
+        dds = DeseqDataSet(
+            counts=counts_df,
+            clinical=design_meta,
+            design_factors=["_pb_replicate", "_pb_group"],
+            fit_type=fit_type,
+            refit_cooks=True,
+            n_cpus=max(1, int(n_cpus)),
+        )
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=RuntimeWarning)
+        dds.deseq2()
+    return dds, fit_counts, fit_meta
 
-    return pd.DataFrame(
-        {
-            "baseMean": base_mean,
-            "log2FoldChange": log2fc,
-            "stat": stat,
-            "pvalue": np.clip(pvalue, 0, 1),
-        },
-        index=[str(g) for g in var_names],
+
+def _deseq2_shared_contrast(dds: Any, contrast: np.ndarray, n_cpus: int = 1) -> pd.DataFrame:
+    """Evaluate one numeric contrast from an already fitted DESeq2 dataset."""
+    try:
+        from pydeseq2.ds import DeseqStats
+    except Exception as exc:  # pragma: no cover - depends on optional runtime import
+        raise RuntimeError(
+            "PyDESeq2 is required for pseudobulk category DE. Install KaroSpace with "
+            "pydeseq2 support or run `pip install pydeseq2`."
+        ) from exc
+    vector = np.asarray(contrast, dtype=float)
+    with _suppress_numpy_slogdet_warnings():
+        try:
+            stats = DeseqStats(dds, contrast=vector, quiet=True, n_cpus=max(1, int(n_cpus)))
+        except TypeError:
+            stats = DeseqStats(dds, contrast=vector, n_cpus=max(1, int(n_cpus)))
+        stats.summary()
+    return stats.results_df.copy()
+
+
+def _shared_group_contrast(dds: Any, source: str, reference: str) -> np.ndarray:
+    """Return the model-matrix vector for source minus reference."""
+    return np.asarray(
+        dds.contrast(
+            column="_pb_group",
+            baseline=str(reference),
+            group_to_compare=str(source),
+        ),
+        dtype=float,
     )
+
+
+def _shared_category_design_rank(metadata: pd.DataFrame) -> Tuple[int, int]:
+    """Return rank and column count for ``~ replicate + annotation``."""
+    replicate = pd.get_dummies(metadata["_pb_replicate"].astype(str), drop_first=True, dtype=float)
+    group = pd.get_dummies(metadata["_pb_group"].astype(str), drop_first=True, dtype=float)
+    design = np.column_stack((np.ones(len(metadata), dtype=float), replicate.to_numpy(), group.to_numpy()))
+    return int(np.linalg.matrix_rank(design)), int(design.shape[1])
+
+
+# Dormant Complex design helpers. They have no supported caller while Complex
+# design is in development and are retained only for later reactivation.
+def _fit_deseq2_design(
+    counts: np.ndarray,
+    metadata: pd.DataFrame,
+    formula: str,
+    contrast: np.ndarray,
+    *,
+    fit_type: str = "parametric",
+    dds: Any = None,
+) -> Tuple[pd.DataFrame, Any]:
+    """Fit one categorical DESeq2 design and evaluate a coefficient contrast."""
+    try:
+        from pydeseq2.dds import DeseqDataSet
+        from pydeseq2.ds import DeseqStats
+    except Exception as exc:  # pragma: no cover - depends on optional runtime import
+        raise RuntimeError(
+            "PyDESeq2 is required for complex pseudobulk DE. Install KaroSpace with "
+            "pydeseq2 support or run `pip install pydeseq2`."
+        ) from exc
+
+    if dds is None:
+        gene_names = [str(g) for g in metadata.attrs["gene_names"]]
+        counts_df = pd.DataFrame(counts, index=metadata.index, columns=gene_names)
+        design_metadata = metadata.drop(columns=["n_cells", "_pb_replicate", "_pb_group"], errors="ignore").copy()
+        for column in design_metadata.columns:
+            design_metadata[column] = pd.Categorical(design_metadata[column].astype(str))
+        try:
+            dds = DeseqDataSet(
+                counts=counts_df,
+                metadata=design_metadata,
+                design=str(formula),
+                fit_type=fit_type,
+                n_cpus=1,
+                quiet=True,
+            )
+        except TypeError:
+            raise RuntimeError(
+                "This PyDESeq2 version does not support formula-based Complex design fitting. "
+                "Upgrade PyDESeq2 to a version with the `design` argument."
+            )
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=RuntimeWarning)
+            dds.deseq2()
+    with _suppress_numpy_slogdet_warnings():
+        try:
+            stat_res = DeseqStats(
+                dds,
+                contrast=np.asarray(contrast, dtype=float),
+                quiet=True,
+                n_cpus=1,
+            )
+        except TypeError:
+            stat_res = DeseqStats(dds, contrast=np.asarray(contrast, dtype=float), n_cpus=1)
+        stat_res.summary()
+    return stat_res.results_df.copy(), dds
+
+
+def _complex_coefficient_profile(
+    coefficient: str,
+    variables: Sequence[str],
+    levels: Dict[str, Sequence[str]],
+) -> Tuple[Dict[str, str], List[str]]:
+    """Return the model-profile represented by a formulaic categorical coefficient."""
+    profile = {
+        str(variable): str((levels.get(str(variable)) or [""])[0])
+        for variable in variables
+    }
+    matches = re.findall(r"([A-Za-z_][A-Za-z0-9_]*)\[T\.([^\]]+)\]", str(coefficient))
+    changed: List[str] = []
+    for variable, level in matches:
+        if variable in profile:
+            profile[variable] = str(level)
+            changed.append(variable)
+    return profile, list(dict.fromkeys(changed))
+
+
+def compute_pseudobulk_complex_design_de(
+    adata,
+    design_audit: Optional[Dict[str, Any]],
+    *,
+    replicate: str,
+    counts_layer: Optional[str] = "counts",
+    min_cell_counts: int = 0,
+    min_gene_counts: int = 0,
+    min_cells: int = 20,
+    min_replicates: int = 2,
+    min_pct_expressed: float = 0.0,
+    p_adjust_method: str = "fdr_bh",
+    padj_cutoff: float = 0.05,
+    log2fc_cutoff: float = 0.5,
+    fit_type: str = "parametric",
+    max_coefficients: int = 32,
+) -> Optional[Dict[str, Any]]:
+    """Fit a formula-based categorical pseudobulk design and retain coefficient views.
+
+    Each stored result is one estimable DESeq2 coefficient versus the reference
+    level(s). This keeps a self-contained HTML export practical while supporting
+    main effects and arbitrary-order categorical interaction terms.
+    """
+    if not isinstance(design_audit, dict) or not design_audit.get("valid"):
+        return None
+    formula = str(design_audit.get("formula") or "").strip()
+    variables = [str(v) for v in (design_audit.get("variables") or [])]
+    levels = {
+        str(key): [str(value) for value in values]
+        for key, values in (design_audit.get("levels") or {}).items()
+    }
+    sample_variables = [str(v) for v in (design_audit.get("sample_variables") or variables)]
+    if not formula or not variables or not sample_variables:
+        return None
+    if replicate not in adata.obs.columns:
+        print(f"  Warning: complex pseudobulk replicate '{replicate}' not found in obs.", flush=True)
+        return None
+
+    expression_matrix, counts_layer_used, warning = _as_count_matrix(adata, counts_layer)
+    model_obs = adata.obs[sample_variables].copy()
+    valid = model_obs.notna().all(axis=1).to_numpy(dtype=bool)
+    valid &= _cell_count_mask(expression_matrix, min_cell_counts)
+    if not valid.any():
+        return None
+    for variable in sample_variables:
+        model_obs[variable] = model_obs[variable].astype(str)
+    valid_indices = np.flatnonzero(valid)
+    grouped_rows = model_obs.iloc[valid_indices].groupby(sample_variables, observed=True, sort=True)
+    sample_keys = list(grouped_rows.groups.keys())
+    if not sample_keys:
+        return None
+    key_to_row = {key if isinstance(key, tuple) else (key,): idx for idx, key in enumerate(sample_keys)}
+    rows = np.empty(valid_indices.size, dtype=np.int64)
+    for i, row in enumerate(model_obs.iloc[valid_indices][sample_variables].itertuples(index=False, name=None)):
+        rows[i] = key_to_row[tuple(str(value) for value in row)]
+
+    incidence = sp.csr_matrix(
+        (np.ones(valid_indices.size, dtype=np.float64), (rows, valid_indices)),
+        shape=(len(sample_keys), adata.n_obs),
+    )
+    aggregate = _to_dense_counts(incidence @ expression_matrix)
+    cell_counts = np.bincount(rows, minlength=len(sample_keys)).astype(int)
+    keep = cell_counts >= int(min_cells)
+    if not keep.any():
+        print("  Warning: complex pseudobulk DE was skipped: no pseudobulk sample meets the cell threshold.", flush=True)
+        return None
+    aggregate = aggregate[keep]
+    retained_keys = [sample_keys[index] for index in np.flatnonzero(keep)]
+    cell_counts = cell_counts[keep]
+    pb_meta = pd.DataFrame(
+        [dict(zip(sample_variables, key if isinstance(key, tuple) else (key,))) for key in retained_keys],
+        index=[f"pb_complex_{index}" for index in range(len(retained_keys))],
+    )
+    for variable in variables:
+        pb_meta[variable] = pd.Categorical(pb_meta[variable].astype(str), categories=levels.get(variable))
+    pb_meta["n_cells"] = cell_counts
+    pb_meta["_pb_replicate"] = pb_meta[replicate].astype(str)
+    primary_variable = variables[-1]
+    pb_meta["_pb_group"] = pb_meta[primary_variable].astype(str)
+    pb_meta.attrs["gene_names"] = [str(g) for g in adata.var_names]
+    aggregate, pb_meta = _filter_pseudobulk_genes(
+        aggregate,
+        pb_meta,
+        min_gene_counts,
+    )
+    if aggregate.shape[1] == 0:
+        print(
+            "  Warning: complex pseudobulk DE was skipped: no genes meet the raw pseudobulk count threshold.",
+            flush=True,
+        )
+        return None
+
+    required_replicates = max(2, int(min_replicates))
+    n_replicates = int(pb_meta["_pb_replicate"].nunique())
+    if n_replicates < required_replicates:
+        print(
+            "  Warning: complex pseudobulk DE was skipped: "
+            f"{n_replicates} biological replicate(s) are available; need >= {required_replicates}.",
+            flush=True,
+        )
+        return None
+
+    try:
+        from formulaic import model_matrix
+
+        formula_matrix = model_matrix(formula, pb_meta[variables], output="pandas")
+        rank = int(np.linalg.matrix_rank(np.asarray(formula_matrix, dtype=float)))
+        if rank < int(formula_matrix.shape[1]) or len(pb_meta) <= rank:
+            print(
+                "  Warning: complex pseudobulk DE was skipped: the filtered pseudobulk design "
+                "is rank-deficient or has no residual degrees of freedom.",
+                flush=True,
+            )
+            return None
+        coefficient_names = [name for name in formula_matrix.columns if str(name).lower() != "intercept"]
+    except Exception as exc:
+        print(f"  Warning: complex pseudobulk DE was skipped: could not build design matrix ({exc}).", flush=True)
+        return None
+
+    if not coefficient_names:
+        return None
+    sample_diagnostics = _compute_pseudobulk_sample_diagnostics(aggregate, pb_meta)
+    original_values = adata.obs[variables].copy()
+    for variable in variables:
+        original_values[variable] = original_values[variable].astype(str)
+    valid_model_cells = valid.copy()
+    baseline_profile = {variable: str((levels.get(variable) or [""])[0]) for variable in variables}
+    results: List[Dict[str, Any]] = []
+    fitted_dds = None
+    skipped = max(0, len(coefficient_names) - int(max_coefficients))
+    print(
+        f"    - complex pseudobulk DE: fitting {len(pb_meta)} samples, {aggregate.shape[1]} genes, "
+        f"{min(len(coefficient_names), int(max_coefficients))} coefficient contrast(s)",
+        flush=True,
+    )
+    for coefficient in coefficient_names[: int(max_coefficients)]:
+        contrast = np.zeros(len(formula_matrix.columns), dtype=float)
+        contrast[list(formula_matrix.columns).index(coefficient)] = 1.0
+        source_profile, changed_variables = _complex_coefficient_profile(coefficient, variables, levels)
+        source_mask = valid_model_cells.copy()
+        reference_mask = valid_model_cells.copy()
+        for variable in variables:
+            source_mask &= original_values[variable].to_numpy() == source_profile[variable]
+            reference_mask &= original_values[variable].to_numpy() == baseline_profile[variable]
+        n_source = int(np.count_nonzero(source_mask))
+        n_reference = int(np.count_nonzero(reference_mask))
+        try:
+            fitted, fitted_dds = _fit_deseq2_design(
+                aggregate,
+                pb_meta,
+                formula,
+                contrast,
+                fit_type=str(fit_type or "parametric"),
+                dds=fitted_dds,
+            )
+            formatted = _format_result(
+                fitted,
+                source_mask=source_mask,
+                reference_mask=reference_mask,
+                expression_matrix=expression_matrix,
+                var_names=adata.var_names,
+                top_n=0,
+                n_source=n_source,
+                n_reference=n_reference,
+                n_replicates=n_replicates,
+                counts_layer_used=counts_layer_used,
+                warning=warning,
+                p_adjust_method=p_adjust_method,
+                min_pct_expressed=min_pct_expressed,
+                padj_cutoff=padj_cutoff,
+                log2fc_cutoff=log2fc_cutoff,
+                sample_diagnostics=sample_diagnostics,
+                method="pseudobulk-deseq2-complex-design",
+            )
+            results.append({
+                "id": f"coefficient-{len(results)}",
+                "coefficient": str(coefficient),
+                "variables": changed_variables,
+                "primary_variable": changed_variables[-1] if changed_variables else primary_variable,
+                "source_profile": source_profile,
+                "reference_profile": baseline_profile,
+                "result": formatted,
+            })
+        except Exception as exc:
+            print(f"      - coefficient '{coefficient}': failed ({exc})", flush=True)
+            results.append({
+                "id": f"coefficient-{len(results)}",
+                "coefficient": str(coefficient),
+                "variables": changed_variables,
+                "primary_variable": changed_variables[-1] if changed_variables else primary_variable,
+                "source_profile": source_profile,
+                "reference_profile": baseline_profile,
+                "result": _empty_result(
+                    "de_failed",
+                    n_source=n_source,
+                    n_reference=n_reference,
+                    min_cells=int(min_cells),
+                    min_replicates=required_replicates,
+                    details=str(exc),
+                ),
+            })
+
+    warnings: List[str] = []
+    if skipped:
+        warnings.append(
+            f"Only the first {int(max_coefficients)} model coefficients were exported; {skipped} additional coefficient(s) were omitted."
+        )
+    return {
+        "available": bool(results),
+        "formula": formula,
+        "baseline_profile": baseline_profile,
+        "sample_count": int(len(pb_meta)),
+        "design_rank": rank,
+        "design_columns": int(formula_matrix.shape[1]),
+        "coefficients": results,
+        "warnings": warnings,
+    }
 
 
 def _empty_result(
@@ -579,13 +1021,6 @@ def _format_result(
     pct_reference = _positive_fraction(expression_matrix, reference_mask, gene_indices)
     work["_pct_source"] = pct_source
     work["_pct_reference"] = pct_reference
-    if min_pct_expressed > 0:
-        pct_source_arr = np.asarray([v if v is not None else 0.0 for v in pct_source], dtype=float)
-        pct_reference_arr = np.asarray([v if v is not None else 0.0 for v in pct_reference], dtype=float)
-        keep_pct = (pct_source_arr >= min_pct_expressed) | (pct_reference_arr >= min_pct_expressed)
-        work = work.iloc[np.flatnonzero(keep_pct)].copy()
-        pct_source = [pct_source[i] for i in np.flatnonzero(keep_pct)]
-        pct_reference = [pct_reference[i] for i in np.flatnonzero(keep_pct)]
 
     work["_padj_sort"] = work["padj"].fillna(np.inf)
     work["_pvalue_sort"] = work["pvalue"].fillna(np.inf)
@@ -618,6 +1053,41 @@ def _format_result(
         **base_payload,
     }
     return result
+
+
+def _count_threshold_passing_genes(result: Dict[str, Any]) -> int:
+    """Count DE genes satisfying the result's display/embed thresholds."""
+    if not result or result.get("available") is False:
+        return 0
+    log2fc = result.get("log2foldchanges") or result.get("logfoldchanges") or []
+    padj = result.get("pvals_adj") or []
+    pct_source = result.get("pct_source") or []
+    pct_reference = result.get("pct_reference") or []
+    try:
+        padj_cutoff = float(result.get("padj_cutoff", 0.05))
+        log2fc_cutoff = float(result.get("log2fc_cutoff", 0.5))
+        min_pct_expressed = _normalize_pct_threshold(result.get("min_pct_expressed", 0.0))
+    except (TypeError, ValueError):
+        return 0
+    count = 0
+    for idx, (value, adjusted) in enumerate(zip(log2fc, padj)):
+        try:
+            source_pct = float(pct_source[idx]) if idx < len(pct_source) else 0.0
+            reference_pct = float(pct_reference[idx]) if idx < len(pct_reference) else 0.0
+            pct_pass = (
+                min_pct_expressed <= 0
+                or source_pct >= min_pct_expressed
+                or reference_pct >= min_pct_expressed
+            )
+            if (
+                pct_pass
+                and float(adjusted) < padj_cutoff
+                and abs(float(value)) >= log2fc_cutoff
+            ):
+                count += 1
+        except (TypeError, ValueError):
+            continue
+    return count
 
 
 def _truncate_gene_result(result: Dict[str, Any], top_n: int) -> Dict[str, Any]:
@@ -687,6 +1157,8 @@ def compute_pseudobulk_interaction_markers(
     neighbor_zscore: Optional[np.ndarray] = None,
     neighbor_n_cells: Optional[Sequence[int]] = None,
     counts_layer: Optional[str] = "counts",
+    min_cell_counts: int = 0,
+    min_gene_counts: int = 0,
     top_targets: int = 8,
     top_genes: int = 20,
     min_cells: int = 30,
@@ -697,6 +1169,7 @@ def compute_pseudobulk_interaction_markers(
     padj_cutoff: float = 0.05,
     log2fc_cutoff: float = 0.5,
     fit_type: str = "parametric",
+    n_cpus: int = 1,
 ) -> Optional[Dict[str, Dict[str, Dict[str, Any]]]]:
     """Compute replicate-aware contact-conditioned markers for one annotation.
 
@@ -734,6 +1207,7 @@ def compute_pseudobulk_interaction_markers(
     rep_values = adata.obs[replicate].astype(str).to_numpy()
     ctx_reps = rep_values[obs_idx]
     valid_reps = np.asarray(pd.notna(ctx_reps), dtype=bool)
+    valid_reps &= _cell_count_mask(expression_matrix, min_cell_counts)[obs_idx]
     if not valid_reps.any():
         return None
 
@@ -741,16 +1215,31 @@ def compute_pseudobulk_interaction_markers(
         str(rep): np.flatnonzero((ctx_reps == rep) & valid_reps)
         for rep in sorted(set(ctx_reps[valid_reps].astype(str)))
     }
-    rep_subgraph_cache: Dict[str, Any] = {
-        rep: contact_graph[positions][:, positions]
-        for rep, positions in rep_to_positions.items()
-        if positions.size > 0
-    }
     top_targets = int(top_targets)
     top_genes = int(top_genes)
     min_cells = int(min_cells)
     min_neighbors = int(min_neighbors)
     min_replicates = int(min_replicates)
+    required_min_replicates = max(2, min_replicates)
+    if len(rep_to_positions) < required_min_replicates:
+        if len(rep_to_positions) == 1:
+            reason = "only one biological replicate is available; pseudobulk analysis requires at least two"
+        else:
+            reason = (
+                f"{len(rep_to_positions)} biological replicate(s) are available; "
+                f"need >= {required_min_replicates}"
+            )
+        print(
+            f"  Warning: pseudobulk interaction markers for '{annotation}' were skipped: {reason} "
+            f"(replicate annotation: '{replicate}').",
+            flush=True,
+        )
+        return None
+    rep_subgraph_cache: Dict[str, Any] = {
+        rep: contact_graph[positions][:, positions]
+        for rep, positions in rep_to_positions.items()
+        if positions.size > 0
+    }
     print(
         f"    - {len(categories)} categories -> contact pseudobulk by {replicate} "
         f"(top {top_targets} targets/source)",
@@ -762,7 +1251,7 @@ def compute_pseudobulk_interaction_markers(
     for source_idx, source_name in enumerate(categories):
         if source_idx >= len(n_cells) or int(n_cells[source_idx]) <= 0:
             continue
-        source_mask = labels == source_idx
+        source_mask = (labels == source_idx) & valid_reps
         if not source_mask.any():
             continue
         row = counts[source_idx] if source_idx < counts.shape[0] else None
@@ -847,60 +1336,10 @@ def compute_pseudobulk_interaction_markers(
             contact_reps = {rep for rep, status in sample_keys if status == "contact+"}
             non_contact_reps = {rep for rep, status in sample_keys if status == "contact-"}
             paired_reps = sorted(contact_reps & non_contact_reps)
-            if len(rep_to_positions) == 1 and n_pos >= min_cells and n_neg >= min_cells:
-                try:
-                    print(
-                        f"      - {source_name} -> {target_name}: fitting Welch t-test "
-                        f"({n_pos} contact+ vs {n_neg} contact- cells, {adata.n_vars} genes)",
-                        flush=True,
-                    )
-                    pair_result = _fit_welch_pair(
-                        expression_matrix,
-                        source_cell_mask,
-                        reference_cell_mask,
-                        adata.var_names,
-                    )
-                    formatted = _format_result(
-                        pair_result,
-                        source_mask=source_cell_mask,
-                        reference_mask=reference_cell_mask,
-                        expression_matrix=expression_matrix,
-                        var_names=adata.var_names,
-                        top_n=top_genes,
-                        n_source=n_pos,
-                        n_reference=n_neg,
-                        n_replicates=1,
-                        counts_layer_used=counts_layer_used,
-                        warning=warning,
-                        p_adjust_method=p_adjust_method,
-                        min_pct_expressed=min_pct_expressed,
-                        padj_cutoff=padj_cutoff,
-                        log2fc_cutoff=log2fc_cutoff,
-                        method="welch-t-test-contact",
-                    )
-                    formatted["method"] = "welch-t-test-contact"
-                    formatted["n_contact"] = int(n_pos)
-                    formatted["n_non_contact"] = int(n_neg)
-                    formatted["min_cells_required"] = int(min_cells)
-                    formatted["min_replicates_required"] = int(min_replicates)
-                    formatted.update(meta)
-                    source_result[target_name] = _truncate_gene_result(formatted, top_genes)
-                except Exception as exc:
-                    print(f"      - {source_name} -> {target_name}: failed ({exc})", flush=True)
-                    source_result[target_name] = _empty_interaction_result(
-                        "de_failed",
-                        n_contact=n_pos,
-                        n_non_contact=n_neg,
-                        min_cells=min_cells,
-                        min_replicates=min_replicates,
-                        details=str(exc),
-                        **meta,
-                    )
-                continue
-            if len(paired_reps) < min_replicates:
+            if len(paired_reps) < required_min_replicates:
                 print(
                     f"      - {source_name} -> {target_name}: skipped, insufficient paired replicates "
-                    f"({len(paired_reps)}; need >= {min_replicates})",
+                    f"({len(paired_reps)}; need >= {required_min_replicates})",
                     flush=True,
                 )
                 source_result[target_name] = _empty_interaction_result(
@@ -908,7 +1347,7 @@ def compute_pseudobulk_interaction_markers(
                     n_contact=n_pos,
                     n_non_contact=n_neg,
                     min_cells=min_cells,
-                    min_replicates=min_replicates,
+                    min_replicates=required_min_replicates,
                     details=f"{len(paired_reps)} paired replicate(s) available",
                     **meta,
                 )
@@ -936,7 +1375,7 @@ def compute_pseudobulk_interaction_markers(
                     n_contact=n_pos,
                     n_non_contact=n_neg,
                     min_cells=min_cells,
-                    min_replicates=min_replicates,
+                    min_replicates=required_min_replicates,
                     **meta,
                 )
                 continue
@@ -977,6 +1416,8 @@ def compute_pseudobulk_interaction_markers(
                     "contact+",
                     "contact-",
                     fit_type=str(fit_type or "parametric"),
+                    min_gene_counts=min_gene_counts,
+                    n_cpus=n_cpus,
                 )
                 formatted = _format_result(
                     pair_result,
@@ -1000,7 +1441,7 @@ def compute_pseudobulk_interaction_markers(
                 formatted["n_contact"] = int(n_pos)
                 formatted["n_non_contact"] = int(n_neg)
                 formatted["min_cells_required"] = int(min_cells)
-                formatted["min_replicates_required"] = int(min_replicates)
+                formatted["min_replicates_required"] = required_min_replicates
                 formatted.update(meta)
                 source_result[target_name] = _truncate_gene_result(formatted, top_genes)
             except Exception as exc:
@@ -1010,7 +1451,7 @@ def compute_pseudobulk_interaction_markers(
                     n_contact=n_pos,
                     n_non_contact=n_neg,
                     min_cells=min_cells,
-                    min_replicates=min_replicates,
+                    min_replicates=required_min_replicates,
                     details=str(exc),
                     **meta,
                 )
@@ -1021,12 +1462,15 @@ def compute_pseudobulk_interaction_markers(
     return results or None
 
 
-def compute_pseudobulk_group_de(
+def _compute_pseudobulk_group_de_shared(
     adata,
     groupby: str,
     *,
     replicate: str,
+    pairwise_categories: Optional[Sequence[str]] = None,
     counts_layer: Optional[str] = "counts",
+    min_cell_counts: int = 0,
+    min_gene_counts: int = 0,
     min_cells: int = 20,
     min_replicates: int = 2,
     min_pct_expressed: float = 0.0,
@@ -1034,8 +1478,15 @@ def compute_pseudobulk_group_de(
     padj_cutoff: float = 0.05,
     log2fc_cutoff: float = 0.5,
     fit_type: str = "parametric",
+    n_cpus: int = 1,
 ) -> Optional[Dict[str, Dict[str, Dict[str, Any]]]]:
-    """Compute pairwise and category-vs-rest pseudobulk DE for one categorical column."""
+    """Fit one all-category model, then derive pairwise and balanced-rest DE.
+
+    A category-versus-category test is the appropriate direct contrast from the
+    shared ``~ replicate + annotation`` fit. A balanced-rest result is the
+    source category minus the equally weighted mean of all
+    other retained category coefficients. It is not a pooled-cell rest.
+    """
     if groupby not in adata.obs.columns:
         print(f"  Warning: pseudobulk DE groupby '{groupby}' not found in obs.")
         return None
@@ -1049,452 +1500,449 @@ def compute_pseudobulk_group_de(
         return None
     if not isinstance(col.dtype, CategoricalDtype):
         col = col.astype("category")
-
-    categories = [str(cat) for cat in col.cat.categories]
+    categories = [str(category) for category in col.cat.categories]
     if len(categories) < 2:
         return None
+    if pairwise_categories is None:
+        selected_pairwise_categories = list(categories)
+    else:
+        requested = [str(category) for category in pairwise_categories]
+        selected_pairwise_categories = [category for category in categories if category in requested]
+        missing = sorted(set(requested) - set(selected_pairwise_categories))
+        if missing:
+            print(
+                "  Warning: requested Simple design pairwise categories not found in "
+                f"'{groupby}': {', '.join(missing)}.",
+                flush=True,
+            )
 
+    expression_matrix, counts_layer_used, warning = _as_count_matrix(adata, counts_layer)
     rep_values = adata.obs[replicate].astype(str)
     group_values = col.astype(str)
     valid = rep_values.notna().to_numpy() & group_values.notna().to_numpy()
     valid &= np.asarray(col.cat.codes.to_numpy() >= 0, dtype=bool)
+    valid &= _cell_count_mask(expression_matrix, min_cell_counts)
     if not valid.any():
         return None
 
-    expression_matrix, counts_layer_used, warning = _as_count_matrix(adata, counts_layer)
+    required_min_replicates = max(2, int(min_replicates))
     valid_indices = np.flatnonzero(valid)
-    rep_valid = rep_values.iloc[valid_indices].astype(str).to_numpy()
-    group_valid = group_values.iloc[valid_indices].astype(str).to_numpy()
-    unique_reps = sorted(set(rep_valid.astype(str)))
-    use_welch = len(unique_reps) == 1
+    rep_valid = rep_values.iloc[valid_indices].to_numpy(dtype=str)
+    group_valid = group_values.iloc[valid_indices].to_numpy(dtype=str)
+    if len(set(rep_valid)) < required_min_replicates:
+        available = len(set(rep_valid))
+        reason = (
+            "only one biological replicate is available; pseudobulk DE requires at least two"
+            if available == 1
+            else f"{available} biological replicate(s) are available; need >= {required_min_replicates}"
+        )
+        print(
+            f"  Warning: pseudobulk DE for '{groupby}' was skipped: {reason} "
+            f"(replicate annotation: '{replicate}').",
+            flush=True,
+        )
+        return None
 
-    sample_keys = []
-    sample_index = {}
+    sample_keys: List[Tuple[str, str]] = []
+    sample_index: Dict[Tuple[str, str], int] = {}
     rows = np.empty(valid_indices.size, dtype=np.int64)
-    for i, (rep, grp) in enumerate(zip(rep_valid, group_valid)):
-        key = (str(rep), str(grp))
-        idx = sample_index.get(key)
-        if idx is None:
-            idx = len(sample_keys)
-            sample_index[key] = idx
+    for index, (rep_value, group_value) in enumerate(zip(rep_valid, group_valid)):
+        key = (str(rep_value), str(group_value))
+        row = sample_index.get(key)
+        if row is None:
+            row = len(sample_keys)
+            sample_index[key] = row
             sample_keys.append(key)
-        rows[i] = idx
+        rows[index] = row
 
     incidence = sp.csr_matrix(
         (np.ones(valid_indices.size, dtype=np.float64), (rows, valid_indices)),
         shape=(len(sample_keys), adata.n_obs),
     )
-    aggregate = incidence @ expression_matrix
-    aggregate = _to_dense_counts(aggregate)
+    aggregate = _to_dense_counts(incidence @ expression_matrix)
     cell_counts = np.bincount(rows, minlength=len(sample_keys)).astype(int)
-
     pb_meta = pd.DataFrame(
         {
             "_pb_replicate": [key[0] for key in sample_keys],
             "_pb_group": [key[1] for key in sample_keys],
             "n_cells": cell_counts,
         },
-        index=[f"pb_{i}" for i in range(len(sample_keys))],
+        index=[f"pb_{index}" for index in range(len(sample_keys))],
     )
-    pb_meta.attrs["gene_names"] = [str(g) for g in adata.var_names]
+    pb_meta.attrs["gene_names"] = [str(gene) for gene in adata.var_names]
     aggregate_summary = _compute_category_gene_means_from_aggregate(
-        aggregate,
-        pb_meta,
-        categories,
-        adata.var_names,
+        aggregate, pb_meta, categories, adata.var_names,
+    )
+    print(
+        f"    - aggregated {len(pb_meta)} replicate × annotation pseudobulk samples from "
+        f"{len(valid_indices)} retained cells",
+        flush=True,
     )
 
+    sufficient_pb = pb_meta[pb_meta["n_cells"] >= int(min_cells)]
+    retained_categories = [
+        category
+        for category in categories
+        if sufficient_pb.loc[sufficient_pb["_pb_group"] == category, "_pb_replicate"].nunique()
+        >= required_min_replicates
+    ]
+    omitted_categories = [category for category in categories if category not in retained_categories]
+    if omitted_categories:
+        print(
+            "    - excluding categories with insufficient pseudobulk replicates from the shared fit: "
+            + ", ".join(omitted_categories),
+            flush=True,
+        )
+    if len(retained_categories) < 2:
+        print(
+            f"  Warning: pseudobulk DE for '{groupby}' was skipped: fewer than two categories have "
+            f">= {required_min_replicates} replicate pseudobulks with >= {int(min_cells)} cells.",
+            flush=True,
+        )
+        return None
+
+    print(
+        f"    - shared-fit cohort: {len(retained_categories)} retained categories; "
+        f"requiring >= {required_min_replicates} replicate pseudobulks and >= {int(min_cells)} cells each",
+        flush=True,
+    )
+
+    model_mask = (
+        pb_meta["_pb_group"].isin(retained_categories)
+        & (pb_meta["n_cells"] >= int(min_cells))
+    )
+    model_positions = np.flatnonzero(model_mask.to_numpy())
+    model_counts = aggregate[model_positions]
+    model_meta = pb_meta.iloc[model_positions].copy()
+    model_meta.attrs["gene_names"] = [str(gene) for gene in adata.var_names]
+    design_rank, design_columns = _shared_category_design_rank(model_meta)
+    residual_df = int(len(model_meta) - design_rank)
+    if design_rank < design_columns or residual_df <= 0:
+        print(
+            f"  Warning: shared pseudobulk DE for '{groupby}' was skipped: the "
+            f"~ {replicate} + {groupby} design is rank-deficient or has no residual "
+            f"degrees of freedom (rank {design_rank}/{design_columns}; residual df {residual_df}).",
+            flush=True,
+        )
+        return None
+    print(
+        f"    - validating shared design ~ {replicate} + {groupby}: "
+        f"rank {design_rank}/{design_columns}; residual df {residual_df}",
+        flush=True,
+    )
+    model_keys = set(
+        zip(
+            model_meta["_pb_replicate"].astype(str),
+            model_meta["_pb_group"].astype(str),
+        )
+    )
+    model_cell_mask = valid & np.fromiter(
+        (
+            (str(rep_value), str(group_value)) in model_keys
+            for rep_value, group_value in zip(rep_values.to_numpy(), group_values.to_numpy())
+        ),
+        dtype=bool,
+        count=adata.n_obs,
+    )
+
+    fit_counts, fit_meta = _filter_pseudobulk_genes(
+        model_counts,
+        model_meta,
+        min_gene_counts,
+    )
+    if not fit_meta.attrs.get("gene_names"):
+        print(
+            f"  Warning: shared pseudobulk DE for '{groupby}' was skipped: no genes meet "
+            f"min_gene_counts={max(0, int(min_gene_counts))}.",
+            flush=True,
+        )
+        return None
+    print(
+        f"    - shared gene filter: min_gene_counts={max(0, int(min_gene_counts))}; "
+        f"retained {fit_counts.shape[1]} of {model_counts.shape[1]} genes before DESeq2 fitting",
+        flush=True,
+    )
+    estimate_low, estimate_high = _estimate_shared_deseq2_fit_seconds(
+        fit_counts.shape[0],
+        fit_counts.shape[1],
+        design_columns,
+        n_cpus,
+    )
+    print(
+        "    - fitting shared all-category DESeq2 model (normalization and dispersion estimation); "
+        f"rough {max(1, int(n_cpus))}-CPU estimate: {_format_duration(estimate_low)} to "
+        f"{_format_duration(estimate_high)}.",
+        flush=True,
+    )
+    fit_started = time.perf_counter()
+    try:
+        dds, fit_counts, fit_meta = _fit_deseq2_shared_categories(
+            fit_counts,
+            fit_meta,
+            retained_categories,
+            fit_type=str(fit_type or "parametric"),
+            min_gene_counts=0,
+            n_cpus=n_cpus,
+        )
+    except Exception as exc:
+        print(f"  Warning: shared pseudobulk DE fit for '{groupby}' failed ({exc}).", flush=True)
+        return None
+
+    fit_elapsed = time.perf_counter() - fit_started
+    print(
+        f"    - shared all-category DESeq2 model fit completed in {_format_duration(fit_elapsed)}.",
+        flush=True,
+    )
+    print(
+        f"    - shared all-category DESeq2 fit: {len(retained_categories)} categories, "
+        f"{fit_counts.shape[0]} pseudobulk samples, {fit_counts.shape[1]} genes "
+        f"(~ {replicate} + {groupby}; design rank {design_rank}/{design_columns})",
+        flush=True,
+    )
+    model_info = {
+        "model_formula": f"~ {replicate} + {groupby}",
+        "model_categories": retained_categories,
+        "contrast_reference": "balanced_rest",
+    }
     results: Dict[str, Dict[str, Dict[str, Any]]] = {}
-    category_index = {category: idx for idx, category in enumerate(categories)}
-    fit_cache: Dict[Tuple[str, str], Dict[str, Any]] = {}
-    n_directed_comparisons = len(categories) * max(len(categories) - 1, 0)
-    n_unique_fits = n_directed_comparisons // 2
-    if use_welch:
-        print(
-            f"    - {len(categories)} categories -> {n_directed_comparisons} directed comparisons "
-            f"plus {len(categories)} category-vs-rest contrasts "
-            "(single groupby replicate; using Welch t-test)",
-            flush=True,
-        )
-    else:
-        print(
-            f"    - {len(categories)} categories -> {n_directed_comparisons} directed comparisons "
-            f"plus {len(categories)} category-vs-rest contrasts "
-            f"({n_unique_fits} pairwise DESeq2 fit{'s' if n_unique_fits != 1 else ''})",
-            flush=True,
-        )
-    rest_reference = "__rest__"
-    for source in categories:
-        source_results: Dict[str, Dict[str, Any]] = {}
-        for reference in categories:
-            if reference == source:
-                continue
-            comparison_label = f"{source} vs {reference}"
 
-            source_cell_mask = (group_values.to_numpy() == source) & valid
-            reference_cell_mask = (group_values.to_numpy() == reference) & valid
-            n_source = int(np.count_nonzero(source_cell_mask))
-            n_reference = int(np.count_nonzero(reference_cell_mask))
-            if n_source < int(min_cells) or n_reference < int(min_cells):
-                print(
-                    f"      - {comparison_label}: skipped, insufficient cells "
-                    f"({n_source} vs {n_reference}; need >= {int(min_cells)})",
-                    flush=True,
-                )
-                source_results[reference] = _empty_result(
-                    "insufficient_cells",
-                    n_source=n_source,
-                    n_reference=n_reference,
-                    min_cells=int(min_cells),
-                    min_replicates=int(min_replicates),
-                )
-                continue
+    def category_cell_mask(category: str) -> np.ndarray:
+        return model_cell_mask & (group_values.to_numpy() == str(category))
 
-            if use_welch:
-                print(
-                    f"      - {comparison_label}: fitting Welch t-test "
-                    f"({n_source} vs {n_reference} cells, {adata.n_vars} genes)",
-                    flush=True,
-                )
-                pair_result = _fit_welch_pair(
-                    expression_matrix,
-                    source_cell_mask,
-                    reference_cell_mask,
-                    adata.var_names,
-                )
-                source_results[reference] = _format_result(
-                    pair_result,
-                    source_mask=source_cell_mask,
-                    reference_mask=reference_cell_mask,
-                    expression_matrix=expression_matrix,
-                    var_names=adata.var_names,
-                    top_n=0,
-                    n_source=n_source,
-                    n_reference=n_reference,
-                    n_replicates=1,
-                    counts_layer_used=counts_layer_used,
-                    warning=warning,
-                    p_adjust_method=p_adjust_method,
-                    min_pct_expressed=min_pct_expressed,
-                    padj_cutoff=padj_cutoff,
-                    log2fc_cutoff=log2fc_cutoff,
-                    method="welch-t-test",
-                )
-                continue
-
-            source_pb = pb_meta[(pb_meta["_pb_group"] == source) & (pb_meta["n_cells"] >= int(min_cells))]
-            reference_pb = pb_meta[(pb_meta["_pb_group"] == reference) & (pb_meta["n_cells"] >= int(min_cells))]
-            paired_reps = sorted(set(source_pb["_pb_replicate"]) & set(reference_pb["_pb_replicate"]))
-            if len(paired_reps) < int(min_replicates):
-                print(
-                    f"      - {comparison_label}: skipped, insufficient paired replicates "
-                    f"({len(paired_reps)}; need >= {int(min_replicates)})",
-                    flush=True,
-                )
-                source_results[reference] = _empty_result(
-                    "insufficient_replicates",
-                    n_source=n_source,
-                    n_reference=n_reference,
-                    min_cells=int(min_cells),
-                    min_replicates=int(min_replicates),
-                    details=f"{len(paired_reps)} paired replicate(s) available",
-                )
-                continue
-
-            keep_mask = (
-                pb_meta["_pb_replicate"].isin(paired_reps)
-                & pb_meta["_pb_group"].isin([source, reference])
-                & (pb_meta["n_cells"] >= int(min_cells))
-            )
-            keep_positions = np.flatnonzero(keep_mask.to_numpy())
-            pair_counts = aggregate[keep_positions]
-            pair_meta = pb_meta.iloc[keep_positions].copy()
-            pair_gene_count = int(pair_counts.shape[1])
-
-            try:
-                pair_key = tuple(
-                    sorted(
-                        (source, reference),
-                        key=lambda category: category_index.get(category, 0),
-                    )
-                )
-                cached_fit = fit_cache.get(pair_key)
-                if cached_fit is None:
-                    print(
-                        f"      - {comparison_label}: fitting DESeq2 "
-                        f"({len(paired_reps)} paired replicate"
-                        f"{'s' if len(paired_reps) != 1 else ''}, "
-                        f"{pair_counts.shape[0]} pseudobulk samples, "
-                        f"{pair_gene_count} genes)",
-                        flush=True,
-                    )
-                    sample_diagnostics = _compute_pseudobulk_sample_diagnostics(
-                        pair_counts,
-                        pair_meta,
-                    )
-                    try:
-                        pair_result = _fit_deseq2_pair(
-                            pair_counts,
-                            pair_meta,
-                            source,
-                            reference,
-                            fit_type=str(fit_type or "parametric"),
-                        )
-                    except TypeError as exc:
-                        if "fit_type" not in str(exc):
-                            raise
-                        pair_result = _fit_deseq2_pair(
-                            pair_counts,
-                            pair_meta,
-                            source,
-                            reference,
-                        )
-                    cached_fit = {
-                        "source": source,
-                        "reference": reference,
-                        "result": pair_result,
-                        "sample_diagnostics": sample_diagnostics,
-                    }
-                    fit_cache[pair_key] = cached_fit
-                else:
-                    print(
-                        f"      - {comparison_label}: using cached reverse fit "
-                        f"({len(paired_reps)} paired replicate"
-                        f"{'s' if len(paired_reps) != 1 else ''}, "
-                        f"{pair_counts.shape[0]} pseudobulk samples, "
-                        f"{pair_gene_count} genes)",
-                        flush=True,
-                    )
-                    pair_result = cached_fit["result"].copy()
-                    sample_diagnostics = cached_fit.get("sample_diagnostics")
-                    if cached_fit["source"] != source:
-                        if "log2FoldChange" in pair_result.columns:
-                            pair_result["log2FoldChange"] = -pair_result["log2FoldChange"]
-                        if "stat" in pair_result.columns:
-                            pair_result["stat"] = -pair_result["stat"]
-                source_results[reference] = _format_result(
-                    pair_result,
-                    source_mask=source_cell_mask,
-                    reference_mask=reference_cell_mask,
-                    expression_matrix=expression_matrix,
-                    var_names=adata.var_names,
-                    top_n=0,
-                    n_source=n_source,
-                    n_reference=n_reference,
-                    n_replicates=len(paired_reps),
-                    counts_layer_used=counts_layer_used,
-                    warning=warning,
-                    p_adjust_method=p_adjust_method,
-                    min_pct_expressed=min_pct_expressed,
-                    padj_cutoff=padj_cutoff,
-                    log2fc_cutoff=log2fc_cutoff,
-                    sample_diagnostics=sample_diagnostics,
-                )
-            except Exception as exc:
-                print(
-                    f"      - {comparison_label}: failed ({exc})",
-                    flush=True,
-                )
-                source_results[reference] = _empty_result(
-                    "de_failed",
-                    n_source=n_source,
-                    n_reference=n_reference,
-                    min_cells=int(min_cells),
-                    min_replicates=int(min_replicates),
-                    details=str(exc),
-                )
-
-        comparison_label = f"{source} vs rest"
-        source_cell_mask = (group_values.to_numpy() == source) & valid
-        reference_cell_mask = (group_values.to_numpy() != source) & valid
-        n_source = int(np.count_nonzero(source_cell_mask))
-        n_reference = int(np.count_nonzero(reference_cell_mask))
-        if n_source < int(min_cells) or n_reference < int(min_cells):
-            print(
-                f"      - {comparison_label}: skipped, insufficient cells "
-                f"({n_source} vs {n_reference}; need >= {int(min_cells)})",
-                flush=True,
-            )
-            source_results[rest_reference] = _empty_result(
-                "insufficient_cells",
-                n_source=n_source,
-                n_reference=n_reference,
-                min_cells=int(min_cells),
-                min_replicates=int(min_replicates),
-            )
-        elif use_welch:
-            print(
-                f"      - {comparison_label}: fitting Welch t-test "
-                f"({n_source} vs {n_reference} cells, {adata.n_vars} genes)",
-                flush=True,
-            )
-            rest_result = _fit_welch_pair(
-                expression_matrix,
-                source_cell_mask,
-                reference_cell_mask,
-                adata.var_names,
-            )
-            source_results[rest_reference] = _format_result(
-                rest_result,
-                source_mask=source_cell_mask,
-                reference_mask=reference_cell_mask,
+    def store_result(
+        source: str,
+        reference: str,
+        contrast: np.ndarray,
+        *,
+        contrast_type: str,
+        n_replicates: int,
+        reference_mask: np.ndarray,
+        progress: str,
+    ) -> None:
+        source_mask = category_cell_mask(source)
+        n_source = int(np.count_nonzero(source_mask))
+        n_reference = int(np.count_nonzero(reference_mask))
+        label = f"{source} vs {reference}" if reference != "__rest__" else f"{source} vs balanced rest"
+        try:
+            print(f"      - [{progress}] {label}: testing shared DESeq2 contrast", flush=True)
+            raw_result = _deseq2_shared_contrast(dds, contrast, n_cpus=n_cpus)
+            formatted = _format_result(
+                raw_result,
+                source_mask=source_mask,
+                reference_mask=reference_mask,
                 expression_matrix=expression_matrix,
                 var_names=adata.var_names,
                 top_n=0,
                 n_source=n_source,
                 n_reference=n_reference,
-                n_replicates=1,
+                n_replicates=n_replicates,
                 counts_layer_used=counts_layer_used,
                 warning=warning,
                 p_adjust_method=p_adjust_method,
                 min_pct_expressed=min_pct_expressed,
                 padj_cutoff=padj_cutoff,
                 log2fc_cutoff=log2fc_cutoff,
-                method="welch-t-test",
             )
-        else:
-            rest_rows: List[np.ndarray] = []
-            rest_meta_rows: List[Dict[str, Any]] = []
-            paired_reps: List[str] = []
-            source_pb = pb_meta[
-                (pb_meta["_pb_group"] == source)
-                & (pb_meta["n_cells"] >= int(min_cells))
-            ]
-            for rep in sorted(set(source_pb["_pb_replicate"].astype(str))):
-                source_mask_pb = (
-                    (pb_meta["_pb_replicate"].astype(str) == rep)
-                    & (pb_meta["_pb_group"] == source)
-                    & (pb_meta["n_cells"] >= int(min_cells))
-                )
-                source_positions = np.flatnonzero(source_mask_pb.to_numpy())
-                if source_positions.size == 0:
-                    continue
-                rest_mask_pb = (
-                    (pb_meta["_pb_replicate"].astype(str) == rep)
-                    & (pb_meta["_pb_group"] != source)
-                )
-                rest_positions = np.flatnonzero(rest_mask_pb.to_numpy())
-                if rest_positions.size == 0:
-                    continue
-                rest_cells = int(pb_meta.iloc[rest_positions]["n_cells"].sum())
-                if rest_cells < int(min_cells):
-                    continue
-                source_pos = int(source_positions[0])
-                paired_reps.append(rep)
-                rest_rows.append(np.asarray(aggregate[source_pos], dtype=np.int64))
-                rest_meta_rows.append(
-                    {
-                        "_pb_replicate": rep,
-                        "_pb_group": source,
-                        "n_cells": int(pb_meta.iloc[source_pos]["n_cells"]),
-                    }
-                )
-                rest_rows.append(
-                    np.asarray(
-                        aggregate[rest_positions].sum(axis=0),
-                        dtype=np.int64,
-                    ).ravel()
-                )
-                rest_meta_rows.append(
-                    {
-                        "_pb_replicate": rep,
-                        "_pb_group": rest_reference,
-                        "n_cells": rest_cells,
-                    }
-                )
+            formatted.update(model_info)
+            formatted["contrast_type"] = contrast_type
+            results.setdefault(source, {})[reference] = formatted
+            print(
+                f"        ↳ {_count_threshold_passing_genes(formatted)} "
+                "genes pass the DE thresholds",
+                flush=True,
+            )
+        except Exception as exc:
+            print(f"      - {label}: failed ({exc})", flush=True)
+            failed = _empty_result(
+                "de_failed",
+                n_source=n_source,
+                n_reference=n_reference,
+                min_cells=int(min_cells),
+                min_replicates=required_min_replicates,
+                details=str(exc),
+            )
+            failed.update(model_info)
+            failed["contrast_type"] = contrast_type
+            results.setdefault(source, {})[reference] = failed
 
-            if len(paired_reps) < int(min_replicates):
+    selected_retained = [category for category in selected_pairwise_categories if category in retained_categories]
+    directed_pairs = len(selected_retained) * max(0, len(selected_retained) - 1)
+    total_contrasts = directed_pairs + len(retained_categories)
+    contrast_index = 0
+    pair_diagnostics: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    if len(selected_retained) > 1:
+        unique_pairs = [
+            (source, reference)
+            for source_index, source in enumerate(selected_retained)
+            for reference in selected_retained[source_index + 1:]
+        ]
+        print(
+            f"    - preparing {len(unique_pairs)} pairwise PCA/distance diagnostic payload"
+            f"{'s' if len(unique_pairs) != 1 else ''} for the selected annotations",
+            flush=True,
+        )
+        for diagnostic_index, (source, reference) in enumerate(unique_pairs, start=1):
+            keep_positions = np.flatnonzero(
+                fit_meta["_pb_group"].isin([source, reference]).to_numpy()
+            )
+            print(
+                f"      - diagnostic [{diagnostic_index}/{len(unique_pairs)}] {source} vs {reference}",
+                flush=True,
+            )
+            pair_diagnostics.setdefault(source, {})[reference] = _compute_pseudobulk_sample_diagnostics(
+                fit_counts[keep_positions],
+                fit_meta.iloc[keep_positions].copy(),
+            )
+    print(
+        f"    - {len(selected_retained)} selected categories -> {directed_pairs} category-versus-category "
+        "contrasts from the shared fit",
+        flush=True,
+    )
+    for source in selected_retained:
+        for reference in selected_retained:
+            if source == reference:
+                continue
+            contrast_index += 1
+            paired_reps = sorted(
+                set(fit_meta.loc[fit_meta["_pb_group"] == source, "_pb_replicate"].astype(str))
+                & set(fit_meta.loc[fit_meta["_pb_group"] == reference, "_pb_replicate"].astype(str))
+            )
+            source_mask = category_cell_mask(source)
+            reference_mask = category_cell_mask(reference)
+            if len(paired_reps) < required_min_replicates:
                 print(
-                    f"      - {comparison_label}: skipped, insufficient paired replicates "
-                    f"({len(paired_reps)}; need >= {int(min_replicates)})",
+                    f"      - [{contrast_index}/{total_contrasts}] {source} vs {reference}: "
+                    f"skipped, insufficient paired replicates "
+                    f"({len(paired_reps)}; need >= {required_min_replicates})",
                     flush=True,
                 )
-                source_results[rest_reference] = _empty_result(
+                empty = _empty_result(
                     "insufficient_replicates",
-                    n_source=n_source,
-                    n_reference=n_reference,
+                    n_source=int(np.count_nonzero(source_mask)),
+                    n_reference=int(np.count_nonzero(reference_mask)),
                     min_cells=int(min_cells),
-                    min_replicates=int(min_replicates),
+                    min_replicates=required_min_replicates,
                     details=f"{len(paired_reps)} paired replicate(s) available",
                 )
-            else:
-                pair_counts = np.vstack(rest_rows)
-                pair_meta = pd.DataFrame(
-                    rest_meta_rows,
-                    index=[f"pb_rest_{i}" for i in range(len(rest_meta_rows))],
-                )
-                pair_meta.attrs["gene_names"] = [str(g) for g in adata.var_names]
-                pair_gene_count = int(pair_counts.shape[1])
-                try:
-                    print(
-                        f"      - {comparison_label}: fitting DESeq2 "
-                        f"({len(paired_reps)} paired replicate"
-                        f"{'s' if len(paired_reps) != 1 else ''}, "
-                        f"{pair_counts.shape[0]} pseudobulk samples, "
-                        f"{pair_gene_count} genes)",
-                        flush=True,
-                    )
-                    sample_diagnostics = _compute_pseudobulk_sample_diagnostics(
-                        pair_counts,
-                        pair_meta,
-                    )
-                    try:
-                        rest_result = _fit_deseq2_pair(
-                            pair_counts,
-                            pair_meta,
-                            source,
-                            rest_reference,
-                            fit_type=str(fit_type or "parametric"),
-                        )
-                    except TypeError as exc:
-                        if "fit_type" not in str(exc):
-                            raise
-                        rest_result = _fit_deseq2_pair(
-                            pair_counts,
-                            pair_meta,
-                            source,
-                            rest_reference,
-                        )
-                    source_results[rest_reference] = _format_result(
-                        rest_result,
-                        source_mask=source_cell_mask,
-                        reference_mask=reference_cell_mask,
-                        expression_matrix=expression_matrix,
-                        var_names=adata.var_names,
-                        top_n=0,
-                        n_source=n_source,
-                        n_reference=n_reference,
-                        n_replicates=len(paired_reps),
-                        counts_layer_used=counts_layer_used,
-                        warning=warning,
-                        p_adjust_method=p_adjust_method,
-                        min_pct_expressed=min_pct_expressed,
-                        padj_cutoff=padj_cutoff,
-                        log2fc_cutoff=log2fc_cutoff,
-                        sample_diagnostics=sample_diagnostics,
-                    )
-                except Exception as exc:
-                    print(
-                        f"      - {comparison_label}: failed ({exc})",
-                        flush=True,
-                    )
-                    source_results[rest_reference] = _empty_result(
-                        "de_failed",
-                        n_source=n_source,
-                        n_reference=n_reference,
-                        min_cells=int(min_cells),
-                        min_replicates=int(min_replicates),
-                        details=str(exc),
-                    )
+                empty.update(model_info)
+                empty["contrast_type"] = "category_vs_category"
+                results.setdefault(source, {})[reference] = empty
+                continue
+            store_result(
+                source,
+                reference,
+                _shared_group_contrast(dds, source, reference),
+                contrast_type="category_vs_category",
+                n_replicates=len(paired_reps),
+                reference_mask=reference_mask,
+                progress=f"{contrast_index}/{total_contrasts}",
+            )
 
-        if source_results:
-            results[source] = source_results
+    rest_reference = "__rest__"
+    print(
+        f"    - {len(retained_categories)} category-versus-balanced-rest contrasts from the shared fit",
+        flush=True,
+    )
+    for source in retained_categories:
+        contrast_index += 1
+        references = [category for category in retained_categories if category != source]
+        source_reps = set(fit_meta.loc[fit_meta["_pb_group"] == source, "_pb_replicate"].astype(str))
+        paired_reps = sorted(
+            rep_value for rep_value in source_reps
+            if any(
+                rep_value in set(fit_meta.loc[fit_meta["_pb_group"] == reference, "_pb_replicate"].astype(str))
+                for reference in references
+            )
+        )
+        source_mask = category_cell_mask(source)
+        reference_mask = model_cell_mask & (group_values.to_numpy() != source)
+        if len(paired_reps) < required_min_replicates:
+            print(
+                f"      - [{contrast_index}/{total_contrasts}] {source} vs balanced rest: "
+                f"skipped, insufficient paired replicates "
+                f"({len(paired_reps)}; need >= {required_min_replicates})",
+                flush=True,
+            )
+            empty = _empty_result(
+                "insufficient_replicates",
+                n_source=int(np.count_nonzero(source_mask)),
+                n_reference=int(np.count_nonzero(reference_mask)),
+                min_cells=int(min_cells),
+                min_replicates=required_min_replicates,
+                details=f"{len(paired_reps)} paired replicate(s) available",
+            )
+            empty.update(model_info)
+            empty["contrast_type"] = "balanced_rest"
+            results.setdefault(source, {})[rest_reference] = empty
+            continue
+        balanced_contrast = np.mean(
+            [_shared_group_contrast(dds, source, reference) for reference in references],
+            axis=0,
+        )
+        store_result(
+            source,
+            rest_reference,
+            balanced_contrast,
+            contrast_type="balanced_rest",
+            n_replicates=len(paired_reps),
+            reference_mask=reference_mask,
+            progress=f"{contrast_index}/{total_contrasts}",
+        )
 
-    if results:
-        results["_summary"] = {
-            "category_gene_means": aggregate_summary,
-            "replicate": str(replicate),
-            "groupby": str(groupby),
-            "counts_layer": counts_layer_used,
-        }
-    return results or None
+    if not results:
+        return None
+    results["_summary"] = {
+        "category_gene_means": aggregate_summary,
+        "replicate": str(replicate),
+        "groupby": str(groupby),
+        "counts_layer": counts_layer_used,
+        "pairwise_categories": selected_pairwise_categories,
+        "model_formula": f"~ {replicate} + {groupby}",
+        "model_categories": retained_categories,
+        "rest_definition": "balanced_equal_category_weight",
+        "diagnostics": "pairwise",
+        **({"pair_diagnostics": pair_diagnostics} if pair_diagnostics else {}),
+    }
+    return results
+
+
+def compute_pseudobulk_group_de(
+    adata,
+    groupby: str,
+    *,
+    replicate: str,
+    pairwise_categories: Optional[Sequence[str]] = None,
+    counts_layer: Optional[str] = "counts",
+    min_cell_counts: int = 0,
+    min_gene_counts: int = 0,
+    min_cells: int = 20,
+    min_replicates: int = 2,
+    min_pct_expressed: float = 0.0,
+    p_adjust_method: str = "fdr_bh",
+    padj_cutoff: float = 0.05,
+    log2fc_cutoff: float = 0.5,
+    fit_type: str = "parametric",
+    n_cpus: int = 1,
+) -> Optional[Dict[str, Dict[str, Dict[str, Any]]]]:
+    """Compute shared-fit category and balanced-rest pseudobulk DE.
+
+    Kept as the public entry point used by the loader. The implementation lives
+    above so the shared model path is explicit and independently testable.
+    """
+    return _compute_pseudobulk_group_de_shared(
+        adata,
+        groupby,
+        replicate=replicate,
+        pairwise_categories=pairwise_categories,
+        counts_layer=counts_layer,
+        min_cell_counts=min_cell_counts,
+        min_gene_counts=min_gene_counts,
+        min_cells=min_cells,
+        min_replicates=min_replicates,
+        min_pct_expressed=min_pct_expressed,
+        p_adjust_method=p_adjust_method,
+        padj_cutoff=padj_cutoff,
+        log2fc_cutoff=log2fc_cutoff,
+        fit_type=fit_type,
+        n_cpus=n_cpus,
+    )

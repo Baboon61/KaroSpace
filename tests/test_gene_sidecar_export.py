@@ -258,6 +258,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "requestModalBlendGene(gene, modName);" in html_text
     assert 'id="modal-controls-toggle"' in html_text
     assert ".modal-controls.hidden" in html_text
+    assert html_text.index('id="zoom-out"') < html_text.index('id="zoom-in"') < html_text.index('id="zoom-info"')
     assert 'data-modal-group="view"' in html_text
     assert "function updateModalToolbarState()" in html_text
     assert "function initModalControlsDragging()" in html_text
@@ -357,6 +358,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert '<select id="neighbor-hop-select"' not in html_text
     assert ">Keyboard Shortcuts<" in html_text
     assert "<kbd>/</kbd>" in html_text
+    assert "<kbd>I</kbd>" in html_text
     assert "function toggleLegendPanel()" in html_text
     assert "function toggleInsightsPanel()" in html_text
     assert "function navigateModalSection(step)" in html_text
@@ -372,6 +374,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert ".modal-controls button.modal-btn-danger" in html_text
     assert "buildColorPanel();" in html_text
     assert "colorToggle.addEventListener('click', toggleInsightsPanel);" in html_text
+    assert "if (key === 'i' || key === 'I')" in html_text
     assert 'id="insights-footer-bar"' not in html_text
     assert '<div class="color-panel collapsed" id="color-panel"></div>' in html_text
     assert 'id="color-toggle"' in html_text
@@ -382,6 +385,16 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "const VIEWER_STORAGE = createViewerStorage();" in html_text
     assert "VIEWER_STORAGE.getItem('spatial-viewer-theme')" in html_text
     assert "VIEWER_STORAGE.setItem('spatial-viewer-theme', currentTheme)" in html_text
+    assert "--accent-text:" in html_text
+    assert "--accent-fill:" in html_text
+    assert "--panel-card-bg:" in html_text
+    assert "--warning-bg:" in html_text
+    assert "--split-a-text:" in html_text
+    assert "button { color: var(--text-color); }" in html_text
+    assert ":root.dark button" not in html_text
+    assert "background: var(--panel-card-bg);" in html_text
+    assert "function getAnnotationCountChipStyle(annotation)" in html_text
+    assert "getTextColorForBackground(color)" in html_text
     assert "window.location.protocol === 'file:' && !window.__karospacePackageMode" in html_text
     assert 'id="modal-blend-loading"' in html_text
     assert 'id="gene-discovery-panel"' in html_text
@@ -399,6 +412,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "function getGeneSearchResults(query, limit = GENE_DISCOVERY_MAX_RESULTS)" in html_text
     assert "function renderGeneDiscoveryPanel()" in html_text
     assert "function renderClusterDE()" in html_text
+    assert "function isEmbeddedViewerGene(gene)" in html_text
     assert "Load marker gene into the viewer" in html_text
     assert "Click a marker gene to load it in the viewer." in html_text
     assert "Marker gene name only; this gene was not embedded in the viewer" in html_text
@@ -414,6 +428,8 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "Find cells" in html_text
     assert 'data-selection-query-toggle' in html_text
     assert 'data-selection-query-input' in html_text
+    assert "const bareTokenHasLetter = /[A-Za-z_]/.test(bareToken);" in html_text
+    assert "tokens.push({ type: 'identifier', value: bareToken, pos: i });" in html_text
     assert 'data-selection-query-run' in html_text
     assert 'data-selection-query-add' in html_text
     assert 'data-selection-query-clear' in html_text
@@ -478,6 +494,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "function fetchGeneAuxShardForAnalysis(shardUrl)" in html_text
     assert "function decodeDenseSidecarSection(sectionEntry)" in html_text
     assert "function base64ToUint8Array(b64)" in html_text
+    assert "|| getActiveFeatureList()[0]" not in html_text
     assert "function buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5, colorCol = null, sourceCategory = null, referenceCategory = null)" in html_text
     assert "function buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5)" in html_text
     assert "const pvals = Array.isArray(result.pvals) ? result.pvals : [];" in html_text
@@ -489,8 +506,29 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "buildClusterDESummaryItem('p >= 0.05', 'var(--border-color)', counts.grey)" in html_text
     assert "function buildPseudobulkPCAPlot(sampleInfo, colorCol)" in html_text
     assert "function buildPseudobulkDistanceHeatmap(sampleInfo, colorCol)" in html_text
+    assert "function renderClusterPAResultSection(colorCol, sourceCategory, referenceCategory)" in html_text
+    assert 'class="cluster-PA-result cluster-pa-result"' in html_text
+    assert "Gene Enrichment" in html_text
+    assert "data-pathway-annotation-select" in html_text
+    assert 'data-pathway-annotation-panel="source"' in html_text
+    assert 'data-pathway-annotation-panel="reference"' in html_text
+    assert "function buildPathwayORAPlot(result, sourceCategory, referenceCategory, sourceColor, referenceColor)" in html_text
+    assert "function buildPathwayORADotPlot(rows, sourceCategory, referenceCategory, sourceColor, referenceColor)" in html_text
+    assert "GeneRatio" in html_text
+    assert "-log10 adjusted p" in html_text
+    assert "function buildPathwayGSEAPlot(result, sourceCategory, referenceCategory, sourceColor, referenceColor)" in html_text
+    assert "function buildPathwayGSEAEnrichmentPlot(row, sourceCategory, referenceCategory, sourceColor, referenceColor)" in html_text
+    assert "GSEA Enrichment" in html_text
+    assert "data-pathway-gsea-select" in html_text
+    assert "data-gsea-pathway-panel" in html_text
+    assert "function buildPathwayBarPlot" not in html_text
+    assert "GSEA Pathways" not in html_text
+    assert "pathway_enrichment" in html_text
+    assert "ORA Pathways" in html_text
+    assert "Rank in ordered dataset" in html_text
     assert "const greyLabel = 'adj. p > ' + formatAdjustedPValue(padjThreshold)" in html_text
     assert "+ ' or |log2FC| < ' + formatScaleNumber(fcThr)" in html_text
+    assert "function wrapClusterDEVolcanoPlot(volcanoHtml)" in html_text
     assert "buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff, log2fcCutoff, colorCol, sourceCategory, referenceCategory)" in html_text
     assert "function bindClusterDEPlotInteractions(container, rerenderFn)" in html_text
     assert "function buildGroupVolcanoPlot(entries)" in html_text
@@ -512,6 +550,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "Save Volcano SVG" in html_text
     assert "Save Volcano PNG" in html_text
     assert "Save Table CSV" in html_text
+    assert 'class="cluster-de-volcano-container"' in html_text
     assert "Save Table Excel" in html_text
     assert "Number.MIN_VALUE" in html_text
     assert "if (window.__karospacePackageMode) {" in html_text
@@ -1002,19 +1041,21 @@ def test_export_embeds_normalized_section_rotations(tmp_path):
 def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
     dataset = _build_pseudobulk_dataset()
     output_path = tmp_path / "viewer.html"
+    pathway_gmt = tmp_path / "pathways.gmt"
+    pathway_gmt.write_text(
+        "Source-favored pathway\tna\tG1\tG3\n"
+        "Reference pathway\tna\tG2\n",
+        encoding="utf-8",
+    )
 
-    def fake_deseq2_pair(counts, metadata, source, reference):
-        if reference == "__rest__":
-            return pd.DataFrame(
-                {
-                    "baseMean": [4.0, 2.0, 1.0],
-                    "log2FoldChange": [0.1, 1.8, -0.5],
-                    "stat": [0.2, 3.2, -1.1],
-                    "pvalue": [0.8, 0.001, 0.4],
-                    "padj": [0.8, 0.01, 0.5],
-                },
-                index=["G1", "G2", "G3"],
-            )
+    class FakeDDS:
+        def contrast(self, column, baseline, group_to_compare):
+            return np.array([1.0 if str(group_to_compare) == "A" else -1.0])
+
+    def fake_fit_shared(counts, metadata, categories, **kwargs):
+        return FakeDDS(), counts, metadata
+
+    def fake_shared_contrast(dds, contrast, n_cpus=1):
         return pd.DataFrame(
             {
                 "baseMean": [4.0, 2.0, 1.0],
@@ -1026,12 +1067,17 @@ def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
             index=["G1", "G2", "G3"],
         )
 
-    monkeypatch.setattr("karospace.pseudobulk._fit_deseq2_pair", fake_deseq2_pair)
+    monkeypatch.setattr("karospace.pseudobulk._fit_deseq2_shared_categories", fake_fit_shared)
+    monkeypatch.setattr("karospace.pseudobulk._deseq2_shared_contrast", fake_shared_contrast)
 
     export_to_html(
         dataset,
         output_path=str(output_path),
         annotation="leiden",
+        pathway_gmt=str(pathway_gmt),
+        pathway_organism="Human",
+        pathway_min_overlap=1,
+        pathway_gsea_permutations=0,
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
@@ -1057,10 +1103,25 @@ def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
     assert rest_result["n_source"] == 40
     assert rest_result["n_reference"] == 40
     assert rest_result["n_replicates"] == 2
-    assert embedded["marker_genes"]["leiden"]["A"] == ["G2"]
+    summary = pseudobulk_de["leiden"]["_summary"]
+    assert summary["diagnostics"] == "pairwise"
+    assert "A" in summary["pair_diagnostics"]
+    assert "B" in summary["pair_diagnostics"]["A"]
+    diagnostic = summary["pair_diagnostics"]["A"]["B"]
+    assert len(diagnostic["pca"]) == 4
+    assert len(diagnostic["distance_matrix"]) == 4
+    pathways = result["pathway_enrichment"]
+    assert pathways["ora"]["up"][0]["term"] == "Source-favored pathway"
+    gsea_row = pathways["gsea"]["positive"][0]
+    assert gsea_row["running_profile"]
+    assert gsea_row["hit_indices"]
+    assert gsea_row["rank_metric_profile"]
+    assert embedded["pathway_settings"]["source"] == "gmt"
+    assert embedded["pathway_settings"]["enriched_comparisons"] >= 1
+    assert embedded["marker_genes"]["leiden"]["A"] == ["G1"]
 
 
-def test_pseudobulk_min_pct_expressed_requires_both_groups(monkeypatch, tmp_path):
+def test_pseudobulk_min_pct_expressed_does_not_truncate_de_table(monkeypatch, tmp_path):
     dataset = _build_dataset()
     output_path = tmp_path / "viewer.html"
 
@@ -1088,9 +1149,9 @@ def test_pseudobulk_min_pct_expressed_requires_both_groups(monkeypatch, tmp_path
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
     result = embedded["pseudobulk_de"]["leiden"]["A"]["B"]
 
-    assert result["genes"] == ["G1"]
-    assert result["pct_source"] == [1.0]
-    assert result["pct_reference"] == [1.0]
+    assert result["genes"] == ["G1", "G3", "G2"]
+    assert result["pct_source"] == [1.0, 0.0, 0.5]
+    assert result["pct_reference"] == [1.0, 0.5, 0.0]
     assert result["min_pct_expressed"] == 0.5
 
 
@@ -1223,6 +1284,18 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
             "1.2",
             "--pseudobulk-deseq2-fit-type",
             "mean",
+            "--pseudobulk-embed-top-n-per-comparison",
+            "7",
+            "--pathway-gmt",
+            "reactome.gmt,go_bp.gmt",
+            "--pathway-organism",
+            "Mouse",
+            "--pathway-top-n",
+            "9",
+            "--pathway-min-overlap",
+            "2",
+            "--pathway-gsea-permutations",
+            "0",
             "--interaction-markers",
             "None",
         ],
@@ -1248,6 +1321,12 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
     assert captured["kwargs"]["pseudobulk_padj_cutoff"] == 0.01
     assert captured["kwargs"]["pseudobulk_log2fc_cutoff"] == 1.2
     assert captured["kwargs"]["pseudobulk_deseq2_fit_type"] == "mean"
+    assert captured["kwargs"]["pseudobulk_embed_top_n_per_comparison"] == 7
+    assert captured["kwargs"]["pathway_gmt"] == ["reactome.gmt", "go_bp.gmt"]
+    assert captured["kwargs"]["pathway_organism"] == "Mouse"
+    assert captured["kwargs"]["pathway_top_n"] == 9
+    assert captured["kwargs"]["pathway_min_overlap"] == 2
+    assert captured["kwargs"]["pathway_gsea_permutations"] == 0
 
 
 def test_cli_rejects_invalid_section_rotations(monkeypatch, tmp_path, capsys):
@@ -1556,6 +1635,11 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
                     "pct_reference": [0.5],
                     "n_source": 2,
                     "n_reference": 2,
+                    "pseudobulk_samples": {
+                        "pca": [[0.0, 0.0], [1.0, 1.0]],
+                        "pca_variance": [0.9, 0.1],
+                        "distance_matrix": [[0.0, 1.0], [1.0, 0.0]],
+                    },
                 }
             }
         }
@@ -1628,12 +1712,61 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
-    assert embedded["pseudobulk_de"] == pseudobulk_de
+    expected_pseudobulk_de = json.loads(json.dumps(pseudobulk_de))
+    del expected_pseudobulk_de["leiden"]["A"]["B"]["pseudobulk_samples"]
+    assert embedded["pseudobulk_de"] == expected_pseudobulk_de
+    assert "pseudobulk_samples" in pseudobulk_de["leiden"]["A"]["B"]
     assert embedded["neighbor_stats"] == neighbor_stats
     assert embedded["interaction_markers"] == interaction_markers
     assert embedded["gene_correlations"] == gene_correlations
     assert embedded["spatial_variable_genes"] == spatial_variable_genes
     assert embedded["cluster_gene_means"] == cluster_gene_means
+
+
+def test_pseudobulk_embed_top_n_per_comparison_limits_auto_embedded_genes(tmp_path):
+    dataset = _build_dataset()
+    output_path = tmp_path / "viewer.html"
+    pseudobulk_de = {
+        "leiden": {
+            "A": {
+                "B": {
+                    "available": True,
+                    "genes": ["G2", "G1", "G3"],
+                    "logfoldchanges": [2.0, 1.5, 1.2],
+                    "log2foldchanges": [2.0, 1.5, 1.2],
+                    "pvals_adj": [0.003, 0.001, 0.002],
+                    "scores": [3.0, 5.0, 4.0],
+                    "pct_source": [1.0, 1.0, 1.0],
+                    "pct_reference": [0.0, 0.0, 0.0],
+                    "n_source": 2,
+                    "n_reference": 2,
+                    "padj_cutoff": 0.05,
+                    "log2fc_cutoff": 0.5,
+                }
+            }
+        }
+    }
+    _attach_companion_analytics(dataset, pseudobulk_de=pseudobulk_de)
+
+    export_to_html(
+        dataset,
+        output_path=str(output_path),
+        annotation="leiden",
+        genes=["G3"],
+        pseudobulk_embed_top_n_per_comparison=1,
+        interaction_markers=None,
+        neighbor_stats_groupby=[],
+        spatial_variable_genes_n=0,
+        cluster_means_n_genes=0,
+        gene_correlation_top_n=0,
+    )
+
+    embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
+    assert embedded["pseudobulk_de"]["leiden"]["A"]["B"]["genes"] == ["G2", "G1", "G3"]
+    assert set(embedded["available_genes"]) == {"G1", "G3"}
+    assert set(embedded["embedded_genes"]) == {"G1", "G3"}
+    assert set(embedded["genes_meta"]) == {"G1", "G3"}
+    assert embedded["pseudobulk_settings"]["embed_top_n_per_comparison"] == 1
 
 
 def test_export_falls_back_when_companion_analytics_absent(monkeypatch, tmp_path):
@@ -1743,6 +1876,44 @@ def test_read_h5ad_with_fallback_uses_sanitized_copy_and_cleans_it_up(tmp_path, 
             if isinstance(expression_path, bytes):
                 expression_path = expression_path.decode("utf-8")
             assert expression_path == "expr.h5"
+        return expected
+
+    monkeypatch.setattr("karospace.data_loader.sc.read_h5ad", fake_read_h5ad)
+
+    loaded = _read_h5ad_with_fallback(str(path))
+
+    assert loaded is expected
+    assert read_calls[0] == path
+    assert len(read_calls) == 2
+    assert not read_calls[1].exists()
+
+
+def test_read_h5ad_with_fallback_clears_legacy_uns_metadata(tmp_path, monkeypatch):
+    path = tmp_path / "legacy_uns.h5ad"
+    obs = pd.DataFrame(index=["cell_0"])
+    var = pd.DataFrame(index=["G1"])
+    adata = AnnData(X=np.array([[1.0]], dtype=float), obs=obs, var=var)
+    adata.uns["legacy_tool_state"] = {"payload": "old"}
+    adata.write_h5ad(path)
+
+    expected = AnnData(X=np.array([[1.0]], dtype=float), obs=obs, var=var)
+    read_calls = []
+
+    def fake_read_h5ad(target_path):
+        read_calls.append(Path(target_path))
+        if len(read_calls) == 1:
+            raise RuntimeError(
+                "No read method registered for IOSpec("
+                "encoding_type='legacy-json', encoding_version='0.0.1')"
+            )
+        assert Path(target_path) != path
+        assert Path(target_path).exists()
+        with h5py.File(target_path, "r") as handle:
+            assert list(handle["uns"].keys()) == []
+            assert handle["uns"].attrs["encoding-type"] == "dict"
+            assert handle["X"].shape == (1, 1)
+            assert list(handle["obs"].keys())
+            assert list(handle["var"].keys())
         return expected
 
     monkeypatch.setattr("karospace.data_loader.sc.read_h5ad", fake_read_h5ad)

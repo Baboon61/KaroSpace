@@ -7,19 +7,23 @@ gene expression, and metadata for visualization.
 
 import json
 import os
+import re
 import shutil
 import tempfile
+from copy import deepcopy
 from dataclasses import dataclass, field
+from itertools import combinations, product
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
-import scanpy as sc
+import anndata as ad
 import scipy.sparse as sp
 from pandas.api.types import CategoricalDtype
 from scipy.sparse import issparse
 
 
+sc = ad  # Compatibility alias; this module only needs AnnData/read_h5ad, not Scanpy.
 COMPANION_ANALYTICS_STORAGE = "json-string-v1"
 COMPANION_ANALYTICS_JSON_FIELDS = {
     "cluster_de_json": "cluster_de",
@@ -42,6 +46,144 @@ _SPATIAL_KEY_FALLBACKS = (
     "Spatial",
     "spatialcoords",
 )
+
+# Dormant Complex design support. It is intentionally not exposed through the
+# API or CLI, and no export path invokes it while the feature is in development.
+_PSEUDOBULK_MODEL_FACTOR = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _build_pseudobulk_model_design_audit(
+    obs: pd.DataFrame,
+    formula: Optional[str],
+    pseudobulk_replicate_annotation: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Parse a safe categorical DESeq2 design subset and describe its pseudobulk grid."""
+    text = str(formula or "").strip()
+    if not text:
+        return None
+    audit: Dict[str, Any] = {
+        "formula": text,
+        "valid": False,
+        "terms": [],
+        "variables": [],
+        "errors": [],
+        "warnings": [],
+        "sample_count": 0,
+        "design_rank": None,
+        "design_columns": 0,
+        "levels": {},
+        "sample_preview": [],
+        "candidate_contrasts": [],
+        "sample_variables": [],
+        "pseudobulk_replicate_annotation": None,
+    }
+    if not text.startswith("~"):
+        audit["errors"].append("The model must start with '~'.")
+        return audit
+    expression = text[1:].strip()
+    if not expression:
+        audit["errors"].append("The model has no terms after '~'.")
+        return audit
+    if any(token in expression for token in ("(", ")", "|", "-", "/")):
+        audit["errors"].append(
+            "Only categorical main effects and ':' or '*' interactions are supported."
+        )
+        return audit
+
+    terms: List[Tuple[str, ...]] = []
+    for raw_term in (item.strip() for item in expression.split("+")):
+        if not raw_term:
+            audit["errors"].append("Empty model term.")
+            continue
+        separators = "*" if "*" in raw_term else ":"
+        factors = tuple(item.strip() for item in raw_term.split(separators))
+        if not factors or any(not _PSEUDOBULK_MODEL_FACTOR.match(item) for item in factors):
+            audit["errors"].append(f"Unsupported model term '{raw_term}'.")
+            continue
+        expanded = (
+            [combo for size in range(1, len(factors) + 1) for combo in combinations(factors, size)]
+            if separators == "*"
+            else [factors]
+        )
+        for term in expanded:
+            if term not in terms:
+                terms.append(term)
+    if audit["errors"]:
+        return audit
+
+    variables = list(dict.fromkeys(factor for term in terms for factor in term))
+    audit["terms"] = [":".join(term) for term in terms]
+    audit["variables"] = variables
+    missing = [factor for factor in variables if factor not in obs.columns]
+    if missing:
+        audit["errors"].append("Unknown obs annotation(s): " + ", ".join(missing) + ".")
+        return audit
+    numeric = [factor for factor in variables if pd.api.types.is_numeric_dtype(obs[factor])]
+    if numeric:
+        audit["errors"].append(
+            "Numeric covariates are not supported in Complex design yet: " + ", ".join(numeric) + "."
+        )
+        return audit
+
+    replicate = str(pseudobulk_replicate_annotation or "").strip()
+    if replicate and replicate not in obs.columns:
+        audit["errors"].append(
+            f"Pseudobulk replicate annotation '{replicate}' is not an obs annotation."
+        )
+        return audit
+    sample_variables = list(variables)
+    if replicate and replicate not in sample_variables:
+        sample_variables.insert(0, replicate)
+    audit["sample_variables"] = sample_variables
+    audit["pseudobulk_replicate_annotation"] = replicate or None
+
+    model_obs = obs[sample_variables].dropna().copy()
+    if model_obs.empty:
+        audit["errors"].append("No cells have complete values for every model annotation.")
+        return audit
+    for factor in variables:
+        model_obs[factor] = model_obs[factor].astype(str)
+    levels = {factor: sorted(model_obs[factor].unique().tolist()) for factor in variables}
+    audit["levels"] = levels
+    single_level = [factor for factor, values in levels.items() if len(values) < 2]
+    if single_level:
+        audit["errors"].append("Annotation(s) have fewer than two levels: " + ", ".join(single_level) + ".")
+        return audit
+
+    grouped = model_obs.groupby(sample_variables, observed=True, sort=True).size().reset_index(name="n_cells")
+    audit["sample_count"] = int(len(grouped))
+    audit["sample_preview"] = [
+        {"values": {factor: str(row[factor]) for factor in sample_variables}, "n_cells": int(row["n_cells"])}
+        for _, row in grouped.head(200).iterrows()
+    ]
+    if len(grouped) > 200:
+        audit["warnings"].append("Only the first 200 pseudobulk samples are shown in the balance preview.")
+
+    basis: Dict[str, np.ndarray] = {}
+    for factor in variables:
+        one_hot = pd.get_dummies(grouped[factor], drop_first=True, dtype=float).to_numpy(dtype=float)
+        basis[factor] = one_hot
+    columns = [np.ones(len(grouped), dtype=float)]
+    for term in terms:
+        arrays = [basis[factor] for factor in term]
+        if any(array.shape[1] == 0 for array in arrays):
+            continue
+        for chosen in product(*(range(array.shape[1]) for array in arrays)):
+            value = np.ones(len(grouped), dtype=float)
+            for array, index in zip(arrays, chosen):
+                value *= array[:, index]
+            columns.append(value)
+    matrix = np.column_stack(columns)
+    audit["design_columns"] = int(matrix.shape[1])
+    audit["design_rank"] = int(np.linalg.matrix_rank(matrix))
+    if audit["design_rank"] < audit["design_columns"]:
+        audit["errors"].append(
+            "The design is rank-deficient: one or more model effects are confounded."
+        )
+        return audit
+    audit["candidate_contrasts"] = [":".join(term) for term in terms if len(term) > 1]
+    audit["valid"] = True
+    return audit
 
 
 def _rgb_nums_to_hex(nums) -> Optional[str]:
@@ -228,34 +370,94 @@ def _compute_positive_fraction(
     return out
 
 
-def _strip_null_encoded_h5ad_entries(src_path: str) -> Tuple[str, List[str]]:
-    """Copy an h5ad file and remove null-encoded datasets unsupported by older anndata builds."""
-    import h5py
+def _format_h5ad_removed_paths(paths: List[str], limit: int = 8) -> str:
+    if len(paths) <= limit:
+        return ", ".join(paths)
+    return ", ".join(paths[:limit]) + f", ... ({len(paths) - limit} more)"
 
+
+def _h5ad_attr_text(value: Any) -> str:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", "replace")
+    if isinstance(value, np.bytes_):
+        return value.item().decode("utf-8", "replace")
+    return str(value)
+
+
+def _copy_h5ad_for_repair(src_path: str) -> str:
     fd, tmp_path = tempfile.mkstemp(suffix=".h5ad")
     os.close(fd)
     shutil.copy2(src_path, tmp_path)
+    return tmp_path
+
+
+def _strip_null_encoded_h5ad_entries(src_path: str) -> Tuple[str, List[str]]:
+    """Copy an h5ad file and remove null-encoded optional metadata entries."""
+    import h5py
+
+    tmp_path = _copy_h5ad_for_repair(src_path)
 
     removed_paths: List[str] = []
     with h5py.File(tmp_path, "r+") as handle:
+        if "uns" not in handle:
+            return tmp_path, removed_paths
+
         def _walk(group, prefix: str = "") -> None:
             for key in list(group.keys()):
                 obj = group[key]
                 path = f"{prefix}/{key}" if prefix else f"/{key}"
-                if obj.attrs.get("encoding-type") == "null":
+                if _h5ad_attr_text(obj.attrs.get("encoding-type", "")).lower() == "null":
                     removed_paths.append(path)
                     del group[key]
                     continue
                 if isinstance(obj, h5py.Group):
                     _walk(obj, path)
 
-        _walk(handle)
+        _walk(handle["uns"], "/uns")
 
     return tmp_path, removed_paths
 
 
+def _strip_optional_uns_h5ad_entries(src_path: str) -> Tuple[str, List[str]]:
+    """Copy an h5ad file and clear optional ``uns`` metadata for legacy read retries."""
+    import h5py
+
+    tmp_path = _copy_h5ad_for_repair(src_path)
+
+    removed_paths: List[str] = []
+    with h5py.File(tmp_path, "r+") as handle:
+        if "uns" not in handle:
+            return tmp_path, removed_paths
+
+        removed_paths = [f"/uns/{key}" for key in handle["uns"].keys()]
+        del handle["uns"]
+        uns = handle.create_group("uns")
+        uns.attrs["encoding-type"] = "dict"
+        uns.attrs["encoding-version"] = "0.1.0"
+
+    return tmp_path, removed_paths
+
+
+def _is_h5ad_encoding_error(exc: Exception) -> bool:
+    messages = []
+    current: Optional[BaseException] = exc
+    while current is not None:
+        messages.append(str(current))
+        current = current.__cause__ or current.__context__
+    text = "\n".join(messages)
+    return any(
+        needle in text
+        for needle in (
+            "No read method registered for IOSpec",
+            "IOSpec(",
+            "encoding_type=",
+            "encoding-type",
+        )
+    )
+
+
 def _read_h5ad_with_fallback(path: str) -> sc.AnnData:
-    """Read h5ad, retrying with null-encoded uns entries stripped if needed."""
+    """Read h5ad, retrying with legacy optional metadata stripped if needed."""
     try:
         return sc.read_h5ad(path)
     except PermissionError as exc:
@@ -273,19 +475,82 @@ def _read_h5ad_with_fallback(path: str) -> sc.AnnData:
             )
         raise PermissionError(message) from exc
     except Exception as exc:
-        if "encoding_type='null'" not in str(exc):
+        if not _is_h5ad_encoding_error(exc):
             raise
 
-        print("  Detected unsupported null-encoded H5AD fields; retrying with a sanitized temporary copy...")
-        temp_path = None
-        try:
-            temp_path, removed_paths = _strip_null_encoded_h5ad_entries(path)
-            if removed_paths:
-                print(f"  Removed {len(removed_paths)} null field(s): {', '.join(removed_paths)}")
-            return sc.read_h5ad(temp_path)
-        finally:
-            if temp_path and os.path.exists(temp_path):
-                os.remove(temp_path)
+        repair_attempts = []
+        if "encoding_type='null'" in str(exc) or 'encoding_type="null"' in str(exc):
+            repair_attempts.append(
+                (
+                    "unsupported null-encoded H5AD metadata",
+                    _strip_null_encoded_h5ad_entries,
+                    "null metadata field(s)",
+                )
+            )
+        repair_attempts.append(
+            (
+                "legacy H5AD optional metadata encoding",
+                _strip_optional_uns_h5ad_entries,
+                "optional uns entry/entries",
+            )
+        )
+
+        for description, repair, label in repair_attempts:
+            temp_path = None
+            try:
+                temp_path, removed_paths = repair(path)
+                if not removed_paths:
+                    continue
+                print(f"  Detected {description}; retrying with a sanitized temporary copy...")
+                print(f"  Removed {len(removed_paths)} {label}: {_format_h5ad_removed_paths(removed_paths)}")
+                return sc.read_h5ad(temp_path)
+            except Exception:
+                continue
+            finally:
+                if temp_path and os.path.exists(temp_path):
+                    os.remove(temp_path)
+
+        raise
+
+
+def inspect_input_file(path: str) -> Dict[str, Any]:
+    """Read an h5ad file and summarize its available cell metadata.
+
+    This intentionally performs no coordinate validation, section construction,
+    downsampling, or analytical calculation. It is suitable for choosing CLI
+    metadata, annotation, and pseudobulk design arguments before export.
+    """
+    max_examples = 10
+    adata = _read_h5ad_with_fallback(path)
+    metadata: List[Dict[str, Any]] = []
+    for column in adata.obs.columns:
+        series = adata.obs[column]
+        observed = series.dropna()
+        examples = [str(value) for value in observed.drop_duplicates().head(max_examples).tolist()]
+        if isinstance(series.dtype, CategoricalDtype):
+            value_type = "categorical"
+        elif pd.api.types.is_bool_dtype(series):
+            value_type = "boolean"
+        elif pd.api.types.is_numeric_dtype(series):
+            value_type = "numeric"
+        else:
+            value_type = "text"
+        metadata.append(
+            {
+                "name": str(column),
+                "type": value_type,
+                "dtype": str(series.dtype),
+                "n_unique": int(observed.nunique()),
+                "n_missing": int(series.isna().sum()),
+                "examples": examples,
+            }
+        )
+    return {
+        "path": str(path),
+        "n_cells": int(adata.n_obs),
+        "n_genes": int(adata.n_vars),
+        "metadata": metadata,
+    }
 
 
 def _normalize_uns_scalar(value: Any) -> Any:
@@ -378,6 +643,32 @@ def _load_companion_analytics(adata) -> Dict[str, Any]:
             )
 
     return analytics
+
+
+def _strip_category_pseudobulk_sample_diagnostics(payload: Any) -> Any:
+    """Drop legacy all-category PCA/distance diagnostics from category DE payloads.
+
+    Pairwise diagnostics live under ``_summary.pair_diagnostics`` and are kept.
+    Contact-marker diagnostics are handled separately in the interaction marker
+    payload.
+    """
+    if not isinstance(payload, dict):
+        return payload
+    cleaned = deepcopy(payload)
+
+    def _walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        node.pop("pseudobulk_samples", None)
+        for value in node.values():
+            if isinstance(value, dict):
+                _walk(value)
+            elif isinstance(value, list):
+                for item in value:
+                    _walk(item)
+
+    _walk(cleaned)
+    return cleaned
 
 
 @dataclass
@@ -1030,13 +1321,19 @@ class SpatialDataset:
         gene_sparse_pack: bool = True,
         gene_sparse_pack_min_nnz: int = 256,
         pseudobulk_de_groupby: Optional[List[str]] = None,
+        pseudobulk_replicate_annotation: Optional[str] = None,
+        pseudobulk_simple_constrast_categories: Optional[List[str]] = None,
         pseudobulk_counts_layer: Optional[str] = "counts",
+        pseudobulk_min_cell_counts: int = 0,
+        pseudobulk_min_gene_counts: int = 0,
         pseudobulk_min_replicates: int = 2,
         pseudobulk_min_pct_expressed: float = 0.0,
         pseudobulk_p_adjust_method: str = "fdr_bh",
         pseudobulk_padj_cutoff: float = 0.05,
         pseudobulk_log2fc_cutoff: float = 0.5,
         pseudobulk_deseq2_fit_type: str = "parametric",
+        pseudobulk_n_cpus: int = 1,
+        pseudobulk_embed_top_n_per_comparison: int = 20,
         interaction_markers_groupby: Optional[List[str]] = None,
         neighbor_stats_groupby: Optional[List[str]] = None,
         neighbor_stats_permutations: int = 0,
@@ -1076,13 +1373,28 @@ class SpatialDataset:
             Only pack sparse arrays when non-zero entries in a section are >= this value.
             Default: 256.
         pseudobulk_de_groupby : list, optional
-            Internal list of obs columns to compute pairwise pseudobulk DE for.
+            Internal list of obs columns to compute shared-fit pseudobulk DE for.
             Exporter supplies the initial annotation and pseudobulk additional annotations.
+        pseudobulk_replicate_annotation : str, optional
+            Obs annotation used as the biological replicate for pseudobulk analyses.
+            Defaults to the dataset groupby annotation.
+        pseudobulk_simple_constrast_categories : list, optional
+            Categories to include in Simple design category-versus-category
+            contrasts. All retained categories remain in the shared fit and
+            receive a balanced-rest contrast.
         pseudobulk_counts_layer : str, optional
             AnnData layer containing raw counts for pseudobulk aggregation.
             Defaults to "counts" when present, otherwise adata.X.
+        pseudobulk_min_cell_counts : int
+            Exclude cells below this total raw-count threshold before pseudobulk
+            aggregation. Zero disables filtering.
+        pseudobulk_min_gene_counts : int
+            Exclude genes below this total raw pseudobulk-count threshold in the
+            shared DESeq2 fit. Zero disables filtering.
         pseudobulk_min_replicates : int
-            Minimum paired replicates required for a group-vs-group contrast.
+            Minimum paired replicates required for a reported group-vs-group
+            contrast.
+            Pseudobulk DE always requires at least two replicates.
         pseudobulk_min_pct_expressed : float
             Minimum fraction of cells expressing a gene required in both compared
             groups. Values > 1 are interpreted as percentages.
@@ -1094,6 +1406,12 @@ class SpatialDataset:
             Absolute log2 fold-change cutoff used by the viewer volcano/table.
         pseudobulk_deseq2_fit_type : str
             PyDESeq2 dispersion trend fit type, "parametric" or "mean".
+        pseudobulk_n_cpus : int
+            Number of CPU workers used by PyDESeq2 pseudobulk fitting and
+            contrast evaluation. Must be at least one.
+        pseudobulk_embed_top_n_per_comparison : int
+            Maximum significant DE genes to auto-embed per category or contact
+            comparison. Explicitly requested ``genes`` are always embedded.
         interaction_markers_groupby : list, optional
             Internal list of obs columns to compute contact-conditioned
             pseudobulk interaction markers for. Empty/None disables them.
@@ -1261,6 +1579,8 @@ class SpatialDataset:
 
         gene_encoding = str(gene_encoding or "auto").lower()
         self._validate_gene_export_options(gene_encoding, gene_sparse_zero_threshold, gene_sparse_pack_min_nnz)
+        if int(pseudobulk_embed_top_n_per_comparison) < 0:
+            raise ValueError("pseudobulk_embed_top_n_per_comparison must be >= 0")
         if int(interaction_markers_top_targets) < 1:
             raise ValueError("interaction_markers_top_targets must be >= 1")
         if int(interaction_markers_top_genes) < 1:
@@ -1454,6 +1774,13 @@ class SpatialDataset:
 
             return entry, _build_context(counts, zscore, n_cells, mean_degree)
 
+        replicate_override = str(pseudobulk_replicate_annotation or "").strip()
+        pseudobulk_replicate_name = replicate_override or str(self.groupby)
+        if pseudobulk_replicate_name not in self.adata.obs.columns:
+            raise ValueError(
+                "pseudobulk_replicate_annotation "
+                f"'{pseudobulk_replicate_name}' is not an obs column"
+            )
         marker_genes = {}
         pseudobulk_de = {}
         requested_pseudobulk_de_groupby = list(pseudobulk_de_groupby or [])
@@ -1462,7 +1789,11 @@ class SpatialDataset:
             companion_analytics.get("pseudobulk_de")
             or companion_analytics.get("cluster_de")
         )
-        if pending_pseudobulk_de_groupby and isinstance(companion_pseudobulk_de, dict):
+        if (
+            not replicate_override
+            and pending_pseudobulk_de_groupby
+            and isinstance(companion_pseudobulk_de, dict)
+        ):
             reused_pseudobulk_de_groupby = [
                 groupby_name
                 for groupby_name in pending_pseudobulk_de_groupby
@@ -1474,7 +1805,9 @@ class SpatialDataset:
                     f"groupby column{'s' if len(reused_pseudobulk_de_groupby) != 1 else ''}..."
                 )
                 for groupby_name in reused_pseudobulk_de_groupby:
-                    pseudobulk_de[groupby_name] = companion_pseudobulk_de[groupby_name]
+                    pseudobulk_de[groupby_name] = _strip_category_pseudobulk_sample_diagnostics(
+                        companion_pseudobulk_de[groupby_name]
+                    )
             pending_pseudobulk_de_groupby = [
                 groupby_name
                 for groupby_name in pending_pseudobulk_de_groupby
@@ -1486,21 +1819,50 @@ class SpatialDataset:
                 f"groupby column{'s' if len(pending_pseudobulk_de_groupby) != 1 else ''}..."
             )
             pseudobulk_min_cells_n = 20
+            pseudobulk_min_cell_counts_n = int(pseudobulk_min_cell_counts)
+            pseudobulk_min_gene_counts_n = int(pseudobulk_min_gene_counts)
             pseudobulk_min_rep_n = int(pseudobulk_min_replicates)
-            pseudobulk_replicate_name = str(self.groupby)
             pseudobulk_min_pct_n = float(pseudobulk_min_pct_expressed)
             pseudobulk_padj_cutoff_n = float(pseudobulk_padj_cutoff)
             pseudobulk_log2fc_cutoff_n = float(pseudobulk_log2fc_cutoff)
+            pseudobulk_n_cpus_n = max(1, int(pseudobulk_n_cpus))
 
             from .pseudobulk import compute_pseudobulk_group_de
 
             for groupby_name in pending_pseudobulk_de_groupby:
                 print(f"  - pseudobulk DE: {groupby_name} (replicate={pseudobulk_replicate_name})")
+                pairwise_categories_label = (
+                    ", ".join(str(value) for value in pseudobulk_simple_constrast_categories)
+                    if pseudobulk_simple_constrast_categories
+                    else "all categories"
+                )
+                print(
+                    "    ↳ parameters: "
+                    f"model=shared_all_category(~ {pseudobulk_replicate_name} + {groupby_name}); "
+                    "rest=balanced_equal_category_weight; "
+                    f"counts_layer={pseudobulk_counts_layer or 'X'}; "
+                    f"min_cell_counts={pseudobulk_min_cell_counts_n}; "
+                    f"min_gene_counts={pseudobulk_min_gene_counts_n}; "
+                    f"min_cells_per_pseudobulk={pseudobulk_min_cells_n}; "
+                    f"min_replicates={max(2, pseudobulk_min_rep_n)}; "
+                    f"min_pct_expressed={pseudobulk_min_pct_n:g}; "
+                    f"p_adjust={pseudobulk_p_adjust_method}; "
+                    f"padj_cutoff={pseudobulk_padj_cutoff_n:g}; "
+                    f"log2fc_cutoff={pseudobulk_log2fc_cutoff_n:g}; "
+                    f"fit_type={pseudobulk_deseq2_fit_type}; "
+                    f"n_cpus={pseudobulk_n_cpus_n}; "
+                    "diagnostics=pairwise; "
+                    f"reported_pairwise_categories={pairwise_categories_label}",
+                    flush=True,
+                )
                 groupby_results = compute_pseudobulk_group_de(
                     self.adata,
                     groupby_name,
                     replicate=pseudobulk_replicate_name,
+                    pairwise_categories=pseudobulk_simple_constrast_categories,
                     counts_layer=pseudobulk_counts_layer,
+                    min_cell_counts=pseudobulk_min_cell_counts_n,
+                    min_gene_counts=pseudobulk_min_gene_counts_n,
                     min_cells=pseudobulk_min_cells_n,
                     min_replicates=pseudobulk_min_rep_n,
                     min_pct_expressed=pseudobulk_min_pct_n,
@@ -1508,6 +1870,7 @@ class SpatialDataset:
                     padj_cutoff=pseudobulk_padj_cutoff_n,
                     log2fc_cutoff=pseudobulk_log2fc_cutoff_n,
                     fit_type=pseudobulk_deseq2_fit_type,
+                    n_cpus=max(1, int(pseudobulk_n_cpus)),
                 )
                 if groupby_results:
                     pseudobulk_de[groupby_name] = groupby_results
@@ -1556,7 +1919,11 @@ class SpatialDataset:
         requested_interaction_markers_groupby = list(interaction_markers_groupby or [])
         pending_interaction_markers_groupby = list(requested_interaction_markers_groupby)
         companion_interaction_markers = companion_analytics.get("interaction_markers")
-        if pending_interaction_markers_groupby and isinstance(companion_interaction_markers, dict):
+        if (
+            not replicate_override
+            and pending_interaction_markers_groupby
+            and isinstance(companion_interaction_markers, dict)
+        ):
             reused_interaction_groupby = [
                 groupby_name
                 for groupby_name in pending_interaction_markers_groupby
@@ -1584,7 +1951,7 @@ class SpatialDataset:
             top_genes = int(interaction_markers_top_genes)
             min_cells = int(interaction_markers_min_cells)
             min_neighbors = int(interaction_markers_min_neighbors)
-            interaction_replicate_name = str(self.groupby)
+            interaction_replicate_name = pseudobulk_replicate_name
             interaction_min_rep_n = int(pseudobulk_min_replicates)
             from .pseudobulk import compute_pseudobulk_interaction_markers
 
@@ -1638,6 +2005,8 @@ class SpatialDataset:
                     neighbor_zscore=zscore,
                     neighbor_n_cells=n_cells,
                     counts_layer=pseudobulk_counts_layer,
+                    min_cell_counts=int(pseudobulk_min_cell_counts),
+                    min_gene_counts=int(pseudobulk_min_gene_counts),
                     top_targets=top_targets,
                     top_genes=top_genes,
                     min_cells=min_cells,
@@ -1648,6 +2017,7 @@ class SpatialDataset:
                     padj_cutoff=pseudobulk_padj_cutoff,
                     log2fc_cutoff=pseudobulk_log2fc_cutoff,
                     fit_type=pseudobulk_deseq2_fit_type,
+                    n_cpus=max(1, int(pseudobulk_n_cpus)),
                 )
                 if group_interactions:
                     interaction_markers[groupby_name] = group_interactions
@@ -1656,15 +2026,26 @@ class SpatialDataset:
             payload: Any,
             padj_threshold: float,
             log2fc_threshold: float,
+            min_pct_threshold: float,
+            *,
+            exclude_category_vs_rest: bool = False,
+            limit_per_comparison: int = 20,
         ) -> List[str]:
             found: List[str] = []
+            limit = int(limit_per_comparison)
+            if limit == 0:
+                return found
 
-            def _walk(node: Any) -> None:
+            def _walk(node: Any, key: Optional[str] = None) -> None:
                 if not isinstance(node, dict):
+                    return
+                if exclude_category_vs_rest and key == "__rest__":
                     return
                 genes_list = node.get("genes")
                 padj_list = node.get("pvals_adj")
                 log2fc_list = node.get("log2foldchanges")
+                pct_source_list = node.get("pct_source")
+                pct_reference_list = node.get("pct_reference")
                 if not isinstance(log2fc_list, list):
                     log2fc_list = node.get("logfoldchanges")
                 if (
@@ -1672,22 +2053,43 @@ class SpatialDataset:
                     and isinstance(padj_list, list)
                     and isinstance(log2fc_list, list)
                 ):
-                    for gene, padj, log2fc in zip(genes_list, padj_list, log2fc_list):
+                    ranked = []
+                    for idx, (gene, padj, log2fc) in enumerate(zip(genes_list, padj_list, log2fc_list)):
                         try:
                             padj_value = float(padj)
                             log2fc_value = float(log2fc)
+                            pct_source_value = (
+                                float(pct_source_list[idx])
+                                if isinstance(pct_source_list, list) and idx < len(pct_source_list)
+                                else 0.0
+                            )
+                            pct_reference_value = (
+                                float(pct_reference_list[idx])
+                                if isinstance(pct_reference_list, list) and idx < len(pct_reference_list)
+                                else 0.0
+                            )
                         except (TypeError, ValueError):
                             continue
+                        pct_pass = (
+                            min_pct_threshold <= 0
+                            or pct_source_value >= min_pct_threshold
+                            or pct_reference_value >= min_pct_threshold
+                        )
                         if (
-                            np.isfinite(padj_value)
+                            pct_pass
+                            and np.isfinite(padj_value)
                             and np.isfinite(log2fc_value)
                             and padj_value < padj_threshold
                             and abs(log2fc_value) >= log2fc_threshold
                         ):
-                            found.append(str(gene))
-                for value in node.values():
+                            ranked.append((padj_value, -abs(log2fc_value), idx, str(gene)))
+                    ranked.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+                    if limit > 0:
+                        ranked = ranked[:limit]
+                    found.extend(gene for *_score, gene in ranked)
+                for child_key, value in node.items():
                     if isinstance(value, dict):
-                        _walk(value)
+                        _walk(value, str(child_key))
 
             _walk(payload)
             return found
@@ -1696,6 +2098,7 @@ class SpatialDataset:
             payload: Any,
             padj_threshold: float,
             log2fc_threshold: float,
+            min_pct_threshold: float,
             limit_per_category: int = 50,
         ) -> Dict[str, Dict[str, List[str]]]:
             markers: Dict[str, Dict[str, List[str]]] = {}
@@ -1724,20 +2127,38 @@ class SpatialDataset:
                         genes_list = result.get("genes")
                         padj_list = result.get("pvals_adj")
                         log2fc_list = result.get("log2foldchanges") or result.get("logfoldchanges")
+                        pct_source_list = result.get("pct_source")
+                        pct_reference_list = result.get("pct_reference")
                         if (
                             not isinstance(genes_list, list)
                             or not isinstance(padj_list, list)
                             or not isinstance(log2fc_list, list)
                         ):
                             continue
-                        for gene, padj, log2fc in zip(genes_list, padj_list, log2fc_list):
+                        for idx, (gene, padj, log2fc) in enumerate(zip(genes_list, padj_list, log2fc_list)):
                             try:
                                 padj_value = float(padj)
                                 log2fc_value = float(log2fc)
+                                pct_source_value = (
+                                    float(pct_source_list[idx])
+                                    if isinstance(pct_source_list, list) and idx < len(pct_source_list)
+                                    else 0.0
+                                )
+                                pct_reference_value = (
+                                    float(pct_reference_list[idx])
+                                    if isinstance(pct_reference_list, list) and idx < len(pct_reference_list)
+                                    else 0.0
+                                )
                             except (TypeError, ValueError):
                                 continue
+                            pct_pass = (
+                                min_pct_threshold <= 0
+                                or pct_source_value >= min_pct_threshold
+                                or pct_reference_value >= min_pct_threshold
+                            )
                             if (
-                                np.isfinite(padj_value)
+                                pct_pass
+                                and np.isfinite(padj_value)
                                 and np.isfinite(log2fc_value)
                                 and padj_value < padj_threshold
                                 and log2fc_value >= log2fc_threshold
@@ -1760,12 +2181,20 @@ class SpatialDataset:
             return markers
 
         requested_genes = list(genes or [])
+        de_embed_limit = int(pseudobulk_embed_top_n_per_comparison)
+        de_min_pct_threshold = (
+            float(pseudobulk_min_pct_expressed) / 100.0
+            if float(pseudobulk_min_pct_expressed) > 1.0
+            else float(pseudobulk_min_pct_expressed)
+        )
         de_gene_candidates = []
         de_gene_candidates.extend(
             _significant_de_genes(
                 pseudobulk_de,
                 float(pseudobulk_padj_cutoff),
                 float(pseudobulk_log2fc_cutoff),
+                de_min_pct_threshold,
+                limit_per_comparison=de_embed_limit,
             )
         )
         de_gene_candidates.extend(
@@ -1773,6 +2202,8 @@ class SpatialDataset:
                 interaction_markers,
                 float(pseudobulk_padj_cutoff),
                 float(pseudobulk_log2fc_cutoff),
+                de_min_pct_threshold,
+                limit_per_comparison=de_embed_limit,
             )
         )
         export_genes = list(
@@ -1787,12 +2218,14 @@ class SpatialDataset:
                 f"  - embedding {len(export_genes)} requested/significant DE gene"
                 f"{'s' if len(export_genes) != 1 else ''} in HTML "
                 f"(adjusted p-value < {float(pseudobulk_padj_cutoff):g}, "
-                f"abs(log2FC) >= {float(pseudobulk_log2fc_cutoff):g})"
+                f"abs(log2FC) >= {float(pseudobulk_log2fc_cutoff):g}; "
+                f"auto top {de_embed_limit} per comparison)"
             )
         marker_genes = _pseudobulk_de_marker_genes(
             pseudobulk_de,
             float(pseudobulk_padj_cutoff),
             float(pseudobulk_log2fc_cutoff),
+            de_min_pct_threshold,
         )
 
         gene_data = self._collect_gene_data(export_genes)
@@ -1962,6 +2395,19 @@ class SpatialDataset:
         return {
             "initial_color": annotation,
             "groupby": self.groupby,
+            "pseudobulk_replicate_annotation": pseudobulk_replicate_name,
+            "pseudobulk_settings": {
+                "min_replicates": max(2, int(pseudobulk_min_replicates)),
+                "min_cell_counts": int(pseudobulk_min_cell_counts),
+                "min_gene_counts": int(pseudobulk_min_gene_counts),
+                "n_cpus": max(1, int(pseudobulk_n_cpus)),
+                "diagnostics": "pairwise",
+                "p_adjust_method": str(pseudobulk_p_adjust_method or "fdr_bh"),
+                "min_pct_expressed": float(pseudobulk_min_pct_expressed),
+                "padj_cutoff": float(pseudobulk_padj_cutoff),
+                "log2fc_cutoff": float(pseudobulk_log2fc_cutoff),
+                "embed_top_n_per_comparison": int(pseudobulk_embed_top_n_per_comparison),
+            },
             "colors_meta": colors_meta,
             "genes_meta": genes_meta,
             "gene_encodings": gene_encodings,
@@ -2092,7 +2538,7 @@ def load_spatial_data(
     """
     print(f"Loading {path}...")
     adata = _read_h5ad_with_fallback(path)
-    print(f"  Loaded {adata.n_obs:,} cells, {adata.n_vars:,} genes")
+    print(f"  Loaded {adata.n_obs:,} cells x {adata.n_vars:,} genes")
 
     if spatial_columns is not None:
         spatial_key = _set_spatial_from_obs_columns(adata, spatial_columns, spatial_key)

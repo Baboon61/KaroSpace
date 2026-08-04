@@ -17,7 +17,7 @@ import time
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Mapping, Optional, List, Tuple, Union
+from typing import Any, Dict, Mapping, Optional, List, Sequence, Tuple, Union
 import numpy as np
 import pandas as pd
 try:
@@ -1138,27 +1138,119 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             --hover-bg: {hover_bg};
             --graph-color: {graph_color};
             --selection-outline-color: rgba(22, 22, 22, 0.42);
+            --surface-soft: #f8fafc;
+            --surface-raised: #ffffff;
+            --panel-card-bg: #fffafd;
+            --panel-card-text: #1a1a1a;
+            --chip-text: #1a1a1a;
             --accent: #870052;
-            --accent-strong: #4F0433;
+            --accent-strong: #4f0433;
+            --accent-text: #5b063a;
+            --accent-border: #870052;
+            --accent-fill: #870052;
+            --accent-on-fill: #ffffff;
+            --accent-hover-bg: #f7e5f0;
             --accent-warm: #FF876F;
             --accent-soft: #FEEEEB;
             --accent-cool: #EDF4F4;
+            --panel-tint-bg: #fff3fa;
+            --info-bg: #eaf2ff;
+            --info-text: #1e3a8a;
+            --info-border: #93c5fd;
+            --warning-bg: #fff8d8;
+            --warning-text: #5f4700;
+            --warning-border: #d6a500;
+            --success-text: #1f7a6f;
+            --danger-text: #c1121f;
+            --danger-bg: #fff0f0;
+            --danger-border: #f3a6a6;
+            --compare-fill: #4cc9f0;
+            --compare-on-fill: #002b35;
+            --compare-text: #056784;
+            --compare-bg: #e8f8fd;
+            --compare-border: #67d9ff;
+            --split-a-text: #1d4ed8;
+            --split-a-bg: #e8f0ff;
+            --split-a-border: #9ab9ff;
+            --split-b-text: #be185d;
+            --split-b-bg: #fde8f2;
+            --split-b-border: #f4a3c8;
+            --bar-bg: #870052;
+            --bar-border: #5b063a;
+            --bar-text: #ffffff;
+            --bar-muted-text: rgba(255, 255, 255, 0.82);
+            --bar-control-bg: rgba(255, 255, 255, 0.16);
+            --bar-control-border: rgba(255, 255, 255, 0.38);
+            --bar-control-hover-bg: rgba(255, 255, 255, 0.24);
+            --bar-control-active-bg: #ffffff;
+            --bar-control-active-text: #5b063a;
+            --loading-text: #f5dbe7;
+            --shadow-color: rgba(0, 0, 0, 0.18);
         }}
         :root.dark {{
-            --background: #1a1a1a;
-            --text-color: #e0e0e0;
-            --header-bg: #2a2a2a;
-            --panel-bg: #2a2a2a;
-            --border-color: #404040;
-            --input-bg: #333333;
-            --muted-color: #888888;
-            --hover-bg: #3a3a3a;
-            --graph-color: rgba(255, 255, 255, 0.12);
+            color-scheme: dark;
+            --background: #101318;
+            --text-color: #f3f6fb;
+            --header-bg: #171b22;
+            --panel-bg: #1d232c;
+            --border-color: #3d4654;
+            --input-bg: #252c37;
+            --muted-color: #b8c2d2;
+            --hover-bg: #303846;
+            --graph-color: rgba(255, 255, 255, 0.14);
             --selection-outline-color: rgba(255, 255, 255, 0.5);
-            --icon-hover-bg: rgba(135, 0, 82, 0.28);
-            --icon-blue-hover-bg: rgba(76, 201, 240, 0.22);
+            --surface-soft: #202733;
+            --surface-raised: #252c37;
+            --panel-card-bg: #242b36;
+            --panel-card-text: #f3f6fb;
+            --chip-text: #f3f6fb;
+            --accent: #f472b6;
+            --accent-strong: #be2d7d;
+            --accent-text: #ffb4dc;
+            --accent-border: #f472b6;
+            --accent-fill: #a91f70;
+            --accent-on-fill: #ffffff;
+            --accent-hover-bg: #3a2635;
+            --accent-soft: #3a2635;
+            --accent-cool: #24313a;
+            --panel-tint-bg: #241d27;
+            --info-bg: #16243a;
+            --info-text: #bfdbfe;
+            --info-border: #3b82f6;
+            --warning-bg: #332a10;
+            --warning-text: #fde68a;
+            --warning-border: #b78b12;
+            --success-text: #5eead4;
+            --danger-text: #ff8a8a;
+            --danger-bg: #3b1f23;
+            --danger-border: #a9444f;
+            --compare-fill: #67d9ff;
+            --compare-on-fill: #001e28;
+            --compare-text: #9be8ff;
+            --compare-bg: #14313d;
+            --compare-border: #38bdf8;
+            --split-a-text: #93c5fd;
+            --split-a-bg: #172b49;
+            --split-a-border: #3b67a8;
+            --split-b-text: #f9a8d4;
+            --split-b-bg: #3a2030;
+            --split-b-border: #9f4772;
+            --bar-bg: #2a1d29;
+            --bar-border: #4b3146;
+            --bar-text: #f9fbff;
+            --bar-muted-text: #d6deea;
+            --bar-control-bg: #332638;
+            --bar-control-border: #5a435f;
+            --bar-control-hover-bg: #423048;
+            --bar-control-active-bg: #f3f6fb;
+            --bar-control-active-text: #2a1d29;
+            --loading-text: #f5dbe7;
+            --shadow-color: rgba(0, 0, 0, 0.42);
+            --icon-hover-bg: #3a2635;
+            --icon-blue-hover-bg: #14313d;
         }}
         :root.light {{
+            color-scheme: light;
             --background: #f5f5f5;
             --text-color: #1a1a1a;
             --header-bg: #ffffff;
@@ -1173,6 +1265,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             --icon-blue-hover-bg: rgba(76, 201, 240, 0.22);
         }}
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        button {{ color: var(--text-color); }}
+        input, select, textarea, button {{
+            color-scheme: inherit;
+        }}
         body {{
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background:
@@ -1224,7 +1320,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid var(--border-color);
             border-radius: 999px;
             background: var(--panel-bg);
-            color: var(--text-color);
+            color: var(--loading-text);
             font-size: 10px;
             letter-spacing: 0.03em;
             text-transform: uppercase;
@@ -1233,7 +1329,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .info-trigger:hover {{
             background: var(--hover-bg);
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
         }}
         .controls {{ display: flex; align-items: center; justify-content: flex-end; gap: 6px 8px; flex-wrap: wrap; margin-left: auto; max-width: 560px; }}
         .sr-only {{
@@ -1255,17 +1351,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border-color));
             border-radius: 4px;
             background: color-mix(in srgb, var(--accent) 14%, var(--input-bg));
-            color: var(--accent-strong);
+            color: var(--accent-text);
             font-size: 11px;
             font-weight: 600;
             line-height: 1.2;
             white-space: nowrap;
         }}
         :root.dark .downsample-warning {{
-            border-color: rgba(255, 120, 198, 0.45);
-            background: rgba(135, 0, 82, 0.24);
-            color: #f7b6da;
+            border-color: var(--accent-border);
+            background: var(--accent-hover-bg);
+            color: var(--accent-text);
         }}
+        .overview-downsample-warning {{
+            margin: 8px 0;
+            padding: 7px 8px;
+            border: 1px solid color-mix(in srgb, var(--warning-text) 48%, var(--border-color));
+            border-radius: 5px;
+            background: var(--warning-bg);
+            color: var(--warning-text);
+            font-size: 10px;
+            line-height: 1.35;
+        }}
+        .overview-downsample-warning strong {{ color: var(--warning-text); }}
         .control-group {{ display: flex; align-items: center; gap: 4px; }}
         #expression-scale-section {{
             flex-direction: column;
@@ -1283,7 +1390,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         select {{ min-width: 120px; }}
         input[type="text"] {{ width: 140px; }}
-        select:focus, input:focus {{ outline: none; border-color: var(--accent-strong); box-shadow: 0 0 0 2px rgba(135, 0, 82, 0.15); }}
+        select:focus, input:focus {{ outline: none; border-color: var(--accent-border); box-shadow: 0 0 0 2px rgba(135, 0, 82, 0.15); }}
         .gene-control-group {{
             position: relative;
             align-items: flex-start;
@@ -1371,11 +1478,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .gene-token-btn:hover {{
             background: var(--hover-bg);
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
             transform: translateY(-1px);
         }}
         .gene-token-btn.active {{
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
             background: rgba(135, 0, 82, 0.10);
         }}
         .gene-token-btn.search-active {{
@@ -1556,7 +1663,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 0;
             cursor: pointer;
             font-size: 14px;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             transition: background 0.3s, border-color 0.3s, color 0.3s;
             display: inline-flex;
             align-items: center;
@@ -1564,8 +1671,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .theme-toggle:hover {{
             background: rgba(247, 182, 218, 0.22);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .export-btn {{
             background: var(--input-bg);
@@ -1594,7 +1701,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid var(--border-color);
             border-radius: 4px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -1604,13 +1711,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .icon-btn:hover,
         .icon-btn.active:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .icon-btn.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .icon-btn svg {{
             width: 16px;
@@ -1695,19 +1802,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-weight: 600;
         }}
         .screenshot-target-btn.active {{
-            background: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
-        }}
-        :root.dark .screenshot-target-btn.active {{
-            background: var(--accent-strong);
-            color: #ffffff;
         }}
 
         .visual-params-bar {{
             padding: 6px 16px;
-            background: var(--accent-strong);
-            border-bottom: 1px solid color-mix(in srgb, var(--accent-strong) 70%, var(--border-color));
+            background: var(--bar-bg);
+            border-bottom: 1px solid var(--bar-border);
             display: flex;
             align-items: center;
             gap: 10px;
@@ -1719,15 +1822,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             flex-shrink: 0;
         }}
         .visual-params-bar .control-group label {{
-            color: rgba(255, 255, 255, 0.82);
+            color: var(--bar-muted-text);
         }}
         .visual-mode-switch {{
             display: inline-flex;
             align-items: center;
             padding: 2px;
-            border: 1px solid rgba(255, 255, 255, 0.35);
+            border: 1px solid var(--bar-control-border);
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.16);
+            background: var(--bar-control-bg);
         }}
         .visual-mode-btn {{
             min-width: 64px;
@@ -1735,14 +1838,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 0;
             border-radius: 6px;
             background: transparent;
-            color: rgba(255, 255, 255, 0.82);
+            color: var(--bar-muted-text);
             cursor: pointer;
             font-size: 12px;
             font-weight: 600;
         }}
         .visual-mode-btn.active {{
-            background: #ffffff;
-            color: var(--accent-strong);
+            background: var(--bar-control-active-bg);
+            color: var(--bar-control-active-text);
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.16);
         }}
         .visual-default-controls {{
@@ -1755,9 +1858,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: inline-flex;
             align-items: center;
             padding: 2px;
-            border: 1px solid rgba(255, 255, 255, 0.28);
+            border: 1px solid var(--bar-control-border);
             border-radius: 8px;
-            background: rgba(255, 255, 255, 0.12);
+            background: var(--bar-control-bg);
         }}
         .visual-source-btn {{
             min-width: 54px;
@@ -1765,14 +1868,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 0;
             border-radius: 6px;
             background: transparent;
-            color: rgba(255, 255, 255, 0.82);
+            color: var(--bar-muted-text);
             cursor: pointer;
             font-size: 11px;
             font-weight: 600;
         }}
         .visual-source-btn.active {{
-            background: #ffffff;
-            color: var(--accent-strong);
+            background: var(--bar-control-active-bg);
+            color: var(--bar-control-active-text);
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
         }}
         .visual-color-controls,
@@ -1803,24 +1906,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: inline-flex;
             align-items: center;
             gap: 6px;
-            background: rgba(255, 255, 255, 0.14);
-            border-color: rgba(255, 255, 255, 0.42);
-            color: #ffffff;
+            background: var(--bar-control-bg);
+            border-color: var(--bar-control-border);
+            color: var(--bar-text);
             font-weight: 600;
         }}
         .visual-nav-actions .umap-toggle:hover,
         .visual-nav-actions .legend-toggle:hover,
         .visual-nav-actions .color-toggle:hover {{
-            background: rgba(255, 255, 255, 0.22);
-            border-color: rgba(255, 255, 255, 0.7);
-            color: #ffffff;
+            background: var(--bar-control-hover-bg);
+            border-color: var(--bar-control-border);
+            color: var(--bar-text);
         }}
         .visual-nav-actions .umap-toggle.active,
         .visual-nav-actions .legend-toggle.active,
         .visual-nav-actions .color-toggle.active {{
-            background: #ffffff;
-            border-color: #ffffff;
-            color: var(--accent-strong);
+            background: var(--bar-control-active-bg);
+            border-color: var(--bar-control-active-bg);
+            color: var(--bar-control-active-text);
             box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.26);
         }}
         /* Filter bar */
@@ -1855,7 +1958,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 0;
             background: transparent;
             border-bottom: 0;
-            color: rgba(255, 255, 255, 0.86);
+            color: var(--bar-muted-text);
         }}
         .visual-params-bar .overview-blend-panel select,
         .visual-params-bar .overview-blend-panel input[type="text"] {{
@@ -1866,12 +1969,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-weight: 600;
             min-width: 16px;
             text-align: center;
-            color: #ffffff;
+            color: var(--bar-text);
         }}
         .overview-blend-icon {{
             width: 17px;
             height: 17px;
-            stroke: #ffffff;
+            stroke: var(--bar-text);
             fill: none;
             stroke-width: 2;
             stroke-linecap: round;
@@ -1896,7 +1999,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .filter-chip:hover {{ filter: brightness(1.08); }}
         .filter-chip.active {{
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
             box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-strong) 45%, transparent);
             font-weight: 600;
         }}
@@ -1969,7 +2072,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 8px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -1982,7 +2085,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 8px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -2015,7 +2118,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 8px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: none;
             align-items: center;
@@ -2045,15 +2148,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .gene-params-toggle:hover,
         .focused-modal-tool-toggle:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .grid-side-toolbar.visual-open .visual-params-toggle,
         .grid-side-toolbar.gene-open .gene-params-toggle,
         .focused-modal-tool-toggle.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .focused-modal-tool-toggle.hidden {{
             display: none !important;
@@ -2178,7 +2281,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid var(--border-color);
             border-radius: 6px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -2186,7 +2289,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .focused-he-icon-btn:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
         }}
         .focused-he-icon-btn:disabled,
         .focused-he-icon-btn:disabled:hover {{
@@ -2197,9 +2300,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--muted-color);
         }}
         .focused-he-icon-btn.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .focused-he-icon-btn svg {{
             width: 15px;
@@ -2246,9 +2349,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 11px;
         }}
         .focused-neighbor-mode-btn.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .focused-neighbor-param-row {{
             display: flex;
@@ -2329,7 +2432,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-weight: 700;
             letter-spacing: 0.05em;
             text-transform: uppercase;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             margin-bottom: 7px;
         }}
         .visual-param-row {{
@@ -2483,7 +2586,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 4px;
             background: transparent;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -2492,7 +2595,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .section-rotate-btn:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
         }}
         .section-rotate-btn svg {{
             width: 14px;
@@ -2536,7 +2639,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .section-hide-btn {{
             background: none;
             border: none;
-            color: #c1121f;
+            color: var(--danger-text);
             cursor: pointer;
             font-size: 11px;
             padding: 0 2px;
@@ -2545,7 +2648,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: opacity 0.15s, color 0.15s;
         }}
         .section-panel:hover .section-hide-btn {{ opacity: 0.75; }}
-        .section-hide-btn:hover {{ opacity: 1 !important; color: #9b0d18; }}
+        .section-hide-btn:hover {{ opacity: 1 !important; color: var(--danger-text); }}
         .section-meta {{ font-size: 8px; color: var(--muted-color); margin-top: 1px; }}
         .section-canvas {{ display: block; width: 100%; aspect-ratio: 1; }}
 
@@ -2594,17 +2697,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.15s;
         }}
         .legend-resizer:hover, .legend-resizer.dragging {{
-            background: var(--accent-strong);
+            background: var(--accent-fill);
         }}
         .legend-resizer.hidden {{ display: none; }}
         body.legend-resizing {{ cursor: col-resize; user-select: none; }}
         .color-panel {{
             width: 452px;
+            flex-shrink: 0;
             padding: 12px;
             background: var(--panel-bg);
             border-left: 1px solid var(--border-color);
             overflow-y: auto;
             font-size: 12px;
+            position: sticky;
+            top: var(--sticky-stack-height);
+            align-self: flex-start;
+            height: calc(100vh - var(--sticky-stack-height));
+            max-height: calc(100vh - var(--sticky-stack-height));
             transition: background 0.3s, border-color 0.3s, width 0.3s, padding 0.3s;
         }}
         .color-panel.collapsed {{
@@ -2643,13 +2752,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-weight: 600;
         }}
         .insights-mode-btn.active {{
-            background: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.14);
-        }}
-        :root.dark .insights-mode-btn.active {{
-            background: var(--accent);
-            color: #ffffff;
         }}
         .color-panel-mode {{
             display: none;
@@ -2697,7 +2802,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             overflow: visible;
             border-color: var(--muted-color);
             background: var(--panel-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             font-size: 11px;
             font-weight: 600;
             line-height: 1.25;
@@ -2712,9 +2817,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .insights-tree-root:hover,
         .insights-tree-trigger:hover {{
-            border-color: var(--accent-strong);
-            background: #F7B6DA;
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            background: var(--accent-hover-bg);
+            color: var(--accent-text);
             transform: none;
         }}
         .insights-tree-root::after,
@@ -2731,9 +2836,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .insights-tree.has-selection > .insights-tree-root,
         .insights-tree-node.is-open > .insights-tree-trigger,
         .insights-tree-leaf.is-selected {{
-            border-color: var(--accent-strong);
-            background: var(--accent-strong);
-            color: #ffffff;
+            border-color: var(--accent-border);
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
         }}
         .insights-tree.is-open > .insights-tree-root::after,
         .insights-tree-node.is-open > .insights-tree-trigger.has-children::after {{
@@ -2787,72 +2892,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             min-height: 29px;
             font-weight: 500;
         }}
-        .insights-subtabs {{
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
-            gap: 4px;
-        }}
-        .insights-subtabs .color-tab {{
-            flex: 0 0 auto;
-        }}
-        .insights-subtab-label {{
-            display: flex;
-            align-items: center;
-            gap: 5px;
-            margin: 2px 0 -2px 0;
-            padding-left: 10px;
-            color: var(--muted-color);
-            font-size: 10px;
-            font-weight: 600;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }}
-        .insights-subtab-label::before {{
-            content: "";
-            width: 8px;
-            height: 2px;
-            border-radius: 999px;
-            background: var(--accent);
-            opacity: 0.7;
-        }}
-        .compare-navigation {{
-            display: block;
-            min-height: 28px;
-            margin-top: 6px;
-        }}
-        .compare-mode-tabs {{
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 4px;
-        }}
-        .compare-navigation-group {{
-            display: none;
-        }}
-        .compare-navigation-group.active {{
-            display: block;
-            animation: insightsDropdownReveal 160ms ease both;
-        }}
-        .insights-menu-branch {{
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            animation: insightsMenuReveal 180ms ease both;
-        }}
-        .insights-menu-children {{
-            margin-left: 10px;
-            padding-left: 8px;
-            animation: insightsDropdownReveal 180ms ease both;
-        }}
-        .insights-menu-children .color-tabs {{
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-        }}
-        .compare-navigation-group .insights-subtabs {{
-            display: grid;
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
-            gap: 8px;
-            align-items: end;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-        }}
         #insights-exploration-panel > .color-tab-content.active {{
             animation: insightsPanelReveal 180ms ease both;
         }}
@@ -2867,24 +2906,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         #insights-exploration-panel .insights-tree .color-tab:hover {{
             transform: none;
-        }}
-        #color-tab-overview-content > .insights-subtab-label,
-        #color-tab-overview-content > .insights-subtabs,
-        #color-tab-genes-content > .insights-subtab-label,
-        #color-tab-genes-content > .insights-subtabs,
-        #color-tab-neighbors-content > .insights-subtab-label,
-        #color-tab-neighbors-content > .insights-subtabs,
-        #color-tab-compare-content > .insights-subtab-label,
-        #color-tab-compare-content > .insights-menu-branch {{
-            display: none;
-        }}
-        @keyframes insightsMenuReveal {{
-            from {{ opacity: 0; transform: translateY(-3px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
-        }}
-        @keyframes insightsDropdownReveal {{
-            from {{ opacity: 0; transform: translateY(-2px); }}
-            to {{ opacity: 1; transform: translateY(0); }}
         }}
         @keyframes insightsPanelReveal {{
             from {{ opacity: 0.35; transform: translateY(2px); }}
@@ -2916,9 +2937,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.2s, border-color 0.2s, color 0.2s;
         }}
         .color-tab.active {{
-            background: var(--accent-strong);
-            color: white;
-            border-color: var(--accent-strong);
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
         }}
         .color-tab-content {{
             display: none;
@@ -2974,8 +2995,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-bottom: 1px dotted var(--border-color);
         }}
         .info-link:hover {{
-            color: var(--accent-strong);
-            border-bottom-color: var(--accent-strong);
+            color: var(--accent-text);
+            border-bottom-color: var(--accent-border);
         }}
         .info-shortcuts-table {{
             width: 100%;
@@ -3120,9 +3141,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .color-item:hover {{ background: var(--hover-bg); }}
         .color-item.active {{
-            background: var(--accent-strong);
-            color: white;
-            border-color: var(--accent-strong);
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
         }}
         .color-aggregation {{
             display: flex;
@@ -3160,7 +3181,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 7px;
             border: 1px solid var(--border-color);
             border-radius: 6px;
-            background: #fffafd;
+            background: var(--panel-card-bg);
+            color: var(--panel-card-text);
         }}
         .marker-group + .marker-group {{ margin-top: 7px; }}
         .marker-group-title {{ font-size: 11px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; border-radius: 3px; padding: 1px 3px; margin: -1px -3px 5px; }}
@@ -3208,9 +3230,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .agg-group {{
             padding: 6px;
             border-radius: 6px;
-            background: #fffafd;
+            background: var(--panel-card-bg);
             border: 1px solid var(--border-color);
-            color: #1a1a1a;
+            color: var(--panel-card-text);
             min-width: 0;
             overflow: hidden;
         }}
@@ -3246,13 +3268,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             max-width: 100%;
             padding: 2px 7px;
             border-radius: 999px;
-            color: var(--text-color);
+            color: var(--chip-text);
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
         }}
         .agg-group .agg-chip {{
-            color: #1a1a1a;
+            color: var(--chip-text);
         }}
         .agg-group-title .agg-chip,
         .agg-group-title.agg-chip {{
@@ -3281,7 +3303,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 0;
             border: 0;
             background: transparent;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             font-size: 10px;
             line-height: 1.3;
@@ -3360,6 +3382,62 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-variant-numeric: tabular-nums;
             overflow-wrap: anywhere;
             word-break: break-word;
+        }}
+        .annotation-de-action-row {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 6px;
+        }}
+        .annotation-de-action-buttons {{
+            display: flex;
+            align-items: flex-start;
+            gap: 6px;
+            margin-left: auto;
+        }}
+        .annotation-de-action-row .selection-summary-welch-controls {{
+            margin-top: 0;
+        }}
+        .annotation-de-card-title {{ align-items: center; }}
+        .annotation-de-card-title-main {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }}
+        .annotation-de-title-stats {{
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-left: auto;
+            padding: 3px 5px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: color-mix(in srgb, var(--border-color) 20%, var(--input-bg));
+            color: var(--muted-color);
+            font-size: 9px;
+            font-weight: 500;
+            font-variant-numeric: tabular-nums;
+            white-space: nowrap;
+        }}
+        .annotation-de-region-chip {{
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 2px 7px;
+            align-items: center;
+            width: 100%;
+            box-sizing: border-box;
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 9px;
+            line-height: 1.2;
+            font-variant-numeric: tabular-nums;
+        }}
+        .annotation-de-region-chip strong {{ font-size: 10px; }}
+        .group-volcano-toolbar {{
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 2px;
         }}
         .insight-subsection {{
             border: 1px solid var(--border-color);
@@ -3459,6 +3537,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--hover-bg);
             text-decoration: underline;
             color: var(--text-color);
+        }}
+        .interaction-gene-link.disabled {{
+            cursor: default;
+            opacity: 0.72;
+        }}
+        .interaction-gene-link.disabled:hover {{
+            background: transparent;
+            text-decoration: none;
+            color: var(--muted-color);
         }}
         .neighbor-view-controls {{
             display: flex;
@@ -3791,7 +3878,53 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: 8px;
         }}
-        .cluster-de-result {{
+        .comparison-pair-select-row {{
+            align-items: start;
+        }}
+        .comparison-pair-select-row > div {{
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }}
+        .comparison-pair-select-row select {{
+            min-width: 0;
+            width: 100%;
+        }}
+        .comparison-info {{
+            margin: 8px 0;
+            padding: 7px 8px;
+            border: 1px solid color-mix(in srgb, var(--info-border) 58%, var(--border-color));
+            border-radius: 5px;
+            background: var(--info-bg);
+            color: var(--info-text);
+            font-size: 10px;
+            line-height: 1.35;
+        }}
+        .comparison-info-settings {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px 8px;
+            margin-top: 5px;
+            font-size: 9px;
+        }}
+        .comparison-info-settings code {{
+            font-size: inherit;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }}
+        .pseudobulk-comparison-warning {{
+            margin: 8px 0;
+            padding: 7px 8px;
+            border: 1px solid color-mix(in srgb, var(--warning-border) 70%, var(--border-color));
+            border-radius: 5px;
+            background: var(--warning-bg);
+            color: var(--warning-text);
+            font-size: 10px;
+            line-height: 1.35;
+        }}
+        .pseudobulk-comparison-warning strong {{ color: var(--warning-text); }}
+        .agg-group-title.comparison-chip-title {{ justify-content: flex-start; }}
+        .cluster-de-result, .cluster-PA-result {{
             border: 1px solid var(--border-color);
             border-radius: 8px;
             background: var(--input-bg);
@@ -3819,14 +3952,50 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             overflow: visible;
         }}
         .cluster-de-plot-title {{
+            display: flex;
+            align-items: center;
+            gap: 5px;
             padding: 6px 8px 2px;
             font-size: 10px;
             font-weight: 600;
             color: var(--text-color);
         }}
+        .cluster-de-plot-export {{ margin-left: auto; }}
         .cluster-de-plot-meta {{
             padding: 0 8px 4px;
             font-size: 9px;
+            color: var(--muted-color);
+        }}
+        .pathway-analysis-controls, .pathway-gsea-control {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 0 8px 6px;
+            min-width: 0;
+        }}
+        .pathway-analysis-controls {{
+            padding-top: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }}
+        .pathway-analysis-controls label, .pathway-gsea-control label {{
+            font-size: 9px;
+            color: var(--muted-color);
+            flex: 0 0 auto;
+        }}
+        .pathway-analysis-controls select, .pathway-gsea-control select {{
+            flex: 1 1 auto;
+            min-width: 0;
+            max-width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 10px;
+            padding: 3px 6px;
+        }}
+        .pathway-analysis-empty {{
+            padding: 8px;
+            font-size: 10px;
             color: var(--muted-color);
         }}
         .cluster-de-table {{
@@ -3857,22 +4026,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 0;
             border: none;
             background: none;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             font: inherit;
             text-align: left;
         }}
         .cluster-de-gene-btn:hover {{ text-decoration: underline; }}
-        .cluster-de-meta {{
-            padding: 8px;
-            font-size: 10px;
+        .cluster-de-gene-btn:disabled {{
             color: var(--muted-color);
-            border-bottom: 1px solid var(--border-color);
+            cursor: default;
+            opacity: 0.75;
         }}
+        .cluster-de-gene-btn:disabled:hover {{ text-decoration: none; }}
         .volcano-container {{
             position: relative;
             padding: 8px 8px 4px;
             border-bottom: 1px solid var(--border-color);
+        }}
+        .group-volcano-container {{
+            padding-bottom: 8px;
+            border-bottom: 0;
         }}
         .volcano-summary {{
             display: flex;
@@ -3921,13 +4094,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-radius: 50%;
             display: inline-block;
             border: 1px solid var(--border-color);
-        }}
-        .cluster-de-actions {{
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-            padding: 6px 8px;
-            border-bottom: 1px solid var(--border-color);
         }}
         .volcano-svg {{ display: block; overflow: visible; }}
         .cluster-de-qc-svg {{ display: block; overflow: visible; }}
@@ -3979,13 +4145,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-left: 1px solid var(--border-color);
         }}
         .samples-view-icon-toggle .legend-btn.active {{
-            background: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
         }}
         .gene-subtab-view-toggle {{
-            display: inline-flex;
+            display: flex;
+            width: max-content;
             gap: 0;
-            margin-bottom: 6px;
+            margin: 0 0 6px auto;
             border: 1px solid var(--border-color);
             border-radius: 999px;
             overflow: hidden;
@@ -3996,9 +4163,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-radius: 0;
             background: transparent;
         }}
+        .gene-subtab-view-toggle .legend-btn.icon-only {{
+            flex: 0 0 34px;
+            width: 34px;
+            height: 30px;
+        }}
+        .gene-subtab-view-toggle .legend-btn + .legend-btn {{
+            border-left: 1px solid var(--border-color);
+        }}
         .gene-subtab-view-toggle .legend-btn.active {{
-            background: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
         }}
         .gene-subtab-action-row {{
             display: flex;
@@ -4007,20 +4182,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 6px;
             margin: -2px 0 7px;
         }}
+        .marker-heatmap-controls {{
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 5px;
+            margin: 0 0 7px;
+            font-size: 10px;
+            color: var(--muted-color);
+        }}
+        .marker-heatmap-controls input {{ width: 64px; }}
         .genes-warning {{
             margin: 6px 0 8px;
             padding: 7px 8px;
-            border: 1px solid color-mix(in srgb, #e2a400 38%, var(--border-color));
+            border: 1px solid color-mix(in srgb, var(--warning-border) 60%, var(--border-color));
             border-radius: 6px;
-            background: #fff8d8;
-            color: #5f4700;
+            background: var(--warning-bg);
+            color: var(--warning-text);
             font-size: 10px;
             line-height: 1.35;
         }}
         .genes-warning + .genes-warning {{ margin-top: -2px; }}
         .genes-warning .agg-chip {{
             margin-left: 4px;
-            color: #1a1a1a;
+            color: var(--chip-text);
         }}
         .marker-gene-search-wrap {{ display: flex; align-items: center; gap: 5px; }}
         .marker-gene-search-wrap .marker-search {{ flex: 1 1 auto; min-width: 0; }}
@@ -4031,7 +4216,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 0;
             border-radius: 999px;
             background: transparent;
-            color: #d94f4f;
+            color: var(--danger-text);
             cursor: pointer;
             font-size: 16px;
             line-height: 1;
@@ -4052,6 +4237,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .samples-chart-container {{ position: relative; overflow: auto; max-height: 440px; }}
         .samples-svg {{ display: block; }}
         .river-plot {{ margin-top: 8px; overflow-x: auto; }}
+        .river-info-note {{
+            margin-top: 8px;
+            padding: 7px 8px;
+            border: 1px solid var(--compare-border);
+            border-radius: 6px;
+            background: var(--compare-bg);
+            color: var(--compare-text);
+            font-size: 10px;
+            line-height: 1.35;
+        }}
         .river-svg {{ display: block; overflow: visible; }}
         .river-link {{ opacity: 0.42; transition: opacity 0.12s; }}
         .river-link:hover {{ opacity: 0.82; }}
@@ -4110,9 +4305,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .legend-btn:hover {{ background: var(--hover-bg); }}
         .legend-btn.active {{
-            background: var(--accent-strong);
-            color: #fff;
-            border-color: var(--accent-strong);
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
         }}
         .legend-btn.icon-only {{
             flex: 0 0 28px;
@@ -4122,17 +4317,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            color: var(--accent-strong);
+            color: var(--accent-text);
         }}
         .legend-btn.icon-only:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .legend-btn.icon-only.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .legend-btn.icon-only svg {{
             width: 15px;
@@ -4210,11 +4405,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .legend-item.hidden .legend-color {{ border-color: var(--muted-color); background: transparent !important; }}
         .legend-item.selected {{
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
             box-shadow: 0 0 0 2px rgba(135, 0, 82, 0.2);
         }}
         .legend-item.selected .legend-color {{
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
         }}
         .legend-color-editor {{
             margin-left: auto;
@@ -4271,14 +4466,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
         }}
         .split-legend-side-a {{
-            color: #1d4ed8;
-            background: color-mix(in srgb, #1d4ed8 12%, transparent);
-            border-color: color-mix(in srgb, #1d4ed8 28%, transparent);
+            color: var(--split-a-text);
+            background: var(--split-a-bg);
+            border-color: var(--split-a-border);
         }}
         .split-legend-side-b {{
-            color: #be185d;
-            background: color-mix(in srgb, #be185d 12%, transparent);
-            border-color: color-mix(in srgb, #be185d 28%, transparent);
+            color: var(--split-b-text);
+            background: var(--split-b-bg);
+            border-color: var(--split-b-border);
         }}
         .split-legend-key {{
             margin-top: 6px;
@@ -4417,7 +4612,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 6px;
             background: transparent;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -4427,13 +4622,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .modal-header-icon:hover,
         .modal-header-icon.active {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .modal-header-icon.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .modal-header-icon svg {{
             width: 16px;
@@ -4503,7 +4698,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .modal-controls-toggle:hover {{
             background: var(--hover-bg);
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
         }}
         .modal-close {{
             background: none;
@@ -4586,13 +4781,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .modal-controls button:hover {{ background: var(--hover-bg); }}
         .modal-controls button.modal-btn-primary {{
-            background: color-mix(in srgb, var(--accent-strong) 92%, var(--panel-bg));
-            border-color: color-mix(in srgb, var(--accent-strong) 94%, white 6%);
-            color: white;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
             box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 24%, transparent);
         }}
         .modal-controls button.modal-btn-primary:hover {{
-            background: color-mix(in srgb, var(--accent-strong) 100%, black 0%);
+            background: var(--accent-strong);
         }}
         .modal-controls button.modal-btn-muted {{
             color: var(--muted-color);
@@ -4910,7 +5105,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             width: 7px;
             height: 7px;
             border-radius: 999px;
-            background: var(--accent-strong);
+            background: var(--accent-fill);
             animation: modalBlendPulse 1s ease-in-out infinite;
             flex: 0 0 auto;
         }}
@@ -4927,7 +5122,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 0;
             border: none;
             background: none;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             font-size: 10px;
             font-weight: 600;
             cursor: pointer;
@@ -5032,6 +5227,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             letter-spacing: 0.04em;
             color: var(--muted-color);
         }}
+        .selection-summary-title-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }}
+        .selection-summary-title-row .selection-summary-title {{
+            flex: 1;
+        }}
         .selection-summary-row {{
             display: flex;
             justify-content: space-between;
@@ -5072,10 +5276,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             line-height: 1.35;
         }}
         .selection-summary-empty {{
-            color: var(--accent-strong);
+            color: var(--accent-text);
             font-weight: 400;
             padding: 8px 10px;
-            border: 1px solid var(--accent-strong);
+            border: 1px solid var(--accent-border);
             border-radius: 8px;
             background: var(--icon-hover-bg);
         }}
@@ -5111,7 +5315,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 0;
             border: none;
             background: none;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             font-size: 10px;
             text-decoration: underline;
             cursor: pointer;
@@ -5203,14 +5407,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             justify-content: flex-end;
             padding-right: 3px;
             box-sizing: border-box;
-            color: #ffffff;
+            color: var(--accent-on-fill);
             font-size: 8px;
             font-variant-numeric: tabular-nums;
             white-space: nowrap;
         }}
-        .selection-summary-expr-bar.sel {{ background: var(--accent-strong); }}
+        .selection-summary-expr-bar.sel {{ background: var(--accent-fill); }}
         .selection-summary-expr-bar.rest {{ background: var(--muted-color); opacity: 0.5; }}
-        .selection-summary-expr-bar.region-b {{ background: #4cc9f0; opacity: 0.85; }}
+        .selection-summary-expr-bar.region-b {{ background: var(--compare-fill); color: var(--compare-on-fill); opacity: 0.92; }}
         .selection-summary-expr-factor {{
             flex-shrink: 0;
             text-align: right;
@@ -5229,6 +5433,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .selection-summary-find-markers {{
             margin-top: 5px;
         }}
+        .selection-summary-title-row .selection-summary-find-markers {{ margin-top: 0; }}
         .selection-summary-find-markers.loading {{ cursor: default; opacity: 0.7; }}
         .selection-summary-find-markers svg {{
             width: 15px;
@@ -5243,37 +5448,36 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             width: 15px;
             height: 15px;
             border: 2px solid color-mix(in srgb, var(--accent-strong) 25%, transparent);
-            border-top-color: var(--accent-strong);
+            border-top-color: var(--accent-border);
             border-radius: 50%;
             animation: selectionMarkersSpin 0.75s linear infinite;
         }}
         @keyframes selectionMarkersSpin {{
             to {{ transform: rotate(360deg); }}
         }}
-        #insights-selection-panel.selection-main-summary .selection-summary-expr {{
+        #insights-selection-panel.selection-main-summary .selection-summary-expr,
+        #insights-selection-panel.selection-main-summary .selection-comparison-composition,
+        #insights-selection-panel.selection-main-summary .selection-comparison-de-results {{
             display: none;
         }}
-        #compare-selection-panel.selection-expression-only > :not(.selection-summary-expr) {{
+        #compare-selection-panel.selection-expression-only > :not(.selection-summary-expr):not(.selection-comparison-composition):not(.selection-comparison-de-results):not(.overview-downsample-warning) {{
             display: none;
         }}
-        .selection-summary-find-more {{
+        .selection-summary-find-more-row {{
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 8px;
+        }}
+        .selection-summary-find-more.icon-btn {{
             display: inline-flex;
             align-items: center;
-            justify-content: space-between;
-            width: 100%;
-            margin-top: 8px;
-            padding: 5px 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 4px;
-            background: var(--input-bg);
-            color: var(--muted-color);
-            cursor: pointer;
+            justify-content: center;
+            gap: 4px;
+            width: auto;
+            height: 28px;
+            margin: 0;
+            padding: 4px 7px;
             font-size: 10px;
-        }}
-        .selection-summary-find-more:hover {{
-            background: var(--hover-bg);
-            color: var(--text-color);
-            border-color: var(--accent-strong);
         }}
         .selection-summary-find-more svg {{
             width: 14px;
@@ -5321,13 +5525,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            color: var(--accent-strong);
+            color: var(--accent-text);
         }}
         .selection-summary-actions .selection-summary-compare-btn.icon-only:hover,
         .selection-summary-compare-btn.icon-only:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .selection-summary-compare-btn.icon-only:disabled,
         .selection-summary-compare-btn.icon-only:disabled:hover {{
@@ -5348,8 +5552,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 2px 4px;
             border-radius: 3px;
         }}
-        .selection-summary-compare-label.region-a {{ background: var(--accent-strong); color: #fff; }}
-        .selection-summary-compare-label.region-b {{ background: #4cc9f0; color: #000; }}
+        .selection-summary-compare-label.region-a {{ background: var(--accent-fill); color: var(--accent-on-fill); }}
+        .selection-summary-compare-label.region-b {{ background: var(--compare-fill); color: var(--compare-on-fill); }}
         .selection-summary-compare-row {{
             display: grid;
             grid-template-columns: minmax(72px, 1fr) 18px minmax(72px, 1fr);
@@ -5385,7 +5589,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 999px;
             font-size: 9px;
-            color: #ffffff;
+            color: var(--accent-on-fill);
             text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
             white-space: nowrap;
             overflow: hidden;
@@ -5397,7 +5601,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-radius: 999px;
             overflow: hidden;
             background: color-mix(in srgb, var(--border-color) 62%, transparent);
-            color: #ffffff;
+            color: var(--accent-on-fill);
             font-size: 10px;
             font-weight: 700;
             font-variant-numeric: tabular-nums;
@@ -5421,16 +5625,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .selection-summary-compare-a .selection-summary-compare-fill {{
             right: 0;
-            background: var(--accent-strong);
+            background: var(--accent-fill);
         }}
         .selection-summary-compare-b {{
             justify-content: flex-start;
             text-align: left;
-            color: #000000;
+            color: var(--compare-on-fill);
         }}
         .selection-summary-compare-b .selection-summary-compare-fill {{
             left: 0;
-            background: #4cc9f0;
+            background: var(--compare-fill);
         }}
         .selection-query {{
             margin-top: 0;
@@ -5453,7 +5657,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-weight: 700;
             letter-spacing: 0.05em;
             text-transform: uppercase;
-            color: var(--accent-strong);
+            color: var(--accent-text);
         }}
         .selection-query-close {{
             width: 24px;
@@ -5462,7 +5666,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 6px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -5471,8 +5675,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .selection-query-close:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .selection-query-close svg {{
             width: 14px;
@@ -5534,8 +5738,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .selection-query-example:hover {{
             background: var(--hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .selection-query-example code {{
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -5572,7 +5776,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 0;
             border-radius: 999px;
             background: color-mix(in srgb, #c1121f 10%, transparent);
-            color: #c1121f;
+            color: var(--danger-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -5609,7 +5813,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid var(--border-color);
             border-radius: 6px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -5617,7 +5821,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .selection-query-icon-btn:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
         }}
         .selection-query-icon-btn:disabled,
         .selection-query-icon-btn:disabled:hover {{
@@ -5649,17 +5853,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            color: var(--accent-strong);
+            color: var(--accent-text);
         }}
         .selection-query-actions .selection-summary-compare-btn.icon-only:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .selection-query-actions .selection-summary-compare-btn.icon-only.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .selection-summary-compare-btn.icon-only svg {{
             width: 15px;
@@ -5676,9 +5880,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             line-height: 1.35;
         }}
         .selection-query-status.muted {{ color: var(--muted-color); }}
-        .selection-query-status.working {{ color: var(--accent-strong); }}
-        .selection-query-status.success {{ color: #2a9d8f; }}
-        .selection-query-status.error {{ color: #c1121f; }}
+        .selection-query-status.working {{ color: var(--accent-text); }}
+        .selection-query-status.success {{ color: var(--success-text); }}
+        .selection-query-status.error {{ color: var(--danger-text); }}
         .annot-comp-row {{ margin-bottom: 8px; }}
         .annot-comp-header {{ display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; margin-bottom: 3px; }}
         .annot-comp-dot {{ width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
@@ -5687,6 +5891,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .annot-comp-segment {{ height: 100%; }}
         .annot-comp-legend {{ display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; font-size: 10px; }}
         .annot-comp-legend-item {{ display: flex; align-items: center; gap: 3px; color: var(--text-color); }}
+        .annot-comp-legend-toggle {{
+            display: inline-flex;
+            margin-top: 4px;
+            padding: 0;
+            border: 0;
+            background: none;
+            color: var(--accent-text);
+            font-size: 10px;
+            text-decoration: underline;
+            cursor: pointer;
+        }}
+        .annot-comp-legend-toggle:hover {{ color: var(--accent); }}
         .annot-expr-row {{ display: flex; align-items: center; gap: 6px; margin: 2px 0; }}
         .annot-expr-bars {{ flex: 1; display: flex; flex-direction: column; gap: 1px; }}
         .annot-expr-bar {{ height: 4px; border-radius: 2px; min-width: 1px; }}
@@ -5719,10 +5935,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .modal-annotation-empty {{
             font-size: 10px;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             line-height: 1.35;
             padding: 8px 10px;
-            border: 1px solid var(--accent-strong);
+            border: 1px solid var(--accent-border);
             border-radius: 8px;
             background: var(--icon-hover-bg);
         }}
@@ -5792,7 +6008,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 5px;
         }}
         .modal-annotation-group-wrap.drag-inside {{
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
             background: color-mix(in srgb, var(--accent-strong) 8%, transparent);
         }}
         .modal-annotation-group-wrap.drop-active > .modal-annotation-group-placeholder {{
@@ -5809,10 +6025,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: color-mix(in srgb, var(--input-bg) 70%, transparent);
         }}
         .modal-annotation-row.annotation-selected {{
-            border-color: #4F0433;
+            border-color: var(--accent-border);
         }}
         .modal-annotation-row.annotation-compared {{
-            border-color: #4cc9f0;
+            border-color: var(--compare-border);
         }}
         .modal-annotation-row-main {{
             display: grid;
@@ -5876,6 +6092,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             gap: 4px;
             min-width: 0;
         }}
+        .modal-annotation-color {{
+            flex: 0 0 28px;
+            width: 28px;
+            height: 28px;
+            padding: 2px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            background: var(--input-bg);
+            cursor: pointer;
+        }}
         .modal-annotation-row-actions button {{
             flex: 0 0 28px;
             width: 28px;
@@ -5884,7 +6110,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid transparent;
             border-radius: 4px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             font-size: 10px;
             cursor: pointer;
             display: inline-flex;
@@ -5898,13 +6124,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .modal-annotation-row-actions button:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .modal-annotation-row-actions button.active {{
-            background: var(--accent-strong);
-            border-color: var(--accent-strong);
-            color: #ffffff;
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
         }}
         .modal-annotation-row-actions button:disabled {{
             opacity: 0.45;
@@ -5912,12 +6138,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             pointer-events: none;
         }}
         .modal-annotation-row-actions button.annotation-compare {{
-            color: #4cc9f0;
+            color: var(--compare-text);
         }}
         .modal-annotation-row-actions button.annotation-compare:hover {{
             background: var(--icon-blue-hover-bg);
-            border-color: #4cc9f0;
-            color: #4cc9f0;
+            border-color: var(--compare-border);
+            color: var(--compare-text);
         }}
         .modal-annotation-row-actions button.annotation-group-toggle {{
             color: var(--muted-color);
@@ -6006,7 +6232,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 1px solid var(--border-color);
             border-radius: 999px;
             background: var(--input-bg);
-            color: var(--accent-strong);
+            color: var(--accent-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -6018,7 +6244,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .calc-info-btn:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
+            border-color: var(--accent-border);
         }}
         .calc-info-popover {{
             position: fixed;
@@ -6054,10 +6280,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 10px;
             overflow-wrap: anywhere;
         }}
-        :root.dark button {{
-            color: #ffffff;
-        }}
-
         /* UMAP panel styles */
         .umap-panel {{
             width: 320px;
@@ -6147,29 +6369,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-color: transparent;
         }}
         .umap-btn.icon-only {{
-            color: var(--accent-strong);
+            color: var(--accent-text);
         }}
         .umap-btn.icon-only:hover {{
             background: var(--icon-hover-bg);
-            border-color: var(--accent-strong);
-            color: var(--accent-strong);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .visual-spatial-tools .umap-compare-btn {{
-            color: #4cc9f0;
+            color: var(--compare-text);
         }}
         .visual-spatial-tools .umap-compare-btn:hover {{
             background: var(--icon-blue-hover-bg);
-            border-color: #4cc9f0;
-            color: #4cc9f0;
+            border-color: var(--compare-border);
+            color: var(--compare-text);
         }}
         .visual-spatial-tools .umap-compare-btn.active {{
-            background: #4cc9f0;
-            border-color: #4cc9f0;
-            color: #ffffff;
+            background: var(--compare-fill);
+            border-color: var(--compare-fill);
+            color: var(--compare-on-fill);
         }}
         .visual-spatial-tools .umap-compare-btn:disabled,
         .visual-spatial-tools .umap-compare-btn:disabled:hover {{
-            color: #4cc9f0;
+            color: var(--compare-text);
         }}
         .umap-btn.icon-only:disabled {{
             opacity: 0.45;
@@ -6187,9 +6409,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-color: transparent;
         }}
         .umap-btn.active {{
-            background: var(--accent-strong);
-            color: white;
-            border-color: var(--accent-strong);
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
         }}
         .umap-btn:disabled {{
             opacity: 0.45;
@@ -6278,11 +6500,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             align-items: center;
             gap: 7px;
             font-size: 11px;
-            color: var(--accent-strong);
+            color: var(--accent-text);
             padding: 4px 5px 4px 10px;
-            border: 1px solid rgba(255, 255, 255, 0.45);
+            border: 1px solid var(--accent-border);
             border-radius: 999px;
-            background: #ffffff;
+            background: var(--surface-raised);
             white-space: nowrap;
             font-weight: 600;
         }}
@@ -6296,7 +6518,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border: 0;
             border-radius: 999px;
             background: transparent;
-            color: #c1121f;
+            color: var(--danger-text);
             cursor: pointer;
             display: inline-flex;
             align-items: center;
@@ -6304,7 +6526,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .umap-selection-clear:hover {{
             background: transparent;
-            color: #9b0d18;
+            color: var(--danger-text);
         }}
         .umap-selection-clear svg {{
             width: 12px;
@@ -6335,9 +6557,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .umap-toggle:hover, .legend-toggle:hover, .graph-toggle:hover {{ background: var(--hover-bg); }}
         .umap-toggle.active, .legend-toggle.active, .graph-toggle.active {{
-            background: var(--accent-strong);
-            color: white;
-            border-color: var(--accent-strong);
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
         }}
         .graph-toggle:disabled {{
             opacity: 0.5;
@@ -6354,9 +6576,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .color-toggle:hover {{ background: var(--hover-bg); }}
         .color-toggle.active {{
-            background: var(--accent-strong);
-            color: white;
-            border-color: var(--accent-strong);
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
         }}
 
         /* Selection highlight */
@@ -6405,7 +6627,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 radial-gradient(140px 140px at 50% 28%, rgba(135, 0, 82, 0.35), rgba(0, 0, 0, 0)),
                 radial-gradient(520px 360px at 50% 60%, rgba(255, 135, 111, 0.18), rgba(0, 0, 0, 0)),
                 linear-gradient(180deg, #0b0508 0%, #14070f 60%, #1a0a14 100%);
-            color: #f5dbe7;
+            color: var(--loading-text);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -6533,6 +6755,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <tr><td class="info-shortcuts-key"><kbd>/</kbd></td><td>Focus the gene search input and open gene discovery.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>←</kbd> <kbd>→</kbd></td><td>Move to the previous or next section while the modal is open.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>T</kbd></td><td>Toggle theme.</td></tr>
+                            <tr><td class="info-shortcuts-key"><kbd>I</kbd></td><td>Toggle the Insights panel.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>U</kbd></td><td>Toggle the UMAP panel.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>L</kbd></td><td>Toggle the legend panel.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>Space</kbd> + drag</td><td>Pan inside the modal while Select is active.</td></tr>
@@ -6901,6 +7124,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <tr><td class="info-shortcuts-key"><kbd>/</kbd></td><td>Focus the gene search input and open gene discovery.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>←</kbd> <kbd>→</kbd></td><td>Move to the previous or next section while the modal is open.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>T</kbd></td><td>Toggle theme.</td></tr>
+                    <tr><td class="info-shortcuts-key"><kbd>I</kbd></td><td>Toggle the Insights panel.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>U</kbd></td><td>Toggle the UMAP panel.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>L</kbd></td><td>Toggle the legend panel.</td></tr>
                     <tr><td class="info-shortcuts-key"><kbd>Space</kbd> + drag</td><td>Pan inside the modal while Select is active.</td></tr>
@@ -6922,13 +7146,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
                 <div class="modal-header-actions">
                     <div class="modal-header-tool-group" aria-label="Modal view controls">
+                        <button class="modal-header-icon" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M8 11h6"></path></svg>
+                        </button>
                         <button class="modal-header-icon" id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M11 8v6"></path><path d="M8 11h6"></path></svg>
                         </button>
                         <span class="zoom-info" id="zoom-info">100%</span>
-                        <button class="modal-header-icon" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M8 11h6"></path></svg>
-                        </button>
                         <span class="zoom-info" id="modal-rotation-info">Rot 0 deg</span>
                         <button class="modal-header-icon" id="modal-rotate-left" type="button" title="Rotate section −45°" aria-label="Rotate section −45°">
                             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
@@ -7310,25 +7534,68 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         geneListEl.replaceChildren(fragment);
         refreshLoadedGeneFilterDropdowns();
     }}
-    function renderLoadedGeneSelectOptions(selected = '', placeholder = 'All loaded genes') {{
-        const features = getGeneInputFeatureList();
+    function getEmbeddedGeneSet() {{
+        const embedded = Array.isArray(DATA.embedded_genes) && DATA.embedded_genes.length
+            ? DATA.embedded_genes
+            : Object.keys(DATA.genes_meta || {{}});
+        return new Set(embedded.map(gene => String(gene)));
+    }}
+    function isEmbeddedViewerGene(gene) {{
+        const raw = String(gene || '').trim();
+        if (!raw) return false;
+        const canonical = resolveCanonicalGeneName(raw);
+        const embedded = getEmbeddedGeneSet();
+        return embedded.has(raw) || (!!canonical && embedded.has(canonical));
+    }}
+    function getCategoryVsRestGenes(colorCol = explorationColorCol || currentColor || '') {{
+        const byCategory = (DATA.pseudobulk_de || {{}})[colorCol] || {{}};
+        const summaryGenes = byCategory?._summary?.category_gene_means?.genes;
+        if (Array.isArray(summaryGenes) && summaryGenes.length) {{
+            return uniqueSortedFeatures(summaryGenes);
+        }}
+        const genes = [];
+        Object.values(byCategory).forEach((bucket) => {{
+            const result = bucket && typeof bucket === 'object' ? bucket.__rest__ : null;
+            if (!result || !Array.isArray(result.genes)) return;
+            result.genes.forEach((gene) => genes.push(gene));
+        }});
+        return uniqueSortedFeatures(genes);
+    }}
+    function renderInsightsGeneSearchOptions(selected = '', placeholder = 'All genes') {{
         const selectedValue = String(selected || '');
-        const current = features.includes(selectedValue) ? selectedValue : '';
+        const embedded = getGeneInputFeatureList();
+        const embeddedSet = new Set(embedded);
+        const categoryVsRest = getCategoryVsRestGenes()
+            .filter(gene => !embeddedSet.has(gene));
+        const allFeatures = new Set([...embedded, ...categoryVsRest]);
+        const current = allFeatures.has(selectedValue) ? selectedValue : '';
         const emptySelected = current ? '' : ' selected';
         const options = [`<option value=""${{emptySelected}}>${{escapeHtml(placeholder)}}</option>`];
-        features.forEach((gene) => {{
-            const isSelected = gene === current ? ' selected' : '';
-            options.push(`<option value="${{escapeHtml(gene)}}"${{isSelected}}>${{escapeHtml(gene)}}</option>`);
-        }});
+        if (embedded.length) {{
+            options.push('<optgroup label="Embedded genes">');
+            embedded.forEach((gene) => {{
+                const isSelected = gene === current ? ' selected' : '';
+                options.push(`<option value="${{escapeHtml(gene)}}"${{isSelected}}>${{escapeHtml(gene)}}</option>`);
+            }});
+            options.push('</optgroup>');
+        }}
+        if (categoryVsRest.length) {{
+            options.push('<optgroup label="Balanced-rest genes (not embedded)">');
+            categoryVsRest.forEach((gene) => {{
+                const isSelected = gene === current ? ' selected' : '';
+                options.push(`<option value="${{escapeHtml(gene)}}"${{isSelected}}>${{escapeHtml(gene)}}</option>`);
+            }});
+            options.push('</optgroup>');
+        }}
         return options.join('');
     }}
     function refreshLoadedGeneFilterDropdowns() {{
         [
-            ['marker-gene-search', 'All loaded genes'],
+            ['marker-gene-search', 'All genes'],
         ].forEach(([id, placeholder]) => {{
             const select = document.getElementById(id);
             if (!select) return;
-            select.innerHTML = renderLoadedGeneSelectOptions(select.value, placeholder);
+            select.innerHTML = renderInsightsGeneSearchOptions(select.value, placeholder);
         }});
     }}
     function getInsightsSelectedGene() {{
@@ -7767,6 +8034,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             body: 'Genes are selected by a two-sided Welch test. The top positive and negative Welch T scores are displayed after the minimum-expression threshold. The value at the bar end is the mean expression followed by the percentage of cells expressing the gene. The factor is mean A divided by mean B.',
             formula: 'Welch T = (mean A - mean B) / sqrt(variance A / n A + variance B / n B); the highest positive and lowest negative T scores are used; factor = mean A / mean B'
         }},
+        region_expression: {{
+            title: 'Region expression',
+            body: 'Genes are selected by a two-sided Welch test between Region A and Region B. The top positive and negative Welch T scores are retained after the minimum-expression threshold. Bar-end values show mean expression and the percentage of cells expressing the gene; the factor is mean A divided by mean B.',
+            formula: 'Welch T = (mean A - mean B) / sqrt(variance A / n A + variance B / n B); factor = mean A / mean B; log2FC = log2(mean A / mean B)'
+        }},
         selection_compare: {{
             title: 'Region comparison',
             body: 'Region A and B category percentages are computed independently from each region cell count.',
@@ -7789,12 +8061,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }},
         de_genes: {{
             title: 'Pseudobulk DE genes',
-            body: 'Differential expression uses pseudobulk counts by replicate for a category versus the rest of the cells. The table values report log2 fold-change, p-values, adjusted p-values, DESeq2 score and rank, base_mean, and percent expressed. Percent expressed is the percentage of cells with expression above zero in the source or reference group.',
-            formula: 'mean(group) = average over replicates of aggregate counts / cells; log2FC = log2(mean(source)) - log2(mean(reference)); padj = multiple-testing adjusted p-value with the selected method'
+            body: 'Differential expression uses one shared DESeq2 pseudobulk model by replicate and annotation. Category-versus-category contrasts compare two annotations. Balanced-rest contrasts compare one annotation with the equally weighted mean of every other retained annotation. The table values report log2 fold-change, p-values, adjusted p-values, DESeq2 score and rank, base_mean, and percent expressed. Percent expressed is the percentage of cells with expression above zero in the source or reference group.',
+            formula: 'model = ~ replicate + annotation; pairwise contrast = annotation A - annotation B; balanced-rest contrast = annotation A - mean(other annotation coefficients); padj = multiple-testing adjusted p-value with the selected method'
         }},
         de_heatmap: {{
             title: 'DE heatmap',
-            body: 'Tiles use aggregation of gene counts per category/replicate and calculate the mean of each category across replicates, then z-score against the full DE heatmap table before applying the visible gene filter. Genes are selected if found DE versus the rest. A star marks genes found DE versus the rest.',
+            body: 'Tiles use aggregation of gene counts per category/replicate and calculate the mean of each category across replicates, then z-score against the full DE heatmap table before applying the visible gene filter. Genes are selected if found DE versus the balanced rest. A star marks genes found DE versus the balanced rest.',
             formula: 'category mean = mean over replicates of (category gene counts / category cells); z = (category mean - full table mean) / full table SD'
         }},
         spatial_moran: {{
@@ -7813,9 +8085,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             formula: 'category mean = mean over samples of (sample category counts / sample category cells); background = mean over samples of (sample total counts / sample total cells); delta = category mean - background'
         }},
         group_de: {{
-            title: 'Group differential expression',
-            body: 'Quick group DE compares currently loaded gene values between two selected cell groups using per-cell means, variance, percent expressed, and a Welch-style score.',
-            formula: 'score = (meanA - meanB) / sqrt(varA/nA + varB/nB + 1e-12); log2FC = log2(meanA + tiny) - log2(meanB + tiny)'
+            title: 'Annotation expression',
+            body: 'Genes are selected by a two-sided Welch test between Annotation A and Annotation B. The top positive and negative Welch T scores are retained after the minimum-expression threshold. Bar-end values show mean expression and the percentage of cells expressing the gene; the factor is mean A divided by mean B.',
+            formula: 'Welch T = (mean A - mean B) / sqrt(variance A / n A + variance B / n B); factor = mean A / mean B; log2FC = log2(mean A / mean B)'
         }},
         neighbor_stats: {{
             title: 'Neighbor statistics',
@@ -7907,6 +8179,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let groupDeRestrictValue = null;
     let groupDeScope = 'all';
     let groupDeTopN = 12;
+    let groupDeMinPct = 0;
+    let groupDeQuickRunning = false;
+    let groupDeQuickRunToken = 0;
+    let groupDeQuickResult = null;
+    let groupDeQuickResultKey = '';
+    let groupDeQuickGroups = null;
     let groupDeFullRunToken = 0;
     let groupDeFullRun = null;
     const groupDeFullCache = new Map();
@@ -7923,16 +8201,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         distribution: 'list',
         means: 'list',
     }};
+    let markerHeatmapTopN = 3;
     let insightsCompareTab = 'groups';
-    let insightsCompareMode = 'quick';
     let insightsNeighborsTab = 'enrichment';
     let insightsTreeOpen = false;
     let insightsTreeOpenBranch = null;
     let insightsTreeOpenCompareBranch = null;
+    let insightsTreeOpenGenesBranch = null;
     let insightsTreeSelectedLeaf = null;
     let insightsMode = 'exploration';
     let riverLeftColumn = null;
     let riverRightColumn = null;
+    let riverPlotSwapped = false;
     let geneDistributionGroupBy = '';
     let geneDistributionSortKey = 'mean';
     let geneDistributionSortDir = 'desc';
@@ -8113,6 +8393,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let selectionWelchRunning = false;
     let selectionWelchButtonHidden = false;
     const selectionWelchCache = new Map();
+    let selectionComparisonLegendExpanded = false;
     const MAX_SELECTION_QUERY_MATCHES = 150000;
     let selectionQueryExpanded = false;
     let selectionQueryText = '';
@@ -8126,7 +8407,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let annotationDeSourceId = null;
     let annotationDeReferenceId = null;
     const ANNOTATION_DE_TOP_N = 12;
-    let annotationDeTopN = ANNOTATION_DE_TOP_N;
+    let annotationDeTopN = 3;
+    let annotationDeMinPct = 0;
+    let annotationDeQuickRunning = false;
+    let annotationDeQuickRunToken = 0;
+    let annotationCompositionLegendExpanded = false;
+    let annotationDeQuickResult = null;
+    let annotationDeQuickResultKey = '';
+    let annotationDeComparisonSummaryHtml = '';
+    let annotationDeComparisonSummaryKey = '';
     let annotationDeFullRunToken = 0;
     let annotationDeFullRun = null;
     const annotationDeFullCache = new Map();
@@ -8658,6 +8947,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (key === '?') {{
                 event.preventDefault();
                 toggleShortcutsOverlay();
+                return;
+            }}
+
+            if (key === 'i' || key === 'I') {{
+                event.preventDefault();
+                toggleInsightsPanel();
                 return;
             }}
 
@@ -11663,7 +11958,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const module = getGeneModuleByToken(token);
         const label = module ? getGeneDisplayLabel(token) : (token || rawToken);
         if (!label) return '';
-        const canActivate = !!token;
+        const canActivate = !!token && options.disableActivation !== true;
         const classes = ['gene-token-btn'];
         if (options.isActive) classes.push('active');
         if (options.isSearchActive) classes.push('search-active');
@@ -11672,7 +11967,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const showMeta = options.showMeta !== false;
         const metaLabel = options.metaLabel !== undefined
             ? options.metaLabel
-            : (!canActivate ? 'name only' : (module ? `${{module.genes.length}} genes` : (DATA.genes_meta?.[token] ? 'loaded' : 'sidecar')));
+            : (!canActivate ? 'not embedded' : (module ? `${{module.genes.length}} genes` : (DATA.genes_meta?.[token] ? 'loaded' : 'sidecar')));
         const metaHtml = showMeta && metaLabel
             ? `<span class="gene-token-meta">${{escapeHtml(metaLabel)}}</span>`
             : '';
@@ -12180,6 +12475,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return (includeNone ? '<option value="">None</option>' : '')
             + renderGroup('Section metadata', options.metadata)
             + renderGroup('Cell annotations', options.annotations);
+    }}
+
+    function renderSectionMetadataOptions(selectedValue = '', includeNone = false, noneLabel = 'None') {{
+        const metadata = getExplorationColorOptions().metadata;
+        const noneOption = includeNone
+            ? `<option value="">${{escapeHtml(noneLabel)}}</option>`
+            : '';
+        return noneOption + metadata.map((entry) =>
+            `<option value="${{escapeHtml(entry.value)}}"${{entry.value === selectedValue ? ' selected' : ''}}>${{escapeHtml(entry.label)}}</option>`
+        ).join('');
+    }}
+
+    function getOverviewDownsampleWarningHtml() {{
+        const downsample = DATA.downsample || {{}};
+        if (!downsample.applied) return '';
+        const original = Number(downsample.original_total_cells);
+        const exported = Number(downsample.exported_total_cells);
+        if (!(original > 0) || !(exported >= 0)) return '';
+        return `<div class="overview-downsample-warning"><strong>Downsampled warning.</strong> Showing ${{exported.toLocaleString()}} of ${{original.toLocaleString()}} cells.</div>`;
     }}
 
     function setSelectOptions(selectEl, values, selectedValue) {{
@@ -12830,7 +13144,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return fallbackCols.length ? fallbackCols[0] : null;
     }}
 
-    function computeSelectionSummary(cells = selectedCells) {{
+    function computeSelectionSummary(cells = selectedCells, preferredColorColumn = null) {{
         const summary = {{
             total: cells.size,
             sections: [],
@@ -12842,7 +13156,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (cells.size === 0) return summary;
 
         const sectionCounts = new Map();
-        const typeColumn = getSelectionSummaryColorColumn();
+        const preferredMeta = preferredColorColumn ? DATA.colors_meta?.[preferredColorColumn] : null;
+        const typeColumn = preferredMeta && !preferredMeta.is_continuous && Array.isArray(preferredMeta.categories)
+            ? preferredColorColumn
+            : getSelectionSummaryColorColumn();
         summary.typeColumn = typeColumn;
         const typeCounts = new Map();
         const typeMeta = typeColumn ? DATA.colors_meta?.[typeColumn] : null;
@@ -12956,39 +13273,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function computeSelectionWelchExpression(groupA, groupB = null) {{
-        const genes = Object.keys(DATA.genes_meta || {{}});
-        if (!genes.length || !groupA?.size) return [];
-        const allCells = groupB === null;
-        const result = [];
-        for (const gene of genes) {{
-            let sumA = 0, sumSqA = 0, nA = 0;
-            let sumB = 0, sumSqB = 0, nB = 0;
-            let expressedA = 0, expressedB = 0;
-            for (const section of (DATA.sections || [])) {{
-                const values = getSectionGeneValues(section, gene);
-                if (!values) continue;
-                for (let i = 0; i < values.length; i++) {{
-                    const value = Number(values[i] ?? 0);
-                    if (!Number.isFinite(value)) continue;
-                    const key = `${{section.id}}:${{i}}`;
-                    if (groupA.has(key)) {{ sumA += value; sumSqA += value * value; nA += 1; if (value > 0) expressedA += 1; }}
-                    if (allCells ? true : groupB.has(key)) {{ sumB += value; sumSqB += value * value; nB += 1; if (value > 0) expressedB += 1; }}
-                }}
-            }}
-            if (nA < 2 || nB < 2) continue;
-            const meanA = sumA / nA;
-            const meanB = sumB / nB;
-            const varianceA = Math.max(0, (sumSqA - nA * meanA * meanA) / (nA - 1));
-            const varianceB = Math.max(0, (sumSqB - nB * meanB * meanB) / (nB - 1));
-            const standardErrorSquared = varianceA / nA + varianceB / nB;
-            const t = standardErrorSquared > 0 ? (meanA - meanB) / Math.sqrt(standardErrorSquared) : 0;
-            const denominator = Math.pow(varianceA / nA, 2) / (nA - 1) + Math.pow(varianceB / nB, 2) / (nB - 1);
-            const df = denominator > 0 ? Math.pow(standardErrorSquared, 2) / denominator : nA + nB - 2;
-            result.push({{ gene, meanA, meanB, t, p: welchTwoSidedP(t, df), df, nA, nB,
-                pctA: 100 * expressedA / nA, pctB: 100 * expressedB / nB }});
-        }}
-        result.sort((a, b) => a.p - b.p || Math.abs(b.t) - Math.abs(a.t));
-        return result;
+        if (!groupA?.size) return [];
+        const cellSetA = buildSelectionCellSetGroup(groupA, {{ key: 'selection-a', label: 'Selection A' }});
+        const cellSetB = groupB === null
+            ? buildSelectionCellSetGroup(null, {{ key: 'all-cells', label: 'All cells' }}, true)
+            : buildSelectionCellSetGroup(groupB, {{ key: 'selection-b', label: 'Selection B' }});
+        const result = computePooledWelchCellSetDE(cellSetA, cellSetB);
+        if (!result.available) return [];
+        return result.results.map((entry) => ({{
+            ...entry,
+            pctA: 100 * entry.pctA,
+            pctB: 100 * entry.pctB,
+        }}));
     }}
 
     // Compatibility helper for the annotation comparison view, which still plots means.
@@ -13010,13 +13306,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return result;
     }}
 
-    function getWelchTopResults(results) {{
-        const topN = Math.max(1, Math.min(20, Number(selectionWelchTopN) || 3));
-        const minPct = Math.max(0, Math.min(100, Number(selectionWelchMinPct) || 0));
-        const eligible = results.filter((entry) => entry.pctA >= minPct || entry.pctB >= minPct);
-        const positive = [...eligible].filter((entry) => entry.t >= 0).sort((a, b) => b.t - a.t || a.p - b.p).slice(0, topN);
-        const negative = [...eligible].filter((entry) => entry.t < 0).sort((a, b) => a.t - b.t || a.p - b.p).slice(0, topN);
+    function selectWelchTopResults(results, topN, minPct = 0, pctScale = 100) {{
+        const n = Math.max(1, Math.min(20, Number(topN) || 3));
+        const threshold = pctScale === 1
+            ? Math.max(0, Math.min(100, Number(minPct) || 0)) / 100
+            : Math.max(0, Math.min(100, Number(minPct) || 0));
+        const scoreOf = (entry) => Number.isFinite(Number(entry.t)) ? Number(entry.t) : Number(entry.score || 0);
+        const pOf = (entry) => Number.isFinite(Number(entry.p)) ? Number(entry.p) : 1;
+        const eligible = (Array.isArray(results) ? results : []).filter((entry) =>
+            Number(entry.pctA || 0) >= threshold || Number(entry.pctB || 0) >= threshold
+        );
+        const positive = [...eligible].filter((entry) => scoreOf(entry) >= 0)
+            .sort((a, b) => scoreOf(b) - scoreOf(a) || pOf(a) - pOf(b)).slice(0, n);
+        const negative = [...eligible].filter((entry) => scoreOf(entry) < 0)
+            .sort((a, b) => scoreOf(a) - scoreOf(b) || pOf(a) - pOf(b)).slice(0, n);
         return [...positive, ...negative];
+    }}
+
+    function getWelchTopResults(results) {{
+        return selectWelchTopResults(results, selectionWelchTopN, selectionWelchMinPct);
     }}
 
     function renderWelchTopNControl() {{
@@ -13309,14 +13617,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return collectAnnotationCellSet(annotation);
     }}
 
-    function getAnnotationSingleSectionRegion(annotation) {{
-        const grouped = getSelectionLocalIndicesBySection(getAnnotationCellSet(annotation));
-        if (grouped.size !== 1) return null;
-        const [sectionId, indices] = Array.from(grouped.entries())[0];
-        return {{
-            sectionId,
-            indices: Array.from(new Set(indices.filter((idx) => Number.isInteger(idx) && idx >= 0))),
-        }};
+    function buildAnnotationCellSetGroup(annotation) {{
+        if (!annotation) return buildCellSetGroup({{}}, []);
+        const bySection = getSelectionLocalIndicesBySection(getAnnotationCellSet(annotation));
+        const entries = [];
+        bySection.forEach((indices, sectionId) => {{
+            const entry = normalizeCellGroupSectionEntry(sectionId, Array.from(new Set(indices)));
+            if (entry) entries.push(entry);
+        }});
+        return buildCellSetGroup({{
+            key: `annotation:${{Number(annotation.id)}}`,
+            label: getAnnotationDisplayLabel(annotation),
+            description: getAnnotationDisplayLabel(annotation),
+        }}, entries);
     }}
 
     function refreshSelectionFromSelectedAnnotation() {{
@@ -13337,9 +13650,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function getAnnotationDisplayLabel(annotation) {{
         if (!annotation) return 'Unknown annotation';
-        const label = String(annotation.label || `Annotation ${{annotation.id}}`).trim();
+        const label = String(annotation.label || `region ${{annotation.id}}`).trim();
         const sectionLabel = annotation.sectionId ? ` · ${{annotation.sectionId}}` : '';
-        return `${{label || `Annotation ${{annotation.id}}`}}${{sectionLabel}}`;
+        return `${{label || `region ${{annotation.id}}`}}${{sectionLabel}}`;
     }}
 
     function normalizeCellGroupSectionEntry(sectionId, indices = null) {{
@@ -13383,6 +13696,40 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             sections,
             nCells,
         }};
+    }}
+
+    function cellSetGroupToSelectionSet(group) {{
+        const cells = new Set();
+        (group?.sections || []).forEach((entry) => {{
+            const sectionId = String(entry.sectionId || '');
+            if (!sectionId) return;
+            if (entry.indices === null) {{
+                for (let idx = 0; idx < Number(entry.count || 0); idx++) cells.add(`${{sectionId}}:${{idx}}`);
+                return;
+            }}
+            (entry.indices || []).forEach((idx) => {{
+                if (Number.isInteger(idx) && idx >= 0) cells.add(`${{sectionId}}:${{idx}}`);
+            }});
+        }});
+        return cells;
+    }}
+
+    function buildSelectionCellSetGroup(cellSet, meta = {{}}, includeAllCells = false) {{
+        const entries = [];
+        if (includeAllCells) {{
+            (DATA.sections || []).forEach((section) => {{
+                const entry = normalizeCellGroupSectionEntry(section.id, null);
+                if (entry) entries.push(entry);
+            }});
+        }} else {{
+            const bySection = getSelectionLocalIndicesBySection(cellSet);
+            bySection.forEach((indices, sectionId) => {{
+                const uniqueIndices = Array.from(new Set(indices));
+                const entry = normalizeCellGroupSectionEntry(sectionId, uniqueIndices);
+                if (entry) entries.push(entry);
+            }});
+        }}
+        return buildCellSetGroup(meta, entries);
     }}
 
     function log2RatioWithTinyPseudocount(numerator, denominator) {{
@@ -13551,7 +13898,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function computeQuickStatsForGroupGene(group, gene) {{
         if (!group || !gene || !Array.isArray(group.sections) || !group.sections.length) return null;
-        const stats = {{ sum: 0, sumSq: 0, nnz: 0 }};
+        const stats = {{ sum: 0, sumSq: 0, nnz: 0, n: 0 }};
         for (let s = 0; s < group.sections.length; s++) {{
             const sectionGroup = group.sections[s];
             const section = sectionById.get(sectionGroup.sectionId);
@@ -13559,13 +13906,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const values = getSectionGeneValues(section, gene);
             // A section lacking this gene contributes zeros (consistent with the
             // full-sidecar path) rather than dropping the gene from the result.
-            if (!values) continue;
             if (sectionGroup.indices === null) {{
-                for (let i = 0; i < values.length; i++) {{
-                    const value = Number(values[i] ?? 0);
+                for (let i = 0; i < sectionGroup.count; i++) {{
+                    const value = Number(values?.[i] ?? 0);
                     if (!Number.isFinite(value)) continue;
                     stats.sum += value;
                     stats.sumSq += value * value;
+                    stats.n += 1;
                     if (value > 0) stats.nnz += 1;
                 }}
                 continue;
@@ -13573,14 +13920,78 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const indices = sectionGroup.indices || [];
             for (let i = 0; i < indices.length; i++) {{
                 const idx = indices[i];
-                const value = Number(values[idx] ?? 0);
+                const value = Number(values?.[idx] ?? 0);
                 if (!Number.isFinite(value)) continue;
                 stats.sum += value;
                 stats.sumSq += value * value;
+                stats.n += 1;
                 if (value > 0) stats.nnz += 1;
             }}
         }}
         return stats;
+    }}
+
+    function buildWelchCellSetDEEntry(gene, statsA, statsB, nA = statsA?.n, nB = statsB?.n) {{
+        const countA = Number(nA || 0);
+        const countB = Number(nB || 0);
+        if (!gene || !statsA || !statsB || countA < 2 || countB < 2) return null;
+        const meanA = Number(statsA.sum || 0) / countA;
+        const meanB = Number(statsB.sum || 0) / countB;
+        const varianceA = Math.max(0, (Number(statsA.sumSq || 0) - countA * meanA * meanA) / (countA - 1));
+        const varianceB = Math.max(0, (Number(statsB.sumSq || 0) - countB * meanB * meanB) / (countB - 1));
+        const standardErrorSquared = varianceA / countA + varianceB / countB;
+        const t = standardErrorSquared > 0 ? (meanA - meanB) / Math.sqrt(standardErrorSquared) : 0;
+        const dfDenominator = Math.pow(varianceA / countA, 2) / (countA - 1)
+            + Math.pow(varianceB / countB, 2) / (countB - 1);
+        const df = dfDenominator > 0 ? Math.pow(standardErrorSquared, 2) / dfDenominator : countA + countB - 2;
+        return {{
+            gene,
+            meanA,
+            meanB,
+            pctA: Number(statsA.nnz || 0) / countA,
+            pctB: Number(statsB.nnz || 0) / countB,
+            log2fc: log2RatioWithTinyPseudocount(meanA, meanB),
+            score: t,
+            t,
+            df,
+            p: welchTwoSidedP(t, df),
+            nA: countA,
+            nB: countB,
+        }};
+    }}
+
+    function computePooledWelchCellSetDE(groupA, groupB) {{
+        if (!groupA || !groupB) return {{ available: false, reason: 'missing_groups', results: [] }};
+        if (!(groupA.nCells > 0) || !(groupB.nCells > 0)) {{
+            return {{ available: false, reason: 'empty_group', nA: Number(groupA.nCells || 0), nB: Number(groupB.nCells || 0), results: [] }};
+        }}
+        if (!(groupA.nCells >= 2) || !(groupB.nCells >= 2)) {{
+            return {{ available: false, reason: 'too_few_cells', nA: Number(groupA.nCells || 0), nB: Number(groupB.nCells || 0), results: [] }};
+        }}
+        const loadedGenes = Object.keys(DATA.genes_meta || {{}}).sort((a, b) => a.localeCompare(b));
+        const totalGenes = Array.isArray(DATA.available_genes) ? DATA.available_genes.length : loadedGenes.length;
+        if (!loadedGenes.length) {{
+            return {{ available: false, reason: 'no_loaded_genes', nA: Number(groupA.nCells || 0), nB: Number(groupB.nCells || 0), loadedGeneCount: 0, totalGeneCount: totalGenes, results: [] }};
+        }}
+        const results = [];
+        loadedGenes.forEach((gene) => {{
+            const entry = buildWelchCellSetDEEntry(
+                gene,
+                computeQuickStatsForGroupGene(groupA, gene),
+                computeQuickStatsForGroupGene(groupB, gene)
+            );
+            if (entry) results.push(entry);
+        }});
+        results.sort((a, b) => a.p - b.p || Math.abs(b.t) - Math.abs(a.t) || a.gene.localeCompare(b.gene));
+        return {{
+            available: true,
+            reason: null,
+            nA: Number(groupA.nCells || 0),
+            nB: Number(groupB.nCells || 0),
+            loadedGeneCount: loadedGenes.length,
+            totalGeneCount: totalGenes,
+            results,
+        }};
     }}
 
     function computeCellSetDE(groupA, groupB, options = {{}}) {{
@@ -13640,6 +14051,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         groupDeFullRun = null;
     }}
 
+    function invalidateGroupDEState(clearCache = false) {{
+        groupDeQuickRunToken += 1;
+        groupDeQuickRunning = false;
+        groupDeQuickResult = null;
+        groupDeQuickResultKey = '';
+        groupDeQuickGroups = null;
+        cancelGroupDEFullRun();
+        if (clearCache) groupDeFullCache.clear();
+    }}
+
     function getGroupDECacheKey(groupA, groupB) {{
         if (!groupA || !groupB) return '';
         return `${{groupA.key}}::${{groupB.key}}`;
@@ -13667,7 +14088,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const geneMeta = geneAuxManifest?.genes_meta?.[gene] || DATA.genes_meta?.[gene] || null;
         const statsA = computeGroupStatsFromSidecarGeneEntry(geneEntry, groupA, geneMeta);
         const statsB = computeGroupStatsFromSidecarGeneEntry(geneEntry, groupB, geneMeta);
-        return buildDEEntryFromStats(gene, statsA, statsB, Number(groupA?.nCells || 0), Number(groupB?.nCells || 0));
+        return buildWelchCellSetDEEntry(gene, statsA, statsB, Number(groupA?.nCells || 0), Number(groupB?.nCells || 0));
     }}
 
     async function runFullCellSetDE(groupA, groupB, options = {{}}) {{
@@ -13733,7 +14154,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             await new Promise((resolve) => window.setTimeout(resolve, 0));
         }}
 
-        sortCellSetDEResults(results);
+        results.sort((a, b) => a.p - b.p || Math.abs(b.t) - Math.abs(a.t) || a.gene.localeCompare(b.gene));
         return {{
             available: true,
             nA: Number(groupA?.nCells || 0),
@@ -13771,129 +14192,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function computeRegionAnnotationDE(annotationA, annotationB, options = {{}}) {{
-        const topN = Math.max(1, Number(options.topN) || ANNOTATION_DE_TOP_N);
         if (!annotationA || !annotationB) {{
             return {{ available: false, reason: 'missing_annotations', results: [] }};
         }}
         if (Number(annotationA.id) === Number(annotationB.id)) {{
             return {{ available: false, reason: 'same_annotation', results: [] }};
         }}
-
-        const regionA = getAnnotationSingleSectionRegion(annotationA);
-        const regionB = getAnnotationSingleSectionRegion(annotationB);
-        const sectionA = regionA ? sectionById.get(regionA.sectionId) : null;
-        const sectionB = regionB ? sectionById.get(regionB.sectionId) : null;
-        const indicesA = regionA?.indices || [];
-        const indicesB = regionB?.indices || [];
-        if (!regionA || !regionB) {{
-            return {{
-                available: false,
-                reason: 'multi_section_region',
-                nA: indicesA.length,
-                nB: indicesB.length,
-                results: [],
-            }};
-        }}
-        if (!sectionA || !sectionB || !indicesA.length || !indicesB.length) {{
-            return {{
-                available: false,
-                reason: 'empty_region',
-                nA: indicesA.length,
-                nB: indicesB.length,
-                results: [],
-            }};
-        }}
-
-        const loadedGenes = Object.keys(DATA.genes_meta || {{}}).sort((a, b) => a.localeCompare(b));
-        const totalGenes = Array.isArray(DATA.available_genes) ? DATA.available_genes.length : loadedGenes.length;
-        if (!loadedGenes.length) {{
-            return {{
-                available: false,
-                reason: 'no_loaded_genes',
-                nA: indicesA.length,
-                nB: indicesB.length,
-                loadedGeneCount: 0,
-                totalGeneCount: totalGenes,
-                results: [],
-            }};
-        }}
-
-        const sameSection = regionA.sectionId === regionB.sectionId;
-        const results = [];
-        loadedGenes.forEach((gene) => {{
-            const valsA = getSectionGeneValues(sectionA, gene);
-            const valsB = sameSection ? valsA : getSectionGeneValues(sectionB, gene);
-            if (!valsA || !valsB) return;
-
-            let sumA = 0;
-            let sumSqA = 0;
-            let nnzA = 0;
-            for (let i = 0; i < indicesA.length; i++) {{
-                const idx = indicesA[i];
-                const value = Number(valsA[idx] ?? 0);
-                if (!Number.isFinite(value)) continue;
-                sumA += value;
-                sumSqA += value * value;
-                if (value > 0) nnzA += 1;
-            }}
-
-            let sumB = 0;
-            let sumSqB = 0;
-            let nnzB = 0;
-            for (let i = 0; i < indicesB.length; i++) {{
-                const idx = indicesB[i];
-                const value = Number(valsB[idx] ?? 0);
-                if (!Number.isFinite(value)) continue;
-                sumB += value;
-                sumSqB += value * value;
-                if (value > 0) nnzB += 1;
-            }}
-
-            const nA = indicesA.length;
-            const nB = indicesB.length;
-            if (!nA || !nB) return;
-
-            const meanA = sumA / nA;
-            const meanB = sumB / nB;
-            const varA = nA > 1 ? Math.max(0, (sumSqA - (sumA * sumA) / nA) / (nA - 1)) : 0;
-            const varB = nB > 1 ? Math.max(0, (sumSqB - (sumB * sumB) / nB) / (nB - 1)) : 0;
-            const pctA = nnzA / nA;
-            const pctB = nnzB / nB;
-            const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
-            const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
-            const log2fc = log2RatioWithTinyPseudocount(meanA, meanB);
-            // Two-sided: keep genes enriched in either region (see selectTwoSidedTopN).
-
-            results.push({{
-                gene,
-                meanA,
-                meanB,
-                pctA,
-                pctB,
-                log2fc,
-                score,
-            }});
-        }});
-
-        results.sort((a, b) => {{
-            const scoreDiff = (b.score - a.score);
-            if (Math.abs(scoreDiff) > 1e-9) return scoreDiff;
-            const fcDiff = (b.log2fc - a.log2fc);
-            if (Math.abs(fcDiff) > 1e-9) return fcDiff;
-            const pctDiff = ((b.pctA - b.pctB) - (a.pctA - a.pctB));
-            if (Math.abs(pctDiff) > 1e-9) return pctDiff > 0 ? 1 : -1;
-            return a.gene.localeCompare(b.gene);
-        }});
-
-        return {{
-            available: true,
-            reason: null,
-            nA: indicesA.length,
-            nB: indicesB.length,
-            loadedGeneCount: loadedGenes.length,
-            totalGeneCount: totalGenes,
-            results: selectTwoSidedTopN(results, topN),
-        }};
+        return computePooledWelchCellSetDE(
+            buildAnnotationCellSetGroup(annotationA),
+            buildAnnotationCellSetGroup(annotationB)
+        );
     }}
 
     function getAnnotationDECacheKey(annotationA, annotationB) {{
@@ -13901,8 +14209,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return `${{Number(annotationA.id)}}::${{Number(annotationB.id)}}`;
     }}
 
-    function invalidateAnnotationDEState(clearCache = true) {{
+    function getAnnotationDEQuickResultKey(annotationA, annotationB) {{
+        return getAnnotationDECacheKey(annotationA, annotationB);
+    }}
+
+    function invertAnnotationDEResult(result) {{
+        if (!result || typeof result !== 'object') return result;
+        return {{
+            ...result,
+            sourceId: result.referenceId,
+            referenceId: result.sourceId,
+            nA: result.nB,
+            nB: result.nA,
+            results: (result.results || []).map((entry) => ({{
+                ...entry,
+                meanA: entry.meanB,
+                meanB: entry.meanA,
+                pctA: entry.pctB,
+                pctB: entry.pctA,
+                log2fc: -Number(entry.log2fc || 0),
+                score: -Number(entry.score || 0),
+                t: -Number(entry.t ?? entry.score ?? 0),
+            }})),
+        }};
+    }}
+
+    function clearAnnotationDEQuickResult() {{
+        annotationDeQuickRunToken += 1;
+        annotationDeQuickRunning = false;
+        annotationDeQuickResult = null;
+        annotationDeQuickResultKey = '';
+        annotationDeComparisonSummaryHtml = '';
+        annotationDeComparisonSummaryKey = '';
+    }}
+
+    function invalidateAnnotationDEState(clearCache = false) {{
+        if (!clearCache) return;
         cancelAnnotationFullDERun();
+        clearAnnotationDEQuickResult();
         if (clearCache) annotationDeFullCache.clear();
     }}
 
@@ -14050,38 +14394,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return result;
     }}
 
-    function computeRegionAnnotationDEFromSidecarGeneEntry(gene, geneEntry, regionA, regionB) {{
-        const sectionEntryA = geneEntry?.sections?.[regionA.sectionId] || null;
-        const sectionEntryB = geneEntry?.sections?.[regionB.sectionId] || null;
+    function computeRegionAnnotationDEFromSidecarGeneEntry(gene, geneEntry, groupA, groupB) {{
         const geneMeta = geneAuxManifest?.genes_meta?.[gene] || DATA.genes_meta?.[gene] || null;
-
-        const statsA = computeRegionStatsFromSectionEntry(sectionEntryA, regionA.indices, regionA.indexSet, geneMeta);
-        const statsB = computeRegionStatsFromSectionEntry(sectionEntryB, regionB.indices, regionB.indexSet, geneMeta);
-        const nA = regionA.indices.length;
-        const nB = regionB.indices.length;
-        if (!nA || !nB) return null;
-
-        const meanA = statsA.sum / nA;
-        const meanB = statsB.sum / nB;
-        const varA = nA > 1 ? Math.max(0, (statsA.sumSq - (statsA.sum * statsA.sum) / nA) / (nA - 1)) : 0;
-        const varB = nB > 1 ? Math.max(0, (statsB.sumSq - (statsB.sum * statsB.sum) / nB) / (nB - 1)) : 0;
-        const pctA = statsA.nnz / nA;
-        const pctB = statsB.nnz / nB;
-        const denominator = Math.sqrt((varA / Math.max(1, nA)) + (varB / Math.max(1, nB)) + 1e-12);
-        const score = denominator > 0 ? (meanA - meanB) / denominator : (meanA - meanB);
-        const log2fc = log2RatioWithTinyPseudocount(meanA, meanB);
-        // Two-sided: keep genes enriched in EITHER group; direction is encoded by
-        // the sign of score / log2fc and resolved later by selectTwoSidedTopN.
-
-        return {{
-            gene,
-            meanA,
-            meanB,
-            pctA,
-            pctB,
-            log2fc,
-            score,
-        }};
+        const statsA = computeGroupStatsFromSidecarGeneEntry(geneEntry, groupA, geneMeta);
+        const statsB = computeGroupStatsFromSidecarGeneEntry(geneEntry, groupB, geneMeta);
+        return buildWelchCellSetDEEntry(gene, statsA, statsB, groupA?.nCells, groupB?.nCells);
     }}
 
     async function runFullRegionAnnotationDE(annotationA, annotationB) {{
@@ -14119,20 +14436,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
         renderAnnotationComparison();
 
-        const regionA = getAnnotationSingleSectionRegion(annotationA);
-        const regionB = getAnnotationSingleSectionRegion(annotationB);
-        if (!regionA || !regionB) {{
+        const groupA = buildAnnotationCellSetGroup(annotationA);
+        const groupB = buildAnnotationCellSetGroup(annotationB);
+        if (groupA.nCells < 2 || groupB.nCells < 2) {{
             annotationDeFullRun = {{
                 token,
                 running: false,
                 key,
-                error: 'Full Region DE currently requires each selected annotation group to resolve to one section.',
+                error: 'Each selected region or group needs at least two cells.',
             }};
             renderAnnotationComparison();
             return;
         }}
-        regionA.indexSet = new Set(regionA.indices);
-        regionB.indexSet = new Set(regionB.indices);
 
         const results = [];
         try {{
@@ -14155,7 +14470,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 manifest.section_order || [],
                                 manifest?.genes_meta?.[gene] || null
                             );
-                            const result = computeRegionAnnotationDEFromSidecarGeneEntry(gene, geneEntry, regionA, regionB);
+                            const result = computeRegionAnnotationDEFromSidecarGeneEntry(gene, geneEntry, groupA, groupB);
                             if (result) results.push(result);
                         }} catch (geneError) {{
                             console.warn(`Annotation DE: skipping gene ${{gene}} due to error:`, geneError);
@@ -14167,7 +14482,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
                     const genesPayload = shardPayload?.genes || {{}};
                     Object.entries(genesPayload).forEach(([gene, geneEntry]) => {{
-                        const result = computeRegionAnnotationDEFromSidecarGeneEntry(gene, geneEntry, regionA, regionB);
+                        const result = computeRegionAnnotationDEFromSidecarGeneEntry(gene, geneEntry, groupA, groupB);
                         if (result) results.push(result);
                     }});
                 }}
@@ -14203,8 +14518,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 available: true,
                 sourceId: Number(annotationA.id),
                 referenceId: Number(annotationB.id),
-                nA: regionA.indices.length,
-                nB: regionB.indices.length,
+                nA: groupA.nCells,
+                nB: groupB.nCells,
                 loadedGeneCount: totalGenes,
                 totalGeneCount: totalGenes,
                 results,
@@ -14242,64 +14557,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return null;
     }}
 
-    function buildAnnotationDEReport(annotationA, annotationB, exportState) {{
-        if (!annotationA || !annotationB || !exportState?.result) return null;
-        const result = exportState.result;
-        const topN = Math.max(1, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N);
-        const exportedGenes = selectTwoSidedTopN(result.results || [], topN).map((entry, index) => ({{
-            rank: index + 1,
-            gene: entry.gene,
-            log2fc_a_vs_b: entry.log2fc,
-            score: entry.score,
-            pct_expr_a: entry.pctA,
-            pct_expr_b: entry.pctB,
-            mean_a: entry.meanA,
-            mean_b: entry.meanB,
-        }}));
-        return {{
-            format: 'karospace-region-de-report-v1',
-            exported_at: new Date().toISOString(),
-            result_mode: exportState.mode,
-            color_column: currentColor || null,
-            top_genes_requested: topN,
-            region_a: {{
-                id: Number(annotationA.id),
-                label: annotationA.label || `Annotation ${{annotationA.id}}`,
-                section_id: annotationA.sectionId || null,
-                n_cells: Number(result.nA || annotationA.localCellIndices?.length || 0),
-                color: annotationA.color || getAnnotationColorById(annotationA.id),
-                created_at: annotationA.createdAt || null,
-            }},
-            region_b: {{
-                id: Number(annotationB.id),
-                label: annotationB.label || `Annotation ${{annotationB.id}}`,
-                section_id: annotationB.sectionId || null,
-                n_cells: Number(result.nB || annotationB.localCellIndices?.length || 0),
-                color: annotationB.color || getAnnotationColorById(annotationB.id),
-                created_at: annotationB.createdAt || null,
-            }},
-            stats: {{
-                loaded_gene_count: Number(result.loadedGeneCount || 0),
-                total_gene_count: Number(result.totalGeneCount || result.loadedGeneCount || 0),
-                total_hits_available: Array.isArray(result.results) ? result.results.length : 0,
-                genes_exported: exportedGenes.length,
-            }},
-            genes: exportedGenes,
-        }};
-    }}
-
-    function exportAnnotationDEReport(annotationA, annotationB, exportState) {{
-        const report = buildAnnotationDEReport(annotationA, annotationB, exportState);
-        if (!report) {{
-            alert('No region DE result is available to export yet.');
-            return;
-        }}
-        const sourceLabel = sanitizeFilenamePart(annotationA.label || `annotation-${{annotationA.id}}`);
-        const referenceLabel = sanitizeFilenamePart(annotationB.label || `annotation-${{annotationB.id}}`);
-        const filename = `karospace-region-de-${{sourceLabel}}-vs-${{referenceLabel}}-${{getScreenshotTimestamp()}}.json`;
-        downloadJsonFile(report, filename);
-    }}
-
     function escapeCsvCell(value) {{
         if (value === null || value === undefined) return '';
         const text = String(value);
@@ -14310,8 +14567,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function buildAnnotationDECsv(annotationA, annotationB, exportState) {{
-        const report = buildAnnotationDEReport(annotationA, annotationB, exportState);
-        if (!report) return '';
+        const result = exportState?.result;
+        if (!annotationA || !annotationB || !result || !Array.isArray(result.results)) return '';
         const rows = [];
         rows.push([
             'rank',
@@ -14322,43 +14579,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             'pct_expr_b',
             'mean_a',
             'mean_b',
-            'result_mode',
-            'color_column',
-            'region_a_id',
             'region_a_label',
-            'region_a_section_id',
             'region_a_n_cells',
-            'region_b_id',
             'region_b_label',
-            'region_b_section_id',
             'region_b_n_cells',
             'loaded_gene_count',
-            'total_gene_count',
-            'exported_at',
         ]);
-        (report.genes || []).forEach((entry) => {{
+        result.results.forEach((entry, index) => {{
             rows.push([
-                entry.rank,
+                index + 1,
                 entry.gene,
-                entry.log2fc_a_vs_b,
+                entry.log2fc,
                 entry.score,
-                entry.pct_expr_a,
-                entry.pct_expr_b,
-                entry.mean_a,
-                entry.mean_b,
-                report.result_mode,
-                report.color_column,
-                report.region_a?.id,
-                report.region_a?.label,
-                report.region_a?.section_id,
-                report.region_a?.n_cells,
-                report.region_b?.id,
-                report.region_b?.label,
-                report.region_b?.section_id,
-                report.region_b?.n_cells,
-                report.stats?.loaded_gene_count,
-                report.stats?.total_gene_count,
-                report.exported_at,
+                entry.pctA,
+                entry.pctB,
+                entry.meanA,
+                entry.meanB,
+                annotationA.label || `region ${{annotationA.id}}`,
+                Number(result.nA || getAnnotationCellCount(annotationA) || 0),
+                annotationB.label || `region ${{annotationB.id}}`,
+                Number(result.nB || getAnnotationCellCount(annotationB) || 0),
+                Number(result.loadedGeneCount || 0),
             ]);
         }});
         return rows
@@ -14375,6 +14616,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sourceLabel = sanitizeFilenamePart(annotationA.label || `annotation-${{annotationA.id}}`);
         const referenceLabel = sanitizeFilenamePart(annotationB.label || `annotation-${{annotationB.id}}`);
         const filename = `karospace-region-de-${{sourceLabel}}-vs-${{referenceLabel}}-${{getScreenshotTimestamp()}}.csv`;
+        downloadTextFile(csvText, filename, 'text/csv;charset=utf-8');
+    }}
+
+    function buildComparisonDECsv(labelA, labelB, result) {{
+        if (!result || !Array.isArray(result.results)) return '';
+        const rows = [[
+            'rank', 'gene', 'log2fc_a_vs_b', 'score',
+            'pct_expr_a', 'pct_expr_b', 'mean_a', 'mean_b',
+            'annotation_a', 'annotation_b', 'n_cells_a', 'n_cells_b', 'loaded_gene_count',
+        ]];
+        result.results.forEach((entry, index) => {{
+            rows.push([
+                index + 1, entry.gene, entry.log2fc, entry.score,
+                entry.pctA, entry.pctB, entry.meanA, entry.meanB,
+                labelA, labelB, Number(result.nA || 0), Number(result.nB || 0), Number(result.loadedGeneCount || 0),
+            ]);
+        }});
+        return rows.map((row) => row.map((value) => escapeCsvCell(value)).join(',')).join('\\n');
+    }}
+
+    function exportComparisonDECsv(labelA, labelB, result, prefix = 'comparison-de') {{
+        const csvText = buildComparisonDECsv(labelA, labelB, result);
+        if (!csvText) {{
+            alert('No comparison result is available to export yet.');
+            return;
+        }}
+        const filename = `karospace-${{prefix}}-${{sanitizeFilenamePart(labelA || 'a')}}-vs-${{sanitizeFilenamePart(labelB || 'b')}}-${{getScreenshotTimestamp()}}.csv`;
         downloadTextFile(csvText, filename, 'text/csv;charset=utf-8');
     }}
 
@@ -14610,67 +14878,162 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         `;
     }}
 
-    function renderSelectionComparisonHtml(summaryA, options = {{}}) {{
-        const summaryB = computeSelectionSummary(selectedCellsB);
+    function buildAllCellsSelectionSummary(typeColumn) {{
+        const categoryCounts = getCategoryCountsForColor(typeColumn);
+        if (!categoryCounts) {{
+            return {{ total: 0, sections: [], typeColumn, types: [], missingTypeValues: 0, _cells: null }};
+        }}
+        return {{
+            total: Number(categoryCounts.total || 0),
+            sections: [],
+            typeColumn,
+            types: (categoryCounts.categories || []).map((category) => [category, Number(categoryCounts.counts?.[category] || 0)])
+                .filter(([, count]) => count > 0)
+                .sort((a, b) => b[1] - a[1]),
+            missingTypeValues: 0,
+            _cells: null,
+        }};
+    }}
+
+    function renderSelectionComparisonLegacyPlot(summaryA, summaryB) {{
         let html = `<div class="selection-summary-compare-header">
             <span class="selection-summary-compare-label region-a">Region A (${{summaryA.total.toLocaleString()}} cells)</span>
             <span class="selection-summary-compare-label region-b">Region B (${{summaryB.total.toLocaleString()}} cells)</span>
         </div>`;
+        if (!summaryA.typeColumn || (!summaryA.types.length && !summaryB.types.length)) return html;
+        const allTypes = new Set([...summaryA.types.map(([type]) => type), ...summaryB.types.map(([type]) => type)]);
+        const mapA = new Map(summaryA.types);
+        const mapB = new Map(summaryB.types);
+        allTypes.forEach((label) => {{
+            const countA = mapA.get(label) || 0;
+            const countB = mapB.get(label) || 0;
+            const pctA = summaryA.total > 0 ? Math.round(100 * countA / summaryA.total) : 0;
+            const pctB = summaryB.total > 0 ? Math.round(100 * countB / summaryB.total) : 0;
+            const isActive = linkedSpotlightEnabled && spotlightPinnedCategory === label;
+            const chipColor = getCategoryColorForValue(summaryA.typeColumn, label);
+            html += `<div class="selection-summary-compare-row${{isActive ? ' is-active' : ''}}" data-spotlight-cat="${{escapeHtml(label)}}" title="Click to spotlight ${{escapeHtml(label)}} in the viewer">
+                <div class="selection-summary-compare-bar selection-summary-compare-a" title="Region A: ${{countA.toLocaleString()}} cells (${{pctA}}%)"><div class="selection-summary-compare-fill" style="width:${{pctA}}%;"></div><span>${{countA.toLocaleString()}} (${{pctA}}%)</span></div>
+                <span class="selection-summary-compare-type" style="background:${{chipColor}};" title="${{escapeHtml(label)}}" aria-label="${{escapeHtml(label)}}"></span>
+                <div class="selection-summary-compare-bar selection-summary-compare-b" title="Region B: ${{countB.toLocaleString()}} cells (${{pctB}}%)"><div class="selection-summary-compare-fill" style="width:${{pctB}}%;"></div><span>${{countB.toLocaleString()}} (${{pctB}}%)</span></div>
+            </div>`;
+        }});
+        html += '<div class="selection-summary-compare-legend">';
+        allTypes.forEach((label) => {{
+            const color = getCategoryColorForValue(summaryA.typeColumn, label);
+            html += `<span class="selection-summary-compare-legend-chip" style="background:${{color}};" title="${{escapeHtml(label)}}">${{escapeHtml(label)}}</span>`;
+        }});
+        return html + '</div>';
+    }}
 
-        // Cell type breakdown side-by-side
-        if (summaryA.typeColumn && (summaryA.types.length || summaryB.types.length)) {{
+    function renderSelectionComparisonHtml(summaryA, options = {{}}) {{
+        if (options.comparisonView) {{
+            summaryA = computeSelectionSummary(selectedCells, explorationColorCol || currentColor);
+        }}
+        const compareAllCells = !!options.compareAllCells;
+        const showComparisonDetails = !options.comparisonView || (selectionWelchRunRequested && !selectionWelchRunning);
+        const summaryB = showComparisonDetails
+            ? (compareAllCells
+                ? buildAllCellsSelectionSummary(summaryA.typeColumn)
+                : computeSelectionSummary(selectedCellsB, summaryA.typeColumn))
+            : {{ total: 0, sections: [], typeColumn: summaryA.typeColumn, types: [], missingTypeValues: 0, _cells: null }};
+        if (!options.comparisonView && !compareAllCells) {{
+            return renderSelectionComparisonLegacyPlot(summaryA, summaryB);
+        }}
+        const labelA = compareAllCells ? 'Selected cells' : 'Region A';
+        const labelB = compareAllCells ? 'All cells' : 'Region B';
+        const colorA = 'var(--accent-strong)';
+        const colorB = compareAllCells ? 'var(--muted-color)' : '#4cc9f0';
+        let html = '';
+
+        // Match the Region composition layout for the two lasso selections.
+        if (showComparisonDetails && summaryA.typeColumn && (summaryA.types.length || summaryB.types.length)) {{
             const allTypes = new Set([
                 ...summaryA.types.map(([t]) => t),
                 ...summaryB.types.map(([t]) => t),
             ]);
             const mapA = new Map(summaryA.types);
             const mapB = new Map(summaryB.types);
-            for (const label of allTypes) {{
-                const cA = mapA.get(label) || 0;
-                const cB = mapB.get(label) || 0;
-                const pA = summaryA.total > 0 ? Math.round(100 * cA / summaryA.total) : 0;
-                const pB = summaryB.total > 0 ? Math.round(100 * cB / summaryB.total) : 0;
-                const isActive = linkedSpotlightEnabled && spotlightPinnedCategory === label;
-                const chipColor = getCategoryColorForValue(summaryA.typeColumn, label);
-                html += `<div class="selection-summary-compare-row${{isActive ? ' is-active' : ''}}" data-spotlight-cat="${{escapeHtml(label)}}" title="Click to spotlight ${{escapeHtml(label)}} in the viewer">
-                    <div class="selection-summary-compare-bar selection-summary-compare-a" title="Region A: ${{cA.toLocaleString()}} cells (${{pA}}%)">
-                        <div class="selection-summary-compare-fill" style="width:${{pA}}%;"></div>
-                        <span>${{cA.toLocaleString()}} (${{pA}}%)</span>
-                    </div>
-                    <span class="selection-summary-compare-type" style="background:${{chipColor}};" title="${{escapeHtml(label)}}" aria-label="${{escapeHtml(label)}}"></span>
-                    <div class="selection-summary-compare-bar selection-summary-compare-b" title="Region B: ${{cB.toLocaleString()}} cells (${{pB}}%)">
-                        <div class="selection-summary-compare-fill" style="width:${{pB}}%;"></div>
-                        <span>${{cB.toLocaleString()}} (${{pB}}%)</span>
-                    </div>
-                </div>`;
-            }}
-            html += '<div class="selection-summary-compare-legend">';
-            for (const label of allTypes) {{
+            const typeList = Array.from(allTypes);
+            const regionRows = [
+                {{ label: labelA, total: summaryA.total, types: mapA, color: colorA }},
+                {{ label: labelB, total: summaryB.total, types: mapB, color: colorB }},
+            ];
+            html += `<div class="selection-comparison-composition"><div class="selection-summary-title">Cell Composition — ${{labelA.toLowerCase()}} vs ${{labelB.toLowerCase()}}</div>`;
+            regionRows.forEach((region) => {{
+                html += `<div class="annot-comp-row"><div class="annot-comp-header"><span class="annot-comp-dot" style="background:${{region.color}}"></span><span>${{region.label}}</span><span class="annot-comp-count">${{region.total.toLocaleString()}} cells</span></div>`;
+                if (region.total > 0) {{
+                    html += '<div class="annot-comp-bar-track">';
+                    typeList.forEach((type) => {{
+                        const count = region.types.get(type) || 0;
+                        const pct = Math.round(100 * count / region.total);
+                        if (pct <= 0) return;
+                        const color = getCategoryColorForValue(summaryA.typeColumn, type);
+                        html += `<div class="annot-comp-segment" title="${{escapeHtml(type)}}: ${{count.toLocaleString()}} (${{pct}}%)" style="width:${{pct}}%;background:${{color}}"></div>`;
+                    }});
+                    html += '</div>';
+                }}
+                html += '</div>';
+            }});
+            const visibleTypes = selectionComparisonLegendExpanded ? typeList : typeList.slice(0, 8);
+            html += '<div class="annot-comp-legend">';
+            visibleTypes.forEach((label) => {{
                 const legendColor = getCategoryColorForValue(summaryA.typeColumn, label);
-                html += `<span class="selection-summary-compare-legend-chip" style="background:${{legendColor}};" title="${{escapeHtml(label)}}">${{escapeHtml(label)}}</span>`;
+                html += `<span class="annot-comp-legend-item"><span class="annot-comp-dot" style="background:${{legendColor}}"></span>${{escapeHtml(label)}}</span>`;
+            }});
+            html += '</div>';
+            if (typeList.length > 8) {{
+                html += `<button class="annot-comp-legend-item annot-comp-legend-toggle" type="button" data-selection-composition-legend-toggle>${{selectionComparisonLegendExpanded ? 'Show less' : `+${{typeList.length - 8}} more categories`}}</button>`;
             }}
             html += '</div>';
         }}
 
         // Welch test for gene expression A vs B.
-        const expr = getCachedSelectionWelchExpression(selectedCells, selectedCellsB);
-        if (selectedCells.size > 0 && selectedCellsB.size > 0) {{
+        const expr = getCachedSelectionWelchExpression(selectedCells, compareAllCells ? null : selectedCellsB);
+        if (selectedCells.size > 0 && (compareAllCells || selectedCellsB.size > 0)) {{
             const top = getWelchTopResults(expr);
             html += '<div class="selection-summary-expr">';
-            html += `<div class="selection-summary-title">Gene expression — Region A vs Region B${{renderCalcInfoButton('selection_expression')}}</div>${{selectionWelchRunRequested && !selectionWelchRunning ? renderWelchTopNControl() : ''}}${{renderFindMarkersButton()}}`;
+            html += `<div class="selection-summary-title-row"><div class="selection-summary-title">Gene expression — ${{labelA.toLowerCase()}} vs ${{labelB.toLowerCase()}}${{renderCalcInfoButton('selection_expression')}}</div>${{renderFindMarkersButton()}}</div>${{selectionWelchRunRequested && !selectionWelchRunning ? renderWelchTopNControl() : ''}}`;
             top.forEach(({{gene, meanA, meanB, pctA, pctB}}) => {{
                 const vmax = Math.max(1e-12, meanA || 0, meanB || 0);
                 const factor = meanB > 0 ? (meanA / meanB).toFixed(1) + 'x' : '—';
                 html += `<div class="selection-summary-expr-row">
                     <span class="selection-summary-expr-gene" data-gene-activate="${{escapeHtml(gene)}}" title="Load ${{escapeHtml(gene)}} into the viewer">${{escapeHtml(gene)}}</span>
                     <div class="selection-summary-expr-bars">
-                        <div class="selection-summary-expr-bar sel" style="width:${{clampPercent(100 * meanA / vmax)}}%;" title="Region A mean: ${{formatCompactNumber(meanA)}}">${{formatCompactNumber(meanA)}} (${{pctA.toFixed(0)}}%)</div>
-                        <div class="selection-summary-expr-bar region-b" style="width:${{clampPercent(100 * meanB / vmax)}}%;" title="Region B mean: ${{formatCompactNumber(meanB)}}">${{formatCompactNumber(meanB)}} (${{pctB.toFixed(0)}}%)</div>
+                        <div class="selection-summary-expr-bar sel" style="width:${{clampPercent(100 * meanA / vmax)}}%;" title="${{labelA}} mean: ${{formatCompactNumber(meanA)}}">${{formatCompactNumber(meanA)}} (${{pctA.toFixed(0)}}%)</div>
+                        <div class="selection-summary-expr-bar ${{compareAllCells ? 'rest' : 'region-b'}}" style="width:${{clampPercent(100 * meanB / vmax)}}%;" title="${{labelB}} mean: ${{formatCompactNumber(meanB)}}">${{formatCompactNumber(meanB)}} (${{pctB.toFixed(0)}}%)</div>
                     </div>
                     <span class="selection-summary-expr-factor" title="Mean A / mean B">${{factor}}</span>
                 </div>`;
             }});
             html += '</div>';
+
+            if (top.length) {{
+                const textColorA = '#ffffff';
+                const textColorB = compareAllCells ? 'var(--text-color)' : '#000000';
+                const volcanoToolbar = '<button class="icon-btn" type="button" data-selection-de-export-volcano title="Download volcano plot as SVG" aria-label="Download volcano plot as SVG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></button>';
+                const cards = top.map((entry) => `
+                    <div class="comparison-card">
+                        <div class="comparison-card-title annotation-de-card-title">
+                            <div class="annotation-de-card-title-main">
+                                ${{renderGeneTokenButton(entry.gene, {{
+                                    isActive: entry.gene === currentGene,
+                                    showMeta: false,
+                                    title: 'Load selection comparison gene into the viewer',
+                                }})}}
+                                ${{renderGeneGoogleSearchButton(entry.gene, {{
+                                    title: 'Search Google for this gene',
+                                }})}}
+                            </div>
+                            <div class="annotation-de-title-stats" style="border-color:${{Number(entry.score || 0) >= 0 ? colorA : colorB}}"><span>log2FC ${{formatScaleNumber(entry.log2fc)}}</span><span>Score ${{formatScaleNumber(entry.score)}}</span></div>
+                        </div>
+                        <div class="comparison-metric-grid">
+                            <span class="annotation-de-region-chip" style="background:${{getComparisonMetricChipBackground(colorA, Number(entry.score || 0) >= 0 ? colorA : colorB)}};color:${{textColorA}}"><span>% expr ${{compareAllCells ? 'selected' : 'A'}}</span><strong>${{Number(entry.pctA || 0).toFixed(1)}}%</strong><span>Mean ${{compareAllCells ? 'selected' : 'A'}}</span><strong>${{formatScaleNumber(entry.meanA)}}</strong></span>
+                            <span class="annotation-de-region-chip" style="background:${{getComparisonMetricChipBackground(colorB, Number(entry.score || 0) >= 0 ? colorA : colorB)}};color:${{textColorB}}"><span>% expr ${{compareAllCells ? 'all' : 'B'}}</span><strong>${{Number(entry.pctB || 0).toFixed(1)}}%</strong><span>Mean ${{compareAllCells ? 'all' : 'B'}}</span><strong>${{formatScaleNumber(entry.meanB)}}</strong></span>
+                        </div>
+                    </div>
+                `).join('');
+                html += `<div class="selection-comparison-de-results">${{buildGroupVolcanoPlot(top, volcanoToolbar, {{ positive: colorA, negative: colorB }})}}<div class="comparison-stack">${{cards}}</div><div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px;"><button class="icon-btn" type="button" data-selection-de-export-csv title="Download all comparison genes as CSV" aria-label="Download all comparison genes as CSV"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></button></div></div>`;
+            }}
         }}
 
         return html + (options.hideSelectionQuery ? '' : renderSelectionQueryPanelHtml());
@@ -14733,6 +15096,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (selectedCellsB.size > 0) {{
             return header + renderSelectionComparisonHtml(summary, options);
         }}
+        if (options.comparisonView) {{
+            return header + renderSelectionComparisonHtml(summary, {{ ...options, compareAllCells: true }});
+        }}
 
         let html = renderSelectionSectionSummaryHtml(summary);
 
@@ -14763,7 +15129,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (selectedCells.size > 0) {{
             const top = getWelchTopResults(exprData);
             html += '<div class="selection-summary-expr">';
-            html += `<div class="selection-summary-title">Gene expression — selected cells vs all cells${{renderCalcInfoButton('selection_expression')}}</div>${{selectionWelchRunRequested && !selectionWelchRunning ? renderWelchTopNControl() : ''}}${{renderFindMarkersButton()}}`;
+            html += `<div class="selection-summary-title-row"><div class="selection-summary-title">Gene expression — selected cells vs all cells${{renderCalcInfoButton('selection_expression')}}</div>${{renderFindMarkersButton()}}</div>${{selectionWelchRunRequested && !selectionWelchRunning ? renderWelchTopNControl() : ''}}`;
             top.forEach(({{gene, meanA, meanB, pctA, pctB}}) => {{
                 const vmax = Math.max(1e-12, meanA || 0, meanB || 0);
                 const factor = meanB > 0 ? (meanA / meanB).toFixed(1) + 'x' : '—';
@@ -14806,6 +15172,35 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function bindSelectionSummaryInteractions(container) {{
         if (!container) return;
         bindGeneActivateButtons(container, updateSelectionInfo);
+        bindGeneGoogleSearchButtons(container);
+        bindVolcanoGroupInteraction(container, updateSelectionInfo);
+        container.querySelectorAll('[data-selection-de-export-volcano]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const compareAllCells = selectedCellsB.size === 0;
+                downloadComparisonVolcanoSvg(
+                    container,
+                    compareAllCells ? 'selected-cells' : 'region-a',
+                    compareAllCells ? 'all-cells' : 'region-b',
+                    'selection-de',
+                );
+            }});
+        }});
+        container.querySelectorAll('[data-selection-de-export-csv]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const compareAllCells = selectedCellsB.size === 0;
+                const result = {{
+                    results: getCachedSelectionWelchExpression(selectedCells, compareAllCells ? null : selectedCellsB),
+                    nA: selectedCells.size,
+                    nB: compareAllCells ? buildAllCellsSelectionSummary().total : selectedCellsB.size,
+                }};
+                exportComparisonDECsv(
+                    compareAllCells ? 'selected cells' : 'region A',
+                    compareAllCells ? 'all cells' : 'region B',
+                    result,
+                    'selection-de',
+                );
+            }});
+        }});
         container.querySelectorAll('[data-welch-top-n]').forEach((input) => {{
             input.addEventListener('change', () => {{
                 const value = Math.max(1, Math.min(20, Math.round(Number(input.value) || 3)));
@@ -14843,8 +15238,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             button.addEventListener('click', (event) => {{
                 event.preventDefault();
                 event.stopPropagation();
+                insightsTreeSelectedLeaf = {{ topLevel: 'compare', subtab: 'selection' }};
+                insightsTreeOpen = false;
+                insightsTreeOpenBranch = null;
+                insightsTreeOpenCompareBranch = null;
+                insightsTreeOpenGenesBranch = null;
                 setInsightsMode('exploration');
-                activateInsightsTopLevelTab('compare', 'selection');
+                activateInsightsSubtab('compare', 'selection');
+            }});
+        }});
+        container.querySelectorAll('[data-selection-composition-legend-toggle]').forEach((button) => {{
+            button.addEventListener('click', (event) => {{
+                event.preventDefault();
+                event.stopPropagation();
+                selectionComparisonLegendExpanded = !selectionComparisonLegendExpanded;
+                updateSelectionInfo();
             }});
         }});
         container.querySelectorAll('[data-spotlight-cat]').forEach(row => {{
@@ -15531,6 +15939,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 continue;
             }}
             const numberMatch = text.slice(i).match(/^(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?/);
+            if (numberMatch && !/[A-Za-z0-9_.:-]/.test(text[i + numberMatch[0].length] || '')) {{
+                tokens.push({{
+                    type: 'number',
+                    value: Number(numberMatch[0]),
+                    raw: numberMatch[0],
+                    pos: i,
+                }});
+                i += numberMatch[0].length;
+                continue;
+            }}
+            const bareTokenMatch = text.slice(i).match(/^[A-Za-z0-9_.:-]+/);
+            if (bareTokenMatch && /^[0-9]/.test(bareTokenMatch[0])) {{
+                const bareToken = bareTokenMatch[0];
+                const bareTokenHasLetter = /[A-Za-z_]/.test(bareToken);
+                const bareTokenIsNumber = /^(?:\\d+(?:\\.\\d*)?|\\.\\d+)(?:[eE][+-]?\\d+)?$/.test(bareToken);
+                if (bareTokenHasLetter && !bareTokenIsNumber) {{
+                    tokens.push({{ type: 'identifier', value: bareToken, pos: i }});
+                    i += bareToken.length;
+                    continue;
+                }}
+            }}
             if (numberMatch) {{
                 tokens.push({{
                     type: 'number',
@@ -16317,23 +16746,51 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             .sort((a, b) => a.localeCompare(b));
     }}
 
-    function renderGenesDetailsWarnings() {{
-        const container = document.getElementById('genes-details-warnings');
-        if (!container) return;
-        const colorCol = explorationColorCol || currentColor;
-        const deForColor = colorCol ? (DATA.pseudobulk_de || {{}})[colorCol] : null;
+    function hasPseudobulkDEForAnnotation(colorCol) {{
+        const groups = colorCol ? (DATA.pseudobulk_de || {{}})[colorCol] : null;
+        return !!(groups && typeof groups === 'object'
+            && Object.keys(groups).some((key) => !String(key).startsWith('_')));
+    }}
+
+    function renderPseudobulkDEWarning(colorCol) {{
+        if (!colorCol || hasPseudobulkDEForAnnotation(colorCol)) return '';
         const availableColors = getAvailablePseudobulkDEColors();
         const chips = availableColors.length
             ? availableColors.map((color) => renderAggChip(formatMetadataLabel(color), 'color-mix(in srgb, #e2a400 18%, #ffffff)')).join('')
             : renderAggChip('none', 'color-mix(in srgb, #e2a400 18%, #ffffff)');
+        return `<div class="genes-warning">No pseudobulk DE genes available for this annotation.<br>Available DE for: ${{chips}}</div>`;
+    }}
+
+    function renderGenesDetailsWarnings() {{
+        const container = document.getElementById('genes-details-warnings');
+        if (!container) return;
+        const colorCol = explorationColorCol || currentColor;
         const warnings = [];
-        if (colorCol && (!deForColor || !Object.keys(deForColor).some((key) => !String(key).startsWith('_')))) {{
-            warnings.push(`<div class="genes-warning">No pseudobulk DE genes available for this color. Available DE for: ${{chips}}</div>`);
+        if (insightsGenesTab !== 'distribution') {{
+            const pseudobulkWarning = renderPseudobulkDEWarning(colorCol);
+            if (pseudobulkWarning) warnings.push(pseudobulkWarning);
+        }}
+        if (insightsGenesTab === 'distribution') {{
+            const downsampleWarning = getOverviewDownsampleWarningHtml();
+            if (downsampleWarning) warnings.push(downsampleWarning);
         }}
         if (insightsGenesTab === 'de-genes') {{
             warnings.push('<div class="genes-warning"><strong>Double dipping warning.</strong> When unsupervised cell clustering is used as category, the genes contributing to that clustering are inherently likely to be identified as differentially expressed. False positive differentially expressed genes are expected, which could lead to false determination of cell types.</div>');
         }}
         container.innerHTML = warnings.join('');
+    }}
+
+    function syncGenesDetailsContentVisibility() {{
+        const colorCol = explorationColorCol || currentColor;
+        const hasDE = hasPseudobulkDEForAnnotation(colorCol);
+        const details = document.getElementById('genes-details-content');
+        const search = document.getElementById('genes-search-section');
+        if (details) {{
+            details.style.display = insightsGenesTab === 'de-genes' && !hasDE ? 'none' : '';
+        }}
+        if (search) {{
+            search.style.display = insightsGenesTab === 'means' && !hasDE ? 'none' : '';
+        }}
     }}
 
     function getMarkerGenesForColorCategory(colorCol, category) {{
@@ -16495,6 +16952,36 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const rawSource = resolveRawCategoryValue(colorCol, sourceCategory);
         const rawReference = resolveRawCategoryValue(colorCol, referenceCategory);
         return (((DATA.pseudobulk_de || {{}})[colorCol] || {{}})[rawSource] || {{}})[rawReference] || null;
+    }}
+
+    function getPseudobulkPairDiagnostics(colorCol, sourceCategory, referenceCategory, result = null) {{
+        if (result?.pseudobulk_samples) return result.pseudobulk_samples;
+        const rawSource = resolveRawCategoryValue(colorCol, sourceCategory);
+        const rawReference = resolveRawCategoryValue(colorCol, referenceCategory);
+        const diagnostics = (DATA.pseudobulk_de || {{}})[colorCol]?._summary?.pair_diagnostics || {{}};
+        return diagnostics?.[rawSource]?.[rawReference]
+            || diagnostics?.[rawReference]?.[rawSource]
+            || null;
+    }}
+
+    function getPseudobulkContrastCellCount(result, colorCol, category) {{
+        const directCount = Number(result?.n_source);
+        if (Number.isFinite(directCount) && directCount >= 0) return directCount;
+        const samples = result?.pseudobulk_samples;
+        const groups = Array.isArray(samples?.groups) ? samples.groups : [];
+        const nCells = Array.isArray(samples?.n_cells) ? samples.n_cells : [];
+        if (!groups.length || groups.length !== nCells.length) return null;
+        const rawCategory = String(resolveRawCategoryValue(colorCol, category));
+        let count = 0;
+        let matched = false;
+        groups.forEach((group, index) => {{
+            if (String(group) !== rawCategory) return;
+            const n = Number(nCells[index]);
+            if (!Number.isFinite(n) || n < 0) return;
+            count += n;
+            matched = true;
+        }});
+        return matched ? count : null;
     }}
 
     function getGeneSuggestionGroups() {{
@@ -16793,7 +17280,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function getAnnotationDisplayColor(annotation) {{
-        if (!annotation || annotation.isGroup) return '';
+        if (!annotation) return '';
         return annotation.color || getAnnotationColorById(annotation.id);
     }}
 
@@ -16818,6 +17305,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!annotation?.isGroup) {{
             return `background: ${{getAnnotationDisplayColor(annotation) || '#777777'}}`;
         }}
+        if (annotation.color) return `background: ${{annotation.color}}`;
         const weights = getAnnotationColorWeights(annotation).filter(entry => entry.count > 0);
         const total = weights.reduce((sum, entry) => sum + entry.count, 0);
         if (!weights.length || total <= 0) {{
@@ -17088,7 +17576,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const annotation = {{
             id: annotationId,
             sectionId: candidate.sectionId || section?.id || null,
-            label: `Annotation ${{annotationId}}`,
+            label: `region ${{annotationId}}`,
             color: getAnnotationColorById(annotationId),
             parentId: null,
             createdAt: new Date().toISOString(),
@@ -17132,7 +17620,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             isGroup: true,
             sectionId: null,
             label: `Group ${{annotationId}}`,
-            color: null,
+            color: getAnnotationColorById(annotationId),
             parentId: null,
             createdAt: new Date().toISOString(),
             sourceType: 'group',
@@ -17216,7 +17704,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function clearAllModalAnnotations() {{
-        invalidateAnnotationDEState();
+        invalidateAnnotationDEState(true);
         modalAnnotations = [];
         collapsedModalAnnotationGroupIds.clear();
         modalNextAnnotationId = 1;
@@ -17311,8 +17799,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 id: annotation.id,
                 type: annotation.isGroup ? 'group' : (annotation.sourceType === 'query' ? 'cell-list' : 'polygon'),
                 is_group: !!annotation.isGroup,
-                label: annotation.label || `Annotation ${{annotation.id}}`,
-                color: annotation.isGroup ? null : (annotation.color || getAnnotationColorById(annotation.id)),
+                label: annotation.label || `region ${{annotation.id}}`,
+                color: annotation.color || getAnnotationColorById(annotation.id),
                 parent_id: normalizeAnnotationParentId(annotation.parentId),
                 created_at: annotation.createdAt || null,
                 source_type: annotation.sourceType || (annotation.isGroup ? 'group' : 'polygon'),
@@ -17428,7 +17916,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function applyAnnotationsFromExport(payload) {{
         if (!payload || !Array.isArray(payload.polygons)) return {{ restored: 0, skipped: 0 }};
         let restored = 0, skipped = 0;
-        invalidateAnnotationDEState();
+        invalidateAnnotationDEState(true);
         modalAnnotations = [];
         collapsedModalAnnotationGroupIds.clear();
         let maxId = 0;
@@ -17441,7 +17929,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     isGroup: true,
                     sectionId: null,
                     label: poly.label || `Group ${{id}}`,
-                    color: null,
+                    color: poly.color || getAnnotationColorById(id),
                     parentId: normalizeAnnotationParentId(poly.parent_id),
                     createdAt: poly.created_at || new Date().toISOString(),
                     sourceType: 'group',
@@ -17475,7 +17963,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     id,
                     isGroup: false,
                     sectionId,
-                    label: poly.label || `Annotation ${{id}}`,
+                    label: poly.label || `region ${{id}}`,
                     color: poly.color || getAnnotationColorById(id),
                     parentId: normalizeAnnotationParentId(poly.parent_id),
                     createdAt: poly.created_at || new Date().toISOString(),
@@ -17502,7 +17990,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 id,
                 isGroup: false,
                 sectionId,
-                label: poly.label || `Annotation ${{id}}`,
+                label: poly.label || `region ${{id}}`,
                 color: poly.color || getAnnotationColorById(id),
                 parentId: normalizeAnnotationParentId(poly.parent_id),
                 createdAt: poly.created_at || new Date().toISOString(),
@@ -18220,16 +18708,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const children = getAnnotationChildren(annotation.id);
             const annotationCellCount = getAnnotationCellSet(annotation).size;
             const count = annotationCellCount.toLocaleString();
-            const label = escapeHtml(annotation.label || `Annotation ${{annotation.id}}`);
+            const label = escapeHtml(annotation.label || `region ${{annotation.id}}`);
             const annotationColor = getAnnotationDisplayColor(annotation);
             const labelStyle = annotationColor ? ` style="border-color: ${{annotationColor}}"` : '';
             const countStyle = getAnnotationCountChipStyle(annotation);
             const isSelectedAnnotation = selectedCellsFromAnnotation && selectedAnnotationId === annotation.id;
             const isComparedAnnotation = selectedAnnotationBId === annotation.id;
-            const hasComparedRegion = selectedCellsB.size > 0;
-            const hasActiveRegionA = selectedCells.size > 0;
-            const canShowCompareAction = hasActiveRegionA && selectedAnnotationId !== annotation.id;
-            const compareDisabled = hasComparedRegion;
             const rowClasses = [
                 'modal-annotation-row',
                 isSelectedAnnotation ? 'annotation-selected' : '',
@@ -18237,9 +18721,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 annotation.isGroup ? 'annotation-group' : '',
                 depth > 0 ? 'annotation-child' : '',
             ].filter(Boolean).join(' ');
-            const primaryAction = canShowCompareAction
-                ? `<button class="annotation-compare" type="button" data-annotation-compare="${{annotation.id}}" title="Use as compared region" aria-label="Use annotation as compared region"${{compareDisabled ? ' disabled' : ''}}>${{UMAP_COMPARE_ICON}}</button>`
-                : '';
             const isCollapsedGroup = annotation.isGroup && collapsedModalAnnotationGroupIds.has(id);
             const groupToggle = annotation.isGroup
                 ? `<button class="annotation-group-toggle" type="button" data-annotation-group-toggle="${{annotation.id}}" title="${{isCollapsedGroup ? 'Expand group' : 'Collapse group'}}" aria-label="${{isCollapsedGroup ? 'Expand group' : 'Collapse group'}}" aria-expanded="${{isCollapsedGroup ? 'false' : 'true'}}"${{children.length ? '' : ' disabled'}}>
@@ -18255,8 +18736,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <span class="modal-annotation-drag-handle" data-annotation-drag-handle title="Drag to reorder or nest" aria-label="Drag to reorder or nest"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h.01"></path><path d="M15 5h.01"></path><path d="M9 12h.01"></path><path d="M15 12h.01"></path><path d="M9 19h.01"></path><path d="M15 19h.01"></path></svg></span>
                         <input class="modal-annotation-label" type="text" value="${{label}}" data-annotation-label="${{annotation.id}}"${{labelStyle}}>
                         <div class="modal-annotation-row-actions">
+                            <input class="modal-annotation-color" type="color" value="${{getAnnotationDisplayColor(annotation) || '#777777'}}" data-annotation-color="${{annotation.id}}" title="Change ${{annotation.isGroup ? 'group' : 'region'}} color" aria-label="Change ${{annotation.isGroup ? 'group' : 'region'}} color">
                             ${{groupToggle}}
-                            ${{primaryAction}}
                             <button type="button" data-annotation-delete="${{annotation.id}}" title="Delete annotation" aria-label="Delete annotation">
                                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
                             </button>
@@ -18455,8 +18936,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const typed = String(input.value || '').trim();
                 annotation.label = typed
                     ? makeUniqueAnnotationLabel(typed, annotation.id)
-                    : `Annotation ${{annotation.id}}`;
+                    : `region ${{annotation.id}}`;
                 renderModalAnnotationPanel();
+                if (modalSection) renderModalSection();
+            }});
+        }});
+        listEl.querySelectorAll('[data-annotation-color]').forEach((input) => {{
+            input.addEventListener('change', () => {{
+                const annotation = getModalAnnotationById(input.dataset.annotationColor);
+                const color = normalizeHexColor(input.value);
+                if (!annotation || !color) return;
+                annotation.color = color;
+                // Colour is presentation-only: keep the cached Region Welch
+                // result and refresh the summaries/dropdown borders around it.
+                annotationDeComparisonSummaryKey = '';
+                renderModalAnnotationPanel();
+                updateAnnotationComparisonTabVisibility();
+                renderAllSections();
+                if (umapVisible) renderUMAP();
                 if (modalSection) renderModalSection();
             }});
         }});
@@ -18472,11 +18969,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     collapsedModalAnnotationGroupIds.add(groupId);
                 }}
                 renderModalAnnotationPanel();
-            }});
-        }});
-        listEl.querySelectorAll('[data-annotation-compare]').forEach((btn) => {{
-            btn.addEventListener('click', () => {{
-                selectCellsFromAnnotationAsRegionB(btn.dataset.annotationCompare);
             }});
         }});
         listEl.querySelectorAll('[data-annotation-delete]').forEach((btn) => {{
@@ -18688,7 +19180,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             umapSummary.classList.toggle('expanded', selectionSummaryExpanded);
             umapSummary.classList.toggle('minimized', selectionSummaryMinimized && hasSelection);
             const findMoreHtml = hasSelection
-                ? `<button class="selection-summary-find-more" type="button" data-selection-find-more><span>Find more in Compare → Selection</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg></button>`
+                ? `<div class="selection-summary-find-more-row"><button class="icon-btn selection-summary-find-more" type="button" data-selection-find-more title="Find more in Compare > Per cell > Selections"><span>Find more</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg></button></div>`
                 : '';
             umapSummary.innerHTML = renderSelectionSummaryHtml(summary, {{
                 hideHeader: true,
@@ -18699,13 +19191,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         const compareSelectionSummary = document.getElementById('compare-selection-panel');
         if (compareSelectionSummary) {{
-            compareSelectionSummary.classList.add('selection-expression-only');
-            compareSelectionSummary.innerHTML = renderSelectionSummaryHtml(summary, {{
-                hideHeader: true,
-                hideSelectionQuery: true,
-                hideCompareRegion: true,
-            }});
-            bindSelectionSummaryInteractions(compareSelectionSummary);
+            const downsampleWarningHtml = getOverviewDownsampleWarningHtml();
+            if (summary.total === 0) {{
+                compareSelectionSummary.classList.remove('selection-expression-only');
+                compareSelectionSummary.innerHTML = downsampleWarningHtml + '<div class="agg-group-meta">Select cells with the lasso tool to compare their expression.</div>';
+            }} else {{
+                compareSelectionSummary.classList.add('selection-expression-only');
+                compareSelectionSummary.innerHTML = downsampleWarningHtml + renderSelectionSummaryHtml(summary, {{
+                    hideHeader: true,
+                    hideSelectionQuery: true,
+                    hideCompareRegion: true,
+                    comparisonView: true,
+                }});
+                bindSelectionSummaryInteractions(compareSelectionSummary);
+            }}
         }}
         renderUMAPSelectionQueryPanel();
         updateUMAPSelectionSummaryPanelSize();
@@ -19909,7 +20408,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ctx.fillStyle = annotation.color || getAnnotationColorById(annotation.id);
             ctx.globalAlpha = 1;
             ctx.font = '11px sans-serif';
-            ctx.fillText(`${{annotation.label || `Annotation ${{annotation.id}}`}} (${{count}})`, cx + 6, cy - 6);
+            ctx.fillText(`${{annotation.label || `region ${{annotation.id}}`}} (${{count}})`, cx + 6, cy - 6);
             ctx.restore();
         }});
     }}
@@ -21236,7 +21735,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!INSIGHTS_SUBTABS.overview.includes(insightsOverviewTab)) insightsOverviewTab = 'summary';
         if (!INSIGHTS_SUBTABS.genes.includes(insightsGenesTab)) insightsGenesTab = 'de-genes';
         if (!INSIGHTS_SUBTABS.compare.includes(insightsCompareTab)) insightsCompareTab = 'groups';
-        if (!['quick', 'precise', 'relationships'].includes(insightsCompareMode)) insightsCompareMode = 'quick';
         if (!INSIGHTS_SUBTABS.neighbors.includes(insightsNeighborsTab)) insightsNeighborsTab = 'enrichment';
     }}
 
@@ -21255,9 +21753,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         if (topLevel === 'compare') {{
             insightsCompareTab = value;
-            insightsCompareMode = ['groups', 'regions', 'selection'].includes(value)
-                ? 'quick'
-                : (['cell-de', 'complex-contrast'].includes(value) ? 'precise' : 'relationships');
             return;
         }}
         if (topLevel === 'neighbors') {{
@@ -21275,8 +21770,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }};
     const INSIGHTS_TREE_LEAF_LABELS = {{
         overview: {{ summary: 'Summary', sections: 'Sections' }},
-        genes: {{ 'de-genes': 'Markers', spatial: 'Spatial', distribution: 'Distribution', means: 'Means' }},
-        compare: {{ groups: 'Groups', regions: 'Regions', selection: 'Selections', 'cell-de': 'Normal contrast', 'complex-contrast': 'Complex contrast', river: 'Relationships' }},
+        genes: {{ 'de-genes': 'Markers', spatial: 'Spatial', distribution: 'Per cell', means: 'Per sample' }},
+        compare: {{ groups: 'Annotations', regions: 'Regions', selection: 'Selections', 'cell-de': 'Simple design', 'complex-contrast': 'Complex design', river: 'Relationships' }},
         neighbors: {{ enrichment: 'Enrichment', interactions: 'Interactions', dispersion: 'Dispersion' }},
     }};
 
@@ -21284,9 +21779,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const path = [INSIGHTS_TREE_TOP_LABELS[topLevel] || topLevel];
         if (topLevel === 'compare') {{
             const group = ['groups', 'regions', 'selection'].includes(subtab)
-                ? 'Quick'
-                : (['cell-de', 'complex-contrast'].includes(subtab) ? 'Precise' : 'Relationships');
+                ? 'Per cell'
+                : (['cell-de', 'complex-contrast'].includes(subtab) ? 'Per sample' : 'Relationships');
             if (group !== 'Relationships') path.push(group);
+        }}
+        if (topLevel === 'genes' && ['distribution', 'means'].includes(subtab)) {{
+            path.push('Distribution');
         }}
         const leaf = INSIGHTS_TREE_LEAF_LABELS[topLevel]?.[subtab];
         if (leaf) path.push(leaf);
@@ -21325,6 +21823,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             node.classList.toggle('is-sibling-hidden', hideSibling);
             node.querySelector('[data-insights-tree-compare-branch]')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
         }});
+        document.querySelectorAll('[data-insights-tree-genes-node]').forEach((node) => {{
+            const branch = node.getAttribute('data-insights-tree-genes-node') || '';
+            const isOpen = insightsTreeOpen && insightsTreeOpenBranch === 'genes' && insightsTreeOpenGenesBranch === branch;
+            node.classList.toggle('is-open', isOpen);
+            node.querySelector('[data-insights-tree-genes-branch]')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+        }});
         document.querySelectorAll('[data-insights-tree-leaf]').forEach((leaf) => {{
             const topLevel = leaf.getAttribute('data-insights-tree-parent') || 'overview';
             const subtab = leaf.getAttribute('data-insights-tree-leaf') || '';
@@ -21333,14 +21837,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 && insightsTreeOpen
                 && insightsTreeOpenBranch === 'compare'
                 && !!insightsTreeOpenCompareBranch;
+            const hideGenesDirectLeaf = topLevel === 'genes'
+                && leaf.hasAttribute('data-insights-tree-genes-direct-leaf')
+                && insightsTreeOpen
+                && insightsTreeOpenBranch === 'genes'
+                && !!insightsTreeOpenGenesBranch;
             leaf.classList.toggle('is-selected', insightsTreeSelectedLeaf?.topLevel === topLevel && insightsTreeSelectedLeaf?.subtab === subtab);
-            leaf.classList.toggle('is-sibling-hidden', hideRelationship);
+            leaf.classList.toggle('is-sibling-hidden', hideRelationship || hideGenesDirectLeaf);
         }});
     }}
 
     function syncInsightsTabClasses() {{
         normalizeInsightsTabsState();
-        syncCompareNavigationClasses();
         syncInsightsTree();
         const hasSelectedLeaf = !!insightsTreeSelectedLeaf;
         INSIGHTS_TOP_LEVEL_TABS.forEach((topLevel) => {{
@@ -21353,21 +21861,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 document.getElementById(`${{topLevel}}-tab-${{subtab}}-content`)?.classList.toggle('active', isActive);
             }});
         }});
-        document.querySelectorAll('[data-insights-parent][data-insights-subtab]').forEach((button) => {{
-            const topLevel = button.getAttribute('data-insights-parent') || 'overview';
-            const subtab = button.getAttribute('data-insights-subtab') || '';
-            button.classList.toggle('active', hasSelectedLeaf && insightsTreeSelectedLeaf.topLevel === topLevel && insightsTreeSelectedLeaf.subtab === subtab);
-        }});
-    }}
-
-    function syncCompareNavigationClasses() {{
-        const mode = insightsCompareMode;
-        document.querySelectorAll('[data-compare-mode]').forEach((button) => {{
-            button.classList.toggle('active', button.getAttribute('data-compare-mode') === mode);
-        }});
-        document.getElementById('compare-quick-navigation')?.classList.toggle('active', mode === 'quick');
-        document.getElementById('compare-precise-navigation')?.classList.toggle('active', mode === 'precise');
-        document.getElementById('compare-tab-river')?.classList.toggle('active', mode === 'relationships');
     }}
 
     function syncInsightsModeClasses() {{
@@ -21426,6 +21919,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (insightsTopLevelTab === 'genes') {{
             renderGenesDetailsWarnings();
+            syncGenesDetailsContentVisibility();
             if (insightsGenesTab === 'de-genes') {{
                 renderMarkerGenes();
             }} else if (insightsGenesTab === 'spatial') {{
@@ -21445,6 +21939,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 updateSelectionInfo();
             }} else if (insightsCompareTab === 'cell-de') {{
                 renderClusterDE();
+            }} else if (insightsCompareTab === 'complex-contrast') {{
+                renderComplexPseudobulkDesign();
             }} else if (insightsCompareTab === 'river') {{
                 renderAnnotationRiver();
             }} else {{
@@ -21481,8 +21977,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderAnnotationRegionDESection(annotations) {{
         const {{ annotations: availableAnnotations, source, reference }} = syncAnnotationDEState(annotations);
         let html = '<div class="annot-de-controls">';
-        html += '<div class="selection-summary-title" style="margin-top:10px">Region-to-Region DE</div>';
-        html += '<div class="agg-group-meta">Quick DE uses genes already loaded in the viewer. Full region DE can scan the sidecar in the background when available.</div>';
 
         if (availableAnnotations.length < 2) {{
             html += '<div class="agg-group-meta">Draw at least two annotations to compare region-level DE.</div>';
@@ -21490,109 +21984,129 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return html;
         }}
 
-        const options = availableAnnotations.map((annotation) => {{
+        const renderOption = (annotation) => {{
             const id = Number(annotation.id);
-            const label = escapeHtml(getAnnotationDisplayLabel(annotation));
-            return `<option value="${{id}}">${{label}}</option>`;
-        }}).join('');
-
-        html += `
-            <div class="cluster-de-controls">
-                <div class="cluster-de-select-row">
-                    <div>
-                        <label>Region A</label>
-                        <select id="annotation-de-source">${{options}}</select>
-                    </div>
-                    <div>
-                        <label>Region B</label>
-                        <select id="annotation-de-reference">${{options}}</select>
-                    </div>
-                    <div>
-                        <label>Top Genes</label>
-                        <input id="annotation-de-topn" type="number" min="3" max="100" step="1" value="${{Math.max(3, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N)}}">
-                    </div>
-                </div>
-                <div style="display: flex; justify-content: flex-end;">
-                    <button class="legend-btn" id="annotation-de-swap" type="button">Swap A/B</button>
-                </div>
-            </div>
-            </div>
-        `;
-
+            const label = escapeHtml(String(annotation.label || `region ${{id}}`).trim() || `region ${{id}}`);
+            const count = getAnnotationCellCount(annotation).toLocaleString();
+            return `<option value="${{id}}">${{label}} (${{count}} cells)</option>`;
+        }};
+        const regions = availableAnnotations.filter(annotation => !annotation.isGroup);
+        const groups = availableAnnotations.filter(annotation => !!annotation.isGroup);
+        const options = [
+            regions.length ? `<optgroup label="Regions">${{regions.map(renderOption).join('')}}</optgroup>` : '',
+            groups.length ? `<optgroup label="Groups">${{groups.map(renderOption).join('')}}</optgroup>` : '',
+        ].join('');
         const pairKey = getAnnotationDECacheKey(source, reference);
+        const quickResultKey = getAnnotationDEQuickResultKey(source, reference);
         const fullCached = pairKey ? annotationDeFullCache.get(pairKey) : null;
         const fullRun = (annotationDeFullRun && annotationDeFullRun.key === pairKey) ? annotationDeFullRun : null;
         const sidecarAvailable = !!DATA.gene_aux_url;
-        // Skip the synchronous quick compute while a full sidecar run is active:
-        // its result is hidden behind the progress bar, so recomputing it on every
-        // per-shard re-render just freezes the UI for no benefit.
+        const hasQuickResult = annotationDeQuickResultKey === quickResultKey && !!annotationDeQuickResult;
+        const hasCompletedCalculation = hasQuickResult || !!fullCached?.available;
+        const sourceSelectStyle = getAnnotationDisplayColor(source)
+            ? ` style="border-color:${{getAnnotationDisplayColor(source)}}"`
+            : '';
+        const referenceSelectStyle = getAnnotationDisplayColor(reference)
+            ? ` style="border-color:${{getAnnotationDisplayColor(reference)}}"`
+            : '';
+        const runButtonHtml = annotationDeQuickRunning
+            ? '<div class="selection-query-icon-btn selection-summary-find-markers loading" role="status" aria-label="Finding region markers"><span class="selection-summary-find-markers-spinner"></span></div>'
+            : (!hasCompletedCalculation
+                ? '<button class="selection-query-icon-btn" id="annotation-de-run" type="button" title="Find region markers" aria-label="Find region markers"><svg viewBox="0 0 24 24" aria-hidden="true" data-icon="search"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></button>'
+                : '');
+
+        html += `
+            <div class="selection-summary-title">Gene expression — region A vs region B${{renderCalcInfoButton('region_expression')}}</div>
+            <div class="cluster-de-controls">
+                <div class="cluster-de-select-row comparison-pair-select-row">
+                    <div>
+                        <label>Region A</label>
+                        <select id="annotation-de-source"${{sourceSelectStyle}}>${{options}}</select>
+                    </div>
+                    <div>
+                        <label>Region B</label>
+                        <select id="annotation-de-reference"${{referenceSelectStyle}}>${{options}}</select>
+                    </div>
+                </div>
+                <div class="annotation-de-action-row">
+                    ${{hasCompletedCalculation ? `<div class="selection-summary-welch-controls">
+                        <div class="selection-summary-welch-control-row">
+                            <label>Top N per direction</label>
+                            <input id="annotation-de-topn" type="number" min="1" max="20" step="1" value="${{Math.max(1, Math.min(20, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N))}}" aria-label="Number of top positive and negative genes selected by Welch test">
+                        </div>
+                        <div class="selection-summary-welch-control-row">
+                            <label>Min expressed %</label>
+                            <input id="annotation-de-min-pct" type="range" min="0" max="100" step="1" value="${{Math.max(0, Math.min(100, Number(annotationDeMinPct) || 0))}}" aria-label="Minimum percentage of expressing cells in at least one region">
+                            <output id="annotation-de-min-pct-value">${{Math.max(0, Math.min(100, Number(annotationDeMinPct) || 0))}}%</output>
+                        </div>
+                    </div>` : ''}}
+                    <div class="annotation-de-action-buttons">
+                        <button class="legend-btn icon-only" id="annotation-de-swap" type="button" title="Swap Region A and Region B" aria-label="Swap Region A and Region B">
+                            <svg class="lucide lucide-arrow-left-right" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"></path><path d="M4 7h16"></path><path d="m16 21 4-4-4-4"></path><path d="M20 17H4"></path></svg>
+                        </button>
+                        ${{runButtonHtml}}
+                    </div>
+                </div>
+            </div>
+        `;
+
+        // Region DE is intentionally only calculated by the explicit Run
+        // calculation action. Rendering this panel must remain read-only so
+        // drawing or opening a region never starts a synchronous computation.
         const deResult = (fullRun && fullRun.running)
             ? {{ available: false, reason: 'full_running', results: [] }}
-            : computeRegionAnnotationDE(source, reference, {{ topN: annotationDeTopN }});
-        const exportState = deResult.available ? getAnnotationDEExportState(source, reference, deResult) : null;
+            : (hasQuickResult ? annotationDeQuickResult : {{ available: false, reason: 'not_run', results: [] }});
+        const exportState = (deResult.available || fullCached?.available)
+            ? getAnnotationDEExportState(source, reference, hasQuickResult ? deResult : null)
+            : null;
         const renderCards = (result) => {{
             const topN = Math.max(1, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N);
-            return selectTwoSidedTopN(result.results || [], topN).map((entry) => {{
+            const colorA = getAnnotationDisplayColor(source) || 'var(--accent-strong)';
+            const colorB = getAnnotationDisplayColor(reference) || '#4cc9f0';
+            const textColorA = getTextColorForBackground(colorA);
+            const textColorB = getTextColorForBackground(colorB);
+            return selectWelchTopResults(result.results || [], topN, annotationDeMinPct, 1).map((entry) => {{
                 return `
                     <div class="comparison-card">
-                        <div class="comparison-card-title">
-                            ${{renderGeneTokenButton(entry.gene, {{
-                                isActive: entry.gene === currentGene,
-                                showMeta: false,
-                                title: 'Load region DE gene into the viewer',
-                            }})}}
-                            ${{renderGeneGoogleSearchButton(entry.gene, {{
-                                title: 'Search Google for this gene',
-                            }})}}
+                        <div class="comparison-card-title annotation-de-card-title">
+                            <div class="annotation-de-card-title-main">
+                                ${{renderGeneTokenButton(entry.gene, {{
+                                    isActive: entry.gene === currentGene,
+                                    showMeta: false,
+                                    title: 'Load region DE gene into the viewer',
+                                }})}}
+                                ${{renderGeneGoogleSearchButton(entry.gene, {{
+                                    title: 'Search Google for this gene',
+                                }})}}
+                            </div>
+                            <div class="annotation-de-title-stats" style="border-color:${{Number(entry.score || 0) >= 0 ? colorA : colorB}}"><span>log2FC ${{formatScaleNumber(entry.log2fc)}}</span><span>Score ${{formatScaleNumber(entry.score)}}</span></div>
                         </div>
                         <div class="comparison-metric-grid">
-                            <div class="comparison-metric">
-                                <span class="comparison-metric-label">log2FC A/B</span>
-                                <span class="comparison-metric-value">${{formatScaleNumber(entry.log2fc)}}</span>
-                            </div>
-                            <div class="comparison-metric">
-                                <span class="comparison-metric-label">Score</span>
-                                <span class="comparison-metric-value">${{formatScaleNumber(entry.score)}}</span>
-                            </div>
-                            <div class="comparison-metric">
-                                <span class="comparison-metric-label">% expr A</span>
-                                <span class="comparison-metric-value">${{formatClusterDEPct(entry.pctA)}}</span>
-                            </div>
-                            <div class="comparison-metric">
-                                <span class="comparison-metric-label">% expr B</span>
-                                <span class="comparison-metric-value">${{formatClusterDEPct(entry.pctB)}}</span>
-                            </div>
-                            <div class="comparison-metric">
-                                <span class="comparison-metric-label">Mean A</span>
-                                <span class="comparison-metric-value">${{formatScaleNumber(entry.meanA)}}</span>
-                            </div>
-                            <div class="comparison-metric">
-                                <span class="comparison-metric-label">Mean B</span>
-                                <span class="comparison-metric-value">${{formatScaleNumber(entry.meanB)}}</span>
-                            </div>
+                            <span class="annotation-de-region-chip" style="background:${{getComparisonMetricChipBackground(colorA, Number(entry.score || 0) >= 0 ? colorA : colorB)}};color:${{textColorA}}"><span>% expr A</span><strong>${{formatClusterDEPct(entry.pctA)}}</strong><span>Mean A</span><strong>${{formatScaleNumber(entry.meanA)}}</strong></span>
+                            <span class="annotation-de-region-chip" style="background:${{getComparisonMetricChipBackground(colorB, Number(entry.score || 0) >= 0 ? colorA : colorB)}};color:${{textColorB}}"><span>% expr B</span><strong>${{formatClusterDEPct(entry.pctB)}}</strong><span>Mean B</span><strong>${{formatScaleNumber(entry.meanB)}}</strong></span>
                         </div>
                     </div>
                 `;
             }}).join('');
         }};
-        const sourceLabel = source ? escapeHtml(getAnnotationDisplayLabel(source)) : '';
-        const referenceLabel = reference ? escapeHtml(getAnnotationDisplayLabel(reference)) : '';
-        const topNLabel = Math.max(1, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N).toLocaleString();
-        const quickSummaryHtml = (deResult.available && deResult.results.length)
+        const displayedQuickResults = deResult.available
+            ? selectWelchTopResults(deResult.results || [], annotationDeTopN, annotationDeMinPct, 1)
+            : [];
+        const displayedFullResults = fullCached?.available
+            ? selectWelchTopResults(fullCached.results || [], annotationDeTopN, annotationDeMinPct, 1)
+            : [];
+        const volcanoExportButtonHtml = exportState
+            ? '<button class="icon-btn" id="annotation-de-export-volcano" type="button" title="Download volcano plot as SVG" aria-label="Download volcano plot as SVG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></button>'
+            : '';
+        const quickSummaryHtml = (deResult.available && displayedQuickResults.length)
             ? `
-                <div class="agg-group-meta">
-                    Region A: <strong>${{sourceLabel}}</strong> (${{Number(deResult.nA || 0).toLocaleString()}} cells)
-                    vs Region B: <strong>${{referenceLabel}}</strong> (${{Number(deResult.nB || 0).toLocaleString()}} cells).
-                </div>
-                <div class="agg-group-meta">
-                    ${{
-                        Number(deResult.loadedGeneCount || 0) < Number(deResult.totalGeneCount || 0)
-                            ? `Quick preview over ${{Number(deResult.loadedGeneCount || 0).toLocaleString()}} of ${{Number(deResult.totalGeneCount || 0).toLocaleString()}} genes — run the full sidecar DE for the complete result.`
-                            : ''
-                    }}
-                    Showing top ${{topNLabel}} genes in both directions — positive scores = enriched in Region A, negative = enriched in Region B.
-                </div>
-                ${{buildGroupVolcanoPlot(deResult.results || [])}}
+                ${{Number(deResult.loadedGeneCount || 0) < Number(deResult.totalGeneCount || 0)
+                    ? `<div class="agg-group-meta">Quick preview over ${{Number(deResult.loadedGeneCount || 0).toLocaleString()}} of ${{Number(deResult.totalGeneCount || 0).toLocaleString()}} genes — run the full sidecar DE for the complete result.</div>`
+                    : ''}}
+                ${{buildGroupVolcanoPlot(displayedQuickResults, volcanoExportButtonHtml, {{
+                    positive: getAnnotationDisplayColor(source) || 'var(--accent-strong)',
+                    negative: getAnnotationDisplayColor(reference) || '#4cc9f0',
+                }})}}
                 <div class="comparison-stack">${{renderCards(deResult)}}</div>
             `
             : '';
@@ -21600,25 +22114,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ? new Date(fullCached.completedAt).toLocaleTimeString([], {{ hour: '2-digit', minute: '2-digit', second: '2-digit' }})
             : '';
         const cachedSummaryHtml = fullCached?.available
-            ? (fullCached.results || []).length
+            ? displayedFullResults.length
                 ? `
-                    <div class="agg-group-meta">
-                        Region A: <strong>${{sourceLabel}}</strong> (${{Number(fullCached.nA || 0).toLocaleString()}} cells)
-                        vs Region B: <strong>${{referenceLabel}}</strong> (${{Number(fullCached.nB || 0).toLocaleString()}} cells).
-                    </div>
                     <div class="agg-group-meta">
                         Cached full sidecar DE${{cachedTimestamp ? ` from ${{cachedTimestamp}}` : ''}}
                         across ${{Number(fullCached.totalGeneCount || 0).toLocaleString()}} genes.
-                        Showing top ${{topNLabel}} genes in both directions — positive scores = enriched in Region A, negative = enriched in Region B.
                     </div>
-                    ${{buildGroupVolcanoPlot(fullCached.results || [])}}
+                    ${{buildGroupVolcanoPlot(displayedFullResults, volcanoExportButtonHtml, {{
+                        positive: getAnnotationDisplayColor(source) || 'var(--accent-strong)',
+                        negative: getAnnotationDisplayColor(reference) || '#4cc9f0',
+                    }})}}
                     <div class="comparison-stack">${{renderCards(fullCached)}}</div>
                 `
                 : `
-                    <div class="agg-group-meta">
-                        Region A: <strong>${{sourceLabel}}</strong> (${{Number(fullCached.nA || 0).toLocaleString()}} cells)
-                        vs Region B: <strong>${{referenceLabel}}</strong> (${{Number(fullCached.nB || 0).toLocaleString()}} cells).
-                    </div>
                     <div class="agg-group-meta">
                         Cached full sidecar DE${{cachedTimestamp ? ` from ${{cachedTimestamp}}` : ''}} found no enriched genes across ${{Number(fullCached.totalGeneCount || 0).toLocaleString()}} genes.
                     </div>
@@ -21664,10 +22172,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }} else if (fullCached?.available) {{
             resultHtml = cachedSummaryHtml;
             resultHtml += '<div style="display:flex; justify-content:flex-end;"><button class="legend-btn" id="annotation-de-refresh-full" type="button">Refresh Full DE</button></div>';
-        }} else if (!deResult.available && deResult.reason === 'multi_section_region') {{
-            resultHtml = '<div class="agg-group-meta">Region DE currently requires each selected annotation group to resolve to one section.</div>';
-        }} else if (!deResult.available && deResult.reason === 'empty_region') {{
+        }} else if (!hasQuickResult) {{
+            resultHtml = '';
+        }} else if (!deResult.available && deResult.reason === 'empty_group') {{
             resultHtml = '<div class="agg-group-meta">One of the selected annotations has no cells.</div>';
+        }} else if (!deResult.available && deResult.reason === 'too_few_cells') {{
+            resultHtml = '<div class="agg-group-meta">Each selected region or group needs at least two cells.</div>';
         }} else if (!deResult.available && deResult.reason === 'no_loaded_genes' && sidecarAvailable) {{
             const totalGenes = Number(deResult.totalGeneCount || 0).toLocaleString();
             resultHtml = `
@@ -21682,7 +22192,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             resultHtml = '<div class="agg-group-meta">No genes are currently loaded for region DE. Load genes in the Genes tab or click pseudobulk DE genes first.</div>';
         }} else if (!deResult.available) {{
             resultHtml = '<div class="agg-group-meta">Choose two different annotations to compare.</div>';
-        }} else if (!deResult.results.length) {{
+        }} else if (!displayedQuickResults.length) {{
             if (sidecarAvailable && Number(deResult.loadedGeneCount || 0) < Number(deResult.totalGeneCount || 0)) {{
                 resultHtml = `
                     <div class="agg-group-meta">No enriched genes were found among the currently loaded genes.</div>
@@ -21703,8 +22213,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (exportState) {{
             resultHtml += `
                 <div style="display:flex; justify-content:flex-end; gap:6px; margin-top:6px;">
-                    <button class="legend-btn" id="annotation-de-export-json" type="button">Export JSON</button>
-                    <button class="legend-btn" id="annotation-de-export-csv" type="button">Export CSV</button>
+                    <button class="icon-btn" id="annotation-de-export-csv" type="button" title="Download all region DE genes as CSV" aria-label="Download all region DE genes as CSV"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></button>
                 </div>
             `;
         }}
@@ -21717,104 +22226,135 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderAnnotationComparison() {{
         const container = document.getElementById('annotation-comparison');
         if (!container) return;
+        const downsampleWarningHtml = getOverviewDownsampleWarningHtml();
 
         if (!modalAnnotations.length) {{
-            container.innerHTML = '<div class="agg-group-meta">Open a section, draw annotations, then switch to this tab to compare them.</div>';
+            container.innerHTML = downsampleWarningHtml + '<div class="agg-group-meta">Create regions, then switch to this tab to compare them.</div>';
             return;
         }}
 
-        // Build per-annotation summaries
-        const annotSummaries = modalAnnotations.map((annotation) => {{
-            const cellSet = getAnnotationCellSet(annotation);
-            const summary = computeSelectionSummary(cellSet);
-            return {{ annotation, summary }};
-        }});
+        const {{ source, reference }} = syncAnnotationDEState(modalAnnotations);
+        const quickResultKey = getAnnotationDEQuickResultKey(source, reference);
+        const pairKey = getAnnotationDECacheKey(source, reference);
+        const hasCalculatedRegionComparison =
+            (!!quickResultKey && annotationDeQuickResultKey === quickResultKey) ||
+            (!!pairKey && !!annotationDeFullCache.get(pairKey)?.available);
+        let html = downsampleWarningHtml + renderAnnotationRegionDESection(modalAnnotations);
 
-        let html = '';
-
-        // Composition section: stacked bars per annotation
-        const typeColumn = annotSummaries[0]?.summary?.typeColumn;
-        if (typeColumn) {{
-            // Collect all type names
-            const allTypes = new Set();
-            annotSummaries.forEach((as) => as.summary.types.forEach(([t]) => allTypes.add(t)));
-            const typeList = Array.from(allTypes);
-
-            html += `<div class="selection-summary-title">Cell Composition by Annotation</div>`;
-            annotSummaries.forEach((as) => {{
-                const annotation = as.annotation;
-                const summary = as.summary;
-                const color = annotation.color || '#888';
-                const label = escapeHtml(annotation.label || `Annotation ${{annotation.id}}`);
-                const total = summary.total;
-                const typeMap = new Map(summary.types);
-
-                html += `<div class="annot-comp-row">`;
-                html += `<div class="annot-comp-header"><span class="annot-comp-dot" style="background:${{color}}"></span><span>${{label}}</span><span class="annot-comp-count">${{total.toLocaleString()}} cells</span></div>`;
-                if (total > 0) {{
-                    html += `<div class="annot-comp-bar-track">`;
-                    let offset = 0;
-                    typeList.forEach((type, ti) => {{
-                        const cnt = typeMap.get(type) || 0;
-                        const pct = Math.round(100 * cnt / total);
-                        if (pct <= 0) return;
-                        const bgColor = getCategoryColorForValue(typeColumn, type);
-                        html += `<div class="annot-comp-segment" title="${{escapeHtml(type)}}: ${{cnt}} (${{pct}}%)" style="width:${{pct}}%;background:${{bgColor}}"></div>`;
-                    }});
-                    html += `</div>`;
-                }}
-                html += `</div>`;
+        // These summaries touch the selected regions' cell sets and expression
+        // data. Render them only after the user explicitly runs a comparison.
+        if (hasCalculatedRegionComparison) {{
+            const comparisonSummaryKey = `${{quickResultKey || pairKey}}::top:${{annotationDeTopN}}::pct:${{annotationDeMinPct}}::legend:${{annotationCompositionLegendExpanded ? 'all' : 'compact'}}`;
+            if (annotationDeComparisonSummaryKey === comparisonSummaryKey) {{
+                html += annotationDeComparisonSummaryHtml;
+            }} else {{
+                let summaryHtml = '';
+            const comparedAnnotations = [source, reference].filter(Boolean);
+            const annotSummaries = comparedAnnotations.map((annotation) => {{
+                const cellSet = getAnnotationCellSet(annotation);
+                const summary = computeSelectionSummary(cellSet, explorationColorCol || currentColor);
+                return {{ annotation, summary }};
             }});
 
-            // Legend
-            if (typeList.length) {{
-                html += `<div class="annot-comp-legend">`;
-                typeList.slice(0, 8).forEach((type) => {{
-                    const typeColor = getCategoryColorForValue(typeColumn, type);
-                    html += `<span class="annot-comp-legend-item"><span class="annot-comp-dot" style="background:${{typeColor}}"></span>${{escapeHtml(type)}}</span>`;
+            // Composition section: stacked bars per annotation
+            const typeColumn = annotSummaries[0]?.summary?.typeColumn;
+            if (typeColumn) {{
+                // Collect all type names
+                const allTypes = new Set();
+                annotSummaries.forEach((as) => as.summary.types.forEach(([t]) => allTypes.add(t)));
+                const typeList = Array.from(allTypes);
+
+                summaryHtml += `<div class="selection-summary-title">Cell Composition by Region</div>`;
+                annotSummaries.forEach((as) => {{
+                    const annotation = as.annotation;
+                    const summary = as.summary;
+                    const color = annotation.color || '#888';
+                    const label = escapeHtml(annotation.label || `region ${{annotation.id}}`);
+                    const total = summary.total;
+                    const typeMap = new Map(summary.types);
+
+                    summaryHtml += `<div class="annot-comp-row">`;
+                    summaryHtml += `<div class="annot-comp-header"><span class="annot-comp-dot" style="background:${{color}}"></span><span>${{label}}</span><span class="annot-comp-count">${{total.toLocaleString()}} cells</span></div>`;
+                    if (total > 0) {{
+                        summaryHtml += `<div class="annot-comp-bar-track">`;
+                        typeList.forEach((type) => {{
+                            const cnt = typeMap.get(type) || 0;
+                            const pct = Math.round(100 * cnt / total);
+                            if (pct <= 0) return;
+                            const bgColor = getCategoryColorForValue(typeColumn, type);
+                            summaryHtml += `<div class="annot-comp-segment" title="${{escapeHtml(type)}}: ${{cnt}} (${{pct}}%)" style="width:${{pct}}%;background:${{bgColor}}"></div>`;
+                        }});
+                        summaryHtml += `</div>`;
+                    }}
+                    summaryHtml += `</div>`;
                 }});
-                if (typeList.length > 8) {{
-                    html += `<span class="annot-comp-legend-item agg-group-meta">+${{typeList.length - 8}} more</span>`;
+
+                // Legend
+                if (typeList.length) {{
+                    const visibleTypes = annotationCompositionLegendExpanded ? typeList : typeList.slice(0, 8);
+                    summaryHtml += `<div class="annot-comp-legend">`;
+                    visibleTypes.forEach((type) => {{
+                        const typeColor = getCategoryColorForValue(typeColumn, type);
+                        summaryHtml += `<span class="annot-comp-legend-item"><span class="annot-comp-dot" style="background:${{typeColor}}"></span>${{escapeHtml(type)}}</span>`;
+                    }});
+                    summaryHtml += `</div>`;
+                    if (typeList.length > 8) {{
+                        summaryHtml += `<button class="annot-comp-legend-item annot-comp-legend-toggle" type="button" data-annotation-composition-legend-toggle>${{annotationCompositionLegendExpanded ? 'Show less' : `+${{typeList.length - 8}} more categories`}}</button>`;
+                    }}
                 }}
-                html += `</div>`;
+            }}
+
+            // Match the Selections expression layout while preserving each
+            // region's own colour for its mean-expression bar.
+            const comparisonResult = annotationDeQuickResultKey === quickResultKey
+                ? annotationDeQuickResult
+                : annotationDeFullCache.get(pairKey);
+            const expressionEntries = selectWelchTopResults(
+                comparisonResult?.results || [], annotationDeTopN, annotationDeMinPct, 1
+            );
+            if (expressionEntries.length) {{
+                const colorA = getAnnotationDisplayColor(source) || 'var(--accent-strong)';
+                const colorB = getAnnotationDisplayColor(reference) || '#4cc9f0';
+                summaryHtml += `<div class="selection-summary-expr"><div class="selection-summary-title">Gene Expression by Region</div>`;
+                expressionEntries.forEach((entry) => {{
+                    const meanA = Number(entry.meanA || 0);
+                    const meanB = Number(entry.meanB || 0);
+                    const pctA = 100 * Number(entry.pctA || 0);
+                    const pctB = 100 * Number(entry.pctB || 0);
+                    const vmax = Math.max(1e-12, meanA, meanB);
+                    const factor = meanB > 0 ? (meanA / meanB).toFixed(1) + 'x' : '—';
+                    summaryHtml += `<div class="selection-summary-expr-row">
+                        <span class="selection-summary-expr-gene" data-gene-activate="${{escapeHtml(entry.gene)}}" title="Load ${{escapeHtml(entry.gene)}} into the viewer">${{escapeHtml(entry.gene)}}</span>
+                        <div class="selection-summary-expr-bars">
+                            <div class="selection-summary-expr-bar" style="width:${{clampPercent(100 * meanA / vmax)}}%;background:${{colorA}}" title="Region A mean: ${{formatCompactNumber(meanA)}}">${{formatCompactNumber(meanA)}} (${{pctA.toFixed(0)}}%)</div>
+                            <div class="selection-summary-expr-bar" style="width:${{clampPercent(100 * meanB / vmax)}}%;background:${{colorB}}" title="Region B mean: ${{formatCompactNumber(meanB)}}">${{formatCompactNumber(meanB)}} (${{pctB.toFixed(0)}}%)</div>
+                        </div>
+                        <span class="selection-summary-expr-factor" title="Mean A / mean B">${{factor}}</span>
+                    </div>`;
+                }});
+                summaryHtml += '</div>';
+            }}
+                annotationDeComparisonSummaryHtml = summaryHtml;
+                annotationDeComparisonSummaryKey = comparisonSummaryKey;
+                html += summaryHtml;
             }}
         }}
 
-        // Expression section: top 6 genes, one row per gene
-        const exprArrays = annotSummaries.map((as) => computeSelectionMeanExpression(as.summary));
-        const firstNonEmpty = exprArrays.find(arr => arr.length > 0);
-        if (firstNonEmpty) {{
-            const topGenes = firstNonEmpty.slice(0, 6).map(e => e.gene);
-            const vmax = Math.max(1, ...exprArrays.flatMap(arr =>
-                topGenes.map(g => (arr.find(e => e.gene === g)?.meanSel || 0))
-            ));
-
-            html += `<div class="selection-summary-title" style="margin-top:10px">Gene Expression by Annotation</div>`;
-            topGenes.forEach((gene) => {{
-                html += `<div class="annot-expr-row"><span class="selection-summary-expr-gene" data-gene-activate="${{escapeHtml(gene)}}" title="Load ${{escapeHtml(gene)}} into the viewer">${{escapeHtml(gene)}}</span>`;
-                html += `<div class="annot-expr-bars">`;
-                exprArrays.forEach((arr, ai) => {{
-                    const val = arr.find(e => e.gene === gene)?.meanSel || 0;
-                    const pct = Math.round(100 * val / vmax);
-                    const color = annotSummaries[ai].annotation.color || '#888';
-                    html += `<div class="annot-expr-bar" style="width:${{pct}}%;background:${{color}}" title="${{escapeHtml(annotSummaries[ai].annotation.label || '')}}: ${{val.toFixed(2)}}"></div>`;
-                }});
-                html += `</div></div>`;
-            }});
-        }}
-
-        html += renderAnnotationRegionDESection(modalAnnotations);
-
         container.innerHTML = html || '<div class="agg-group-meta">No data available.</div>';
-        const {{ source, reference }} = syncAnnotationDEState(modalAnnotations);
+        // Keep the controls and expression summaries together, then place the
+        // detailed DE report after those summaries.
+        const deResults = container.querySelector('#annotation-de-results');
+        if (deResults) container.appendChild(deResults);
         const sourceSelect = container.querySelector('#annotation-de-source');
         const referenceSelect = container.querySelector('#annotation-de-reference');
         const topNInput = container.querySelector('#annotation-de-topn');
+        const minPctInput = container.querySelector('#annotation-de-min-pct');
+        const minPctOutput = container.querySelector('#annotation-de-min-pct-value');
         const swapBtn = container.querySelector('#annotation-de-swap');
         if (sourceSelect) {{
             sourceSelect.value = annotationDeSourceId ? String(annotationDeSourceId) : '';
             sourceSelect.addEventListener('change', () => {{
-                cancelAnnotationFullDERun();
+                invalidateAnnotationDEState(true);
                 annotationDeSourceId = Number(sourceSelect.value) || null;
                 renderAnnotationComparison();
             }});
@@ -21822,26 +22362,61 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (referenceSelect) {{
             referenceSelect.value = annotationDeReferenceId ? String(annotationDeReferenceId) : '';
             referenceSelect.addEventListener('change', () => {{
-                cancelAnnotationFullDERun();
+                invalidateAnnotationDEState(true);
                 annotationDeReferenceId = Number(referenceSelect.value) || null;
                 renderAnnotationComparison();
             }});
         }}
         if (topNInput) {{
-            topNInput.value = String(Math.max(3, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N));
+            topNInput.value = String(Math.max(1, Math.min(20, Number(annotationDeTopN) || ANNOTATION_DE_TOP_N)));
             topNInput.addEventListener('change', () => {{
-                const next = Math.min(100, Math.max(3, Number(topNInput.value) || ANNOTATION_DE_TOP_N));
+                const next = Math.min(20, Math.max(1, Number(topNInput.value) || ANNOTATION_DE_TOP_N));
                 annotationDeTopN = next;
+                renderAnnotationComparison();
+            }});
+        }}
+        if (minPctInput) {{
+            minPctInput.addEventListener('input', () => {{
+                const next = Math.max(0, Math.min(100, Math.round(Number(minPctInput.value) || 0)));
+                if (minPctOutput) minPctOutput.textContent = `${{next}}%`;
+            }});
+            minPctInput.addEventListener('change', () => {{
+                annotationDeMinPct = Math.max(0, Math.min(100, Math.round(Number(minPctInput.value) || 0)));
                 renderAnnotationComparison();
             }});
         }}
         if (swapBtn) {{
             swapBtn.addEventListener('click', () => {{
-                cancelAnnotationFullDERun();
-                const sourceId = annotationDeSourceId;
-                annotationDeSourceId = annotationDeReferenceId;
-                annotationDeReferenceId = sourceId;
+                const oldPairKey = getAnnotationDECacheKey(source, reference);
+                const oldQuickKey = getAnnotationDEQuickResultKey(source, reference);
+                annotationDeSourceId = Number(reference?.id) || null;
+                annotationDeReferenceId = Number(source?.id) || null;
+                const newPairKey = getAnnotationDECacheKey(reference, source);
+                if (annotationDeQuickResultKey === oldQuickKey && annotationDeQuickResult) {{
+                    annotationDeQuickResult = invertAnnotationDEResult(annotationDeQuickResult);
+                    annotationDeQuickResultKey = newPairKey;
+                }}
+                const fullCached = oldPairKey ? annotationDeFullCache.get(oldPairKey) : null;
+                if (fullCached && newPairKey) {{
+                    annotationDeFullCache.set(newPairKey, invertAnnotationDEResult(fullCached));
+                }}
                 renderAnnotationComparison();
+            }});
+        }}
+        const runQuickBtn = container.querySelector('#annotation-de-run');
+        if (runQuickBtn && source && reference) {{
+            runQuickBtn.addEventListener('click', () => {{
+                if (annotationDeQuickRunning) return;
+                const token = ++annotationDeQuickRunToken;
+                annotationDeQuickRunning = true;
+                renderAnnotationComparison();
+                window.setTimeout(() => {{
+                    if (token !== annotationDeQuickRunToken) return;
+                    annotationDeQuickResult = computeRegionAnnotationDE(source, reference, {{ topN: annotationDeTopN }});
+                    annotationDeQuickResultKey = getAnnotationDEQuickResultKey(source, reference);
+                    annotationDeQuickRunning = false;
+                    renderAnnotationComparison();
+                }}, 30);
             }});
         }}
         const runFullBtn = container.querySelector('#annotation-de-run-full');
@@ -21863,20 +22438,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderAnnotationComparison();
             }});
         }}
-        const exportJsonBtn = container.querySelector('#annotation-de-export-json');
-        if (exportJsonBtn && source && reference) {{
-            exportJsonBtn.addEventListener('click', () => {{
-                const quickResult = computeRegionAnnotationDE(source, reference, {{ topN: annotationDeTopN }});
-                const exportState = getAnnotationDEExportState(source, reference, quickResult);
-                exportAnnotationDEReport(source, reference, exportState);
+        const exportVolcanoBtn = container.querySelector('#annotation-de-export-volcano');
+        if (exportVolcanoBtn && source && reference) {{
+            exportVolcanoBtn.addEventListener('click', () => {{
+                downloadAnnotationDEVolcanoSvg(container, source, reference);
             }});
         }}
         const exportCsvBtn = container.querySelector('#annotation-de-export-csv');
         if (exportCsvBtn && source && reference) {{
             exportCsvBtn.addEventListener('click', () => {{
-                const quickResult = computeRegionAnnotationDE(source, reference, {{ topN: annotationDeTopN }});
+                const quickResult = annotationDeQuickResultKey === getAnnotationDEQuickResultKey(source, reference)
+                    ? annotationDeQuickResult
+                    : null;
                 const exportState = getAnnotationDEExportState(source, reference, quickResult);
                 exportAnnotationDECsv(source, reference, exportState);
+            }});
+        }}
+        const compositionLegendToggle = container.querySelector('[data-annotation-composition-legend-toggle]');
+        if (compositionLegendToggle) {{
+            compositionLegendToggle.addEventListener('click', () => {{
+                annotationCompositionLegendExpanded = !annotationCompositionLegendExpanded;
+                renderAnnotationComparison();
             }});
         }}
         bindVolcanoGroupInteraction(container, renderAnnotationComparison);
@@ -22057,11 +22639,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function buildColorPanel() {{
         const panel = document.getElementById('color-panel');
         if (!panel) return;
-        const metadataKeys = Object.keys(DATA.metadata_filters || {{}});
-        const hasMetadata = metadataKeys.length > 0;
-        const hasAggregationColumns = hasMetadata || getCategoricalColorColumns().length > 0;
+        const hasSectionMetadata = getExplorationColorOptions().metadata.length > 0;
 
-        const options = renderGroupedAnnotationOptions('', true);
+        const sectionMetadataOptions = renderSectionMetadataOptions('', true);
 
         panel.innerHTML = `
             <div class="color-panel-header">
@@ -22111,28 +22691,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 <div class="insights-tree-node" data-insights-tree-node="genes">
                                     <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-branch="genes" aria-expanded="false"><span data-insights-tree-label>Genes</span></button>
                                     <div class="insights-tree-children"><div class="insights-tree-children-content">
-                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="de-genes" data-insights-tree-parent="genes">Markers</button>
-                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="spatial" data-insights-tree-parent="genes">Spatial</button>
-                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="distribution" data-insights-tree-parent="genes">Distribution</button>
-                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="means" data-insights-tree-parent="genes">Means</button>
+                                        <div class="insights-tree-node" data-insights-tree-genes-node="distribution">
+                                            <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-genes-branch="distribution" aria-expanded="false">Distribution</button>
+                                            <div class="insights-tree-children"><div class="insights-tree-children-content">
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="distribution" data-insights-tree-parent="genes">Per cell</button>
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="means" data-insights-tree-parent="genes">Per sample</button>
+                                            </div></div>
+                                        </div>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="de-genes" data-insights-tree-parent="genes" data-insights-tree-genes-direct-leaf>Markers</button>
+                                        <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="spatial" data-insights-tree-parent="genes" data-insights-tree-genes-direct-leaf>Spatial</button>
                                     </div></div>
                                 </div>
                                 <div class="insights-tree-node" data-insights-tree-node="compare">
                                     <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-branch="compare" aria-expanded="false"><span data-insights-tree-label>Compare</span></button>
                                     <div class="insights-tree-children"><div class="insights-tree-children-content">
                                         <div class="insights-tree-node" data-insights-tree-compare-node="quick">
-                                            <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-compare-branch="quick" aria-expanded="false">Quick</button>
+                                            <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-compare-branch="quick" aria-expanded="false">Per cell</button>
                                             <div class="insights-tree-children"><div class="insights-tree-children-content">
                                                 <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="selection" data-insights-tree-parent="compare">Selections</button>
-                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="groups" data-insights-tree-parent="compare">Groups</button>
                                                 <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="regions" data-insights-tree-parent="compare">Regions</button>
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="groups" data-insights-tree-parent="compare">Annotations</button>
                                             </div></div>
                                         </div>
                                         <div class="insights-tree-node" data-insights-tree-compare-node="precise">
-                                            <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-compare-branch="precise" aria-expanded="false">Precise</button>
+                                            <button class="color-tab insights-tree-trigger has-children" type="button" data-insights-tree-compare-branch="precise" aria-expanded="false">Per sample</button>
                                             <div class="insights-tree-children"><div class="insights-tree-children-content">
-                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="cell-de" data-insights-tree-parent="compare">Normal contrast</button>
-                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="complex-contrast" data-insights-tree-parent="compare">Complex contrast</button>
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="cell-de" data-insights-tree-parent="compare">Simple design</button>
+                                                <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="complex-contrast" data-insights-tree-parent="compare">Complex design</button>
                                             </div></div>
                                         </div>
                                         <button class="color-tab insights-tree-trigger insights-tree-leaf" type="button" data-insights-tree-leaf="river" data-insights-tree-parent="compare">Relationships</button>
@@ -22150,26 +22735,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                     </div>
                     <div class="color-tab-content active" id="color-tab-overview-content">
-                        <div class="insights-subtab-label">Overview details</div>
-                        <div class="color-tabs insights-subtabs">
-                            <button class="color-tab active" id="overview-tab-summary" data-insights-parent="overview" data-insights-subtab="summary" type="button">Summary</button>
-                            <button class="color-tab" id="overview-tab-sections" data-insights-parent="overview" data-insights-subtab="sections" type="button">Sections</button>
-                        </div>
                         <div class="color-tab-content active" id="overview-tab-summary-content">
                             <div style="display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px; align-items:end;">
                                 <div>
                                     <label>Aggregate By</label>
-                                    <select id="color-groupby" ${{!hasAggregationColumns ? 'disabled' : ''}}>
-                                        ${{options}}
+                                    <select id="color-groupby" ${{!hasSectionMetadata ? 'disabled' : ''}}>
+                                        ${{sectionMetadataOptions}}
                                     </select>
                                 </div>
                                 ${{renderCalcInfoButton('color_aggregation')}}
                             </div>
+                            ${{getOverviewDownsampleWarningHtml()}}
                             <div style="display: flex; justify-content: flex-end;">
                                 <button class="legend-btn" id="color-aggregation-toggle" type="button">Collapse Stats</button>
                             </div>
                             <div class="color-aggregation" id="color-aggregation">
-                            ${{hasAggregationColumns ? '' : '<div class="agg-group-meta">No metadata or annotation columns available for aggregation.</div>'}}
+                            ${{hasSectionMetadata ? '' : '<div class="agg-group-meta">No section metadata available for aggregation.</div>'}}
                             </div>
                             <div id="celltype-select-row">
                                 <label>Per Annotation</label>
@@ -22185,22 +22766,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-genes-content">
-                    <div class="insights-subtab-label">Genes details</div>
                     <div id="genes-details-warnings"></div>
-                    <div class="color-panel-section">
+                    <div id="genes-details-content">
+                    <div class="color-panel-section" id="genes-search-section">
                         <label for="marker-gene-search">Search</label>
                         <div class="marker-gene-search-wrap">
-                            <select class="marker-search" id="marker-gene-search" aria-label="Select loaded gene">
-                                ${{renderLoadedGeneSelectOptions('', 'All loaded genes')}}
+                            <select class="marker-search" id="marker-gene-search" aria-label="Search pseudobulk genes">
+                                ${{renderInsightsGeneSearchOptions('', 'All genes')}}
                             </select>
                             <button class="marker-gene-clear-btn" id="marker-gene-search-clear" type="button" title="Clear selected gene" aria-label="Clear selected gene">&times;</button>
                         </div>
-                    </div>
-                    <div class="color-tabs insights-subtabs">
-                        <button class="color-tab active" id="genes-tab-de-genes" data-insights-parent="genes" data-insights-subtab="de-genes" type="button">Markers</button>
-                        <button class="color-tab" id="genes-tab-spatial" data-insights-parent="genes" data-insights-subtab="spatial" type="button">Spatial</button>
-                        <button class="color-tab" id="genes-tab-distribution" data-insights-parent="genes" data-insights-subtab="distribution" type="button">Distribution</button>
-                        <button class="color-tab" id="genes-tab-means" data-insights-parent="genes" data-insights-subtab="means" type="button">Means</button>
                     </div>
                     <div class="color-tab-content active" id="genes-tab-de-genes-content">
                         <div class="samples-view-toggle gene-subtab-view-toggle" data-gene-subtab-toggle="de-genes"></div>
@@ -22231,33 +22806,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                         <div class="gene-distribution-panel" id="pseudobulk-gene-means"></div>
                     </div>
+                    </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-compare-content">
-                    <div class="insights-subtab-label">Compare details</div>
-                    <div class="insights-menu-branch">
-                        <div class="insights-subtab-label">Compare views</div>
-                        <div class="color-tabs compare-mode-tabs insights-subtabs">
-                        <button class="color-tab active" id="compare-mode-quick" data-compare-mode="quick" type="button">Quick</button>
-                        <button class="color-tab" id="compare-mode-precise" data-compare-mode="precise" type="button">Precise</button>
-                        <button class="color-tab" id="compare-mode-relationships" data-compare-mode="relationships" type="button">Relationships</button>
-                        </div>
-                        <div class="insights-menu-children compare-navigation">
-                        <div class="compare-navigation-group active" id="compare-quick-navigation">
-                            <div class="color-tabs insights-subtabs">
-                                <button class="color-tab" id="compare-tab-selection" data-insights-parent="compare" data-insights-subtab="selection" type="button">Selections</button>
-                                <button class="color-tab active" id="compare-tab-groups" data-insights-parent="compare" data-insights-subtab="groups" type="button">Groups</button>
-                                <button class="color-tab" id="compare-tab-regions" data-insights-parent="compare" data-insights-subtab="regions" type="button">Regions</button>
-                            </div>
-                        </div>
-                        <div class="compare-navigation-group" id="compare-precise-navigation">
-                            <div class="color-tabs insights-subtabs">
-                                <button class="color-tab" id="compare-tab-cell-de" data-insights-parent="compare" data-insights-subtab="cell-de" type="button">Normal contrast</button>
-                                <button class="color-tab" id="compare-tab-complex-contrast" data-insights-parent="compare" data-insights-subtab="complex-contrast" type="button">Complex contrast</button>
-                            </div>
-                        </div>
-                        <div class="compare-navigation-group" id="compare-relationships-navigation"></div>
-                    </div>
-                    </div>
                     <div class="color-tab-content active" id="compare-tab-groups-content">
                         <div class="agg-group-meta" id="group-de-summary">Compare samples, metadata groups, or annotations.</div>
                         <div class="color-aggregation" id="group-de-panel">
@@ -22273,61 +22824,34 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <div class="color-aggregation" id="compare-selection-panel"></div>
                     </div>
                     <div class="color-tab-content" id="compare-tab-cell-de-content">
-                        <div class="cluster-de-controls">
-                            <div>
-                                <label>Annotation</label>
-                                <select id="cluster-de-groupby"></select>
-                            </div>
-                            <div class="cluster-de-select-row">
-                                <div>
-                                    <label>Category A</label>
-                                    <select id="cluster-de-source"></select>
-                                </div>
-                                <div>
-                                    <label>Category B</label>
-                                    <select id="cluster-de-reference"></select>
-                                </div>
-                            </div>
-                            <div style="display: flex; justify-content: flex-end;">
-                                <button class="legend-btn" id="cluster-de-swap" type="button">Swap A/B</button>
-                            </div>
-                        </div>
-                        <div class="agg-group-meta" id="cluster-de-summary">Choose two categories to compare.</div>
                         <div class="color-aggregation" id="cluster-de-results">
                             <div class="agg-group-meta">Choose two categories to compare.</div>
                         </div>
                     </div>
                     <div class="color-tab-content" id="compare-tab-complex-contrast-content">
-                        <div class="agg-group-meta">Complex contrast is reserved for a future contrast design.</div>
+                        <div class="color-aggregation" id="complex-pseudobulk-design"></div>
                     </div>
                     <div class="color-tab-content" id="compare-tab-river-content">
                         <div class="cluster-de-controls">
                             <div class="cluster-de-select-row">
-                                <div>
-                                    <label>From</label>
-                                    <select id="river-left"></select>
-                                </div>
                                 <div>
                                     <label>To</label>
                                     <select id="river-right"></select>
                                 </div>
                             </div>
                             <div style="display: flex; justify-content: flex-end; gap: 6px;">
-                                <button class="legend-btn" id="river-swap" type="button">Swap</button>
-                                <button class="legend-btn" id="river-export" type="button">Export CSV</button>
+                                <button class="legend-btn icon-only" id="river-swap" type="button" title="Swap river plot direction" aria-label="Swap river plot direction">
+                                    <svg class="lucide lucide-arrow-left-right" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"></path><path d="M4 7h16"></path><path d="m16 21 4-4-4-4"></path><path d="M20 17H4"></path></svg>
+                                </button>
+                                <button class="icon-btn" id="river-export" type="button" title="Export river correspondence CSV" aria-label="Export river correspondence CSV">${{LEGEND_EXPORT_ICON}}</button>
                             </div>
                         </div>
+                        <div id="river-downsample-warning"></div>
                         <div class="agg-group-meta" id="river-summary">Pick two annotations to see how their categories correspond.</div>
                         <div class="river-plot" id="river-plot"></div>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-neighbors-content">
-                    <div class="insights-subtab-label">Neighbors details</div>
-                    <div class="color-tabs insights-subtabs">
-                        <button class="color-tab active" id="neighbors-tab-enrichment" data-insights-parent="neighbors" data-insights-subtab="enrichment" type="button">Enrichment</button>
-                        <button class="color-tab" id="neighbors-tab-interactions" data-insights-parent="neighbors" data-insights-subtab="interactions" type="button">Interactions</button>
-                        <button class="color-tab" id="neighbors-tab-dispersion" data-insights-parent="neighbors" data-insights-subtab="dispersion" type="button" title="How spatially restricted vs dispersed each cell type is">Dispersion</button>
-                    </div>
                     <div class="color-tab-content active" id="neighbors-tab-enrichment-content">
                         <div>
                             <label>Search Cell Type</label>
@@ -22416,6 +22940,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 explorationColorCol = nextColor;
                 if (explorationLabel) explorationLabel.textContent = nextColor.startsWith(SECTION_METADATA_COLOR_PREFIX) ? 'Section metadata' : 'Annotation';
                 celltypeTrendTarget = null;
+                // Region and Selection composition use the active exploration
+                // annotation, so a change discards their derived results.
+                invalidateAnnotationDEState(true);
+                invalidateGroupDEState(true);
+                selectionWelchRevision += 1;
+                selectionWelchCache.clear();
+                selectionWelchRunRequested = false;
+                selectionWelchRunning = false;
+                selectionWelchButtonHidden = false;
+                selectionComparisonLegendExpanded = false;
                 renderGenesDetailsWarnings();
                 renderColorAggregation();
                 renderCellTypeTrend();
@@ -22441,6 +22975,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 insightsTreeOpen = !insightsTreeOpen;
                 insightsTreeOpenBranch = null;
                 insightsTreeOpenCompareBranch = null;
+                insightsTreeOpenGenesBranch = null;
                 insightsTreeSelectedLeaf = null;
                 syncInsightsTabClasses();
             }});
@@ -22452,6 +22987,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 insightsTreeOpen = true;
                 insightsTreeOpenBranch = wasOpen ? null : topLevel;
                 insightsTreeOpenCompareBranch = null;
+                insightsTreeOpenGenesBranch = null;
                 insightsTreeSelectedLeaf = null;
                 activateInsightsTopLevelTab(topLevel);
             }});
@@ -22463,8 +22999,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 insightsTreeOpen = true;
                 insightsTreeOpenBranch = 'compare';
                 insightsTreeOpenCompareBranch = wasOpen ? null : branch;
+                insightsTreeOpenGenesBranch = null;
                 insightsTreeSelectedLeaf = null;
                 activateInsightsTopLevelTab('compare');
+            }});
+        }});
+        panel.querySelectorAll('[data-insights-tree-genes-branch]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const branch = button.getAttribute('data-insights-tree-genes-branch') || 'distribution';
+                const wasOpen = insightsTreeOpen && insightsTreeOpenBranch === 'genes' && insightsTreeOpenGenesBranch === branch;
+                insightsTreeOpen = true;
+                insightsTreeOpenBranch = 'genes';
+                insightsTreeOpenGenesBranch = wasOpen ? null : branch;
+                insightsTreeOpenCompareBranch = null;
+                insightsTreeSelectedLeaf = null;
+                activateInsightsTopLevelTab('genes');
             }});
         }});
         panel.querySelectorAll('[data-insights-tree-leaf]').forEach((button) => {{
@@ -22476,23 +23025,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 insightsTreeOpen = false;
                 insightsTreeOpenBranch = null;
                 insightsTreeOpenCompareBranch = null;
+                insightsTreeOpenGenesBranch = null;
                 activateInsightsSubtab(topLevel, subtab);
             }});
         }});
-        panel.querySelectorAll('[data-compare-mode]').forEach((button) => {{
-            button.addEventListener('click', () => {{
-                const mode = button.getAttribute('data-compare-mode') || 'quick';
-                insightsCompareMode = mode;
-                const subtab = mode === 'quick' ? 'groups' : (mode === 'precise' ? 'cell-de' : 'river');
-                activateInsightsSubtab('compare', subtab);
-            }});
-        }});
-
         const markerSearch = document.getElementById('marker-gene-search');
         markerSearch?.addEventListener('change', async () => {{
             const gene = getInsightsSelectedGene();
-            if (gene) await activateViewerGene(gene, {{ showErrors: true }});
-            else await activateViewerGene('', {{ showErrors: false }});
+            if (!gene) {{
+                await activateViewerGene('', {{ showErrors: false }});
+                return;
+            }}
+            if (isEmbeddedViewerGene(gene)) {{
+                await activateViewerGene(gene, {{ showErrors: true }});
+                return;
+            }}
+            // Balanced-rest results remain searchable even when their
+            // expression vectors were intentionally omitted from the HTML.
+            // Keep the selected term as a panel filter, without trying to load it.
+            renderActiveInsightsPanel();
         }});
         document.getElementById('marker-gene-search-clear')?.addEventListener('click', async () => {{
             const markerSearch = document.getElementById('marker-gene-search');
@@ -22577,23 +23128,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderClusterDE();
         }});
 
-        const riverLeftSelect = document.getElementById('river-left');
         const riverRightSelect = document.getElementById('river-right');
         const riverSwap = document.getElementById('river-swap');
         const riverExport = document.getElementById('river-export');
         syncRiverControls();
-        riverLeftSelect?.addEventListener('change', () => {{
-            riverLeftColumn = riverLeftSelect.value || null;
-            renderAnnotationRiver();
-        }});
         riverRightSelect?.addEventListener('change', () => {{
             riverRightColumn = riverRightSelect.value || null;
+            riverPlotSwapped = false;
             renderAnnotationRiver();
         }});
         riverSwap?.addEventListener('click', () => {{
-            const tmp = riverLeftColumn;
-            riverLeftColumn = riverRightColumn;
-            riverRightColumn = tmp;
+            riverPlotSwapped = !riverPlotSwapped;
             renderAnnotationRiver();
         }});
         riverExport?.addEventListener('click', (e) => {{
@@ -22764,17 +23309,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function syncRiverControls() {{
         const cols = getRiverColumns();
         if (!cols.length) return;
-        if (!riverLeftColumn || !cols.includes(riverLeftColumn)) {{
-            const meta = DATA.colors_meta?.[currentColor];
-            riverLeftColumn = (meta && !meta.is_continuous && cols.includes(currentColor)) ? currentColor : cols[0];
-        }}
+        const explorationColumn = explorationColorCol || currentColor;
+        const nextLeftColumn = cols.includes(explorationColumn) ? explorationColumn : cols[0];
+        if (riverLeftColumn !== nextLeftColumn) riverPlotSwapped = false;
+        riverLeftColumn = nextLeftColumn;
         if (!riverRightColumn || !cols.includes(riverRightColumn) || riverRightColumn === riverLeftColumn) {{
             riverRightColumn = cols.find((c) => c !== riverLeftColumn) || riverLeftColumn;
         }}
-        const left = document.getElementById('river-left');
         const right = document.getElementById('river-right');
-        if (left) left.innerHTML = renderGroupedAnnotationOptions(riverLeftColumn);
         if (right) right.innerHTML = renderGroupedAnnotationOptions(riverRightColumn);
+    }}
+
+    function getRiverPlotColumns() {{
+        return riverPlotSwapped
+            ? {{ left: riverRightColumn, right: riverLeftColumn }}
+            : {{ left: riverLeftColumn, right: riverRightColumn }};
     }}
 
     function computeAnnotationCrossTab(leftCol, rightCol) {{
@@ -22909,6 +23458,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const container = document.getElementById('river-plot');
         if (!container) return;
         const summaryEl = document.getElementById('river-summary');
+        const downsampleWarning = document.getElementById('river-downsample-warning');
+        if (downsampleWarning) {{
+            downsampleWarning.innerHTML = getOverviewDownsampleWarningHtml();
+        }}
         const cols = getRiverColumns();
         if (cols.length < 2) {{
             if (summaryEl) summaryEl.textContent = 'Need at least two categorical annotations to draw a river plot.';
@@ -22916,7 +23469,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return;
         }}
         syncRiverControls();
-        const leftCol = riverLeftColumn, rightCol = riverRightColumn;
+        const {{ left: leftCol, right: rightCol }} = getRiverPlotColumns();
         if (!leftCol || !rightCol || leftCol === rightCol) {{
             container.innerHTML = '<div class="agg-group-meta">Pick two different annotations.</div>';
             return;
@@ -22928,8 +23481,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return;
         }}
         if (summaryEl) {{
-            const missingNote = xtab.missing > 0 ? ` · ${{xtab.missing.toLocaleString()}} cells skipped (missing in one annotation)` : '';
-            summaryEl.innerHTML = `${{xtab.total.toLocaleString()}} cells · ${{xtab.leftCats.length}} ${{escapeHtml(formatMetadataLabel(leftCol))}} → ${{xtab.rightCats.length}} ${{escapeHtml(formatMetadataLabel(rightCol))}} categories${{missingNote}}. Click a node to color &amp; spotlight it.`;
+            summaryEl.innerHTML = '<div class="river-info-note">Click a node to color &amp; spotlight it.</div>';
         }}
         container.innerHTML = buildRiverSvg(xtab);
         bindRiverInteractions(container, xtab);
@@ -22954,12 +23506,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             alert('Pick two different annotations to export.');
             return;
         }}
-        const xtab = computeAnnotationCrossTab(riverLeftColumn, riverRightColumn);
+        const {{ left: leftCol, right: rightCol }} = getRiverPlotColumns();
+        const xtab = computeAnnotationCrossTab(leftCol, rightCol);
         if (!xtab || xtab.total === 0) {{
             alert('No correspondence data to export.');
             return;
         }}
-        const filename = `karospace-river-${{sanitizeFilenamePart(riverLeftColumn)}}-to-${{sanitizeFilenamePart(riverRightColumn)}}-${{getScreenshotTimestamp()}}.csv`;
+        const filename = `karospace-river-${{sanitizeFilenamePart(leftCol)}}-to-${{sanitizeFilenamePart(rightCol)}}-${{getScreenshotTimestamp()}}.csv`;
         downloadTextFile(buildRiverCsv(xtab), filename, 'text/csv;charset=utf-8');
     }}
 
@@ -23052,6 +23605,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderSamplesInsights() {{
         const container = document.getElementById('samples-panel');
         if (!container) return;
+        const downsampleWarningHtml = getOverviewDownsampleWarningHtml();
 
         const metadataCols = Object.entries(DATA.metadata_filters || {{}})
             .filter(([, values]) => Array.isArray(values) && values.length)
@@ -23061,7 +23615,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return meta && !meta.is_continuous && (meta.categories || []).length > 0;
         }});
         if (!availableCols.length) {{
-            container.innerHTML = '<div class="agg-group-meta">No categorical annotation columns available.</div>';
+            container.innerHTML = downsampleWarningHtml
+                + '<div class="agg-group-meta">No categorical annotation columns available.</div>';
             return;
         }}
 
@@ -23072,21 +23627,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const colorCol = explorationColorCol;
         const comp = computeSectionComposition(colorCol);
         if (!comp || !comp.rows.length) {{
-            container.innerHTML = '<div class="agg-group-meta">No composition data available.</div>';
+            container.innerHTML = downsampleWarningHtml
+                + '<div class="agg-group-meta">No composition data available.</div>';
             return;
         }}
+
+        const sectionMetadataOptions = getExplorationColorOptions().metadata;
+        const validSortValues = new Set(sectionMetadataOptions.map((entry) => entry.value));
+        if (!validSortValues.has(samplesMetaSortBy)) samplesMetaSortBy = '';
 
         let rows = comp.rows.slice();
         if (samplesMetaSortBy) {{
             const sortColumn = String(samplesMetaSortBy);
             const getSortValue = (row) => {{
-                if (sortColumn.startsWith(SECTION_METADATA_COLOR_PREFIX)) {{
-                    return String(row.metadata[sortColumn.slice(SECTION_METADATA_COLOR_PREFIX.length)] ?? '');
-                }}
-                const values = getSectionColorValues(sectionById.get(row.id), sortColumn);
-                const meta = DATA.colors_meta?.[sortColumn];
-                const first = Array.from(values || []).find((value) => Number.isFinite(Number(value)) && Number(value) >= 0);
-                return first === undefined ? '' : String(getCategoricalValueNameFromRaw(meta, first) ?? '');
+                const metadataColumn = sortColumn.slice(SECTION_METADATA_COLOR_PREFIX.length);
+                return String(row.metadata?.[metadataColumn] ?? '');
             }};
             rows.sort(function(a, b) {{
                 const va = getSortValue(a);
@@ -23100,10 +23655,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ? buildSamplesHeatmapSvg(rows, categories, colorCol)
             : buildSamplesBarsSvg(rows, categories, colorCol);
 
-        const metaKeys = new Set();
-        comp.rows.forEach(function(r) {{ Object.keys(r.metadata).forEach(function(k) {{ metaKeys.add(k); }}); }});
-        const sortOptions = '<option value="">— original order —</option>'
-            + renderGroupedAnnotationOptions(samplesMetaSortBy);
+        const sortOptions = renderSectionMetadataOptions(
+            samplesMetaSortBy,
+            true,
+            '— original order —'
+        );
         const maxLeg = Math.min(categories.length, 16);
         const legendHtml = categories.slice(0, maxLeg).map(function(cat, idx) {{
             return '<span class="samples-legend-item"><span class="samples-legend-swatch" style="background:' + getCategoryColor(idx, colorCol) + '"></span>' + escapeHtml(cat) + '</span>';
@@ -23115,7 +23671,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="cluster-de-select-row">
                         <div>
                             <label>Sort sections by</label>
-                            <select id="samples-sort-by">${{sortOptions}}</select>
+                            <select id="samples-sort-by"${{sectionMetadataOptions.length ? '' : ' disabled'}}>${{sortOptions}}</select>
                         </div>
                     </div>
                     <div class="samples-view-toggle samples-view-icon-toggle" role="group" aria-label="Section composition view">
@@ -23128,6 +23684,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
             </div>
+            ${{downsampleWarningHtml}}
             <div class="gene-distribution-summary">Section composition for <strong>${{escapeHtml(formatMetadataLabel(colorCol))}}</strong>${{renderCalcInfoButton('samples_composition')}}</div>
             <div class="samples-chart-container">
                 ${{svgHtml}}
@@ -23349,8 +23906,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderGeneSubtabViewToggleButtons(subtab) {{
         const mode = getGeneSubtabView(subtab);
         return `
-            <button class="legend-btn ${{mode === 'list' ? 'active' : ''}}" data-gene-subtab-view="list" type="button">List</button>
-            <button class="legend-btn ${{mode === 'graph' ? 'active' : ''}}" data-gene-subtab-view="graph" type="button">Graph</button>
+            <button class="legend-btn icon-only ${{mode === 'list' ? 'active' : ''}}" data-gene-subtab-view="list" type="button" title="Show list" aria-label="Show list" aria-pressed="${{mode === 'list'}}">
+                <svg class="lucide lucide-list-sort-descending" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12H3"></path><path d="M3 5h18"></path><path d="M9 19H3"></path></svg>
+            </button>
+            <button class="legend-btn icon-only ${{mode === 'graph' ? 'active' : ''}}" data-gene-subtab-view="graph" type="button" title="Show graph" aria-label="Show graph" aria-pressed="${{mode === 'graph'}}">
+                <svg class="lucide lucide-chart-candlestick" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5v4"></path><rect x="7" y="9" width="4" height="6" rx="1"></rect><path d="M9 15v2"></path><path d="M17 3v2"></path><rect x="15" y="5" width="4" height="8" rx="1"></rect><path d="M17 13v3"></path><path d="M3 3v16a2 2 0 0 0 2 2h16"></path></svg>
+            </button>
         `;
     }}
 
@@ -23397,23 +23958,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function isDEResultGeneSignificant(result, gene) {{
         if (!result || result.available === false || !gene) return false;
         const genes = Array.isArray(result.genes) ? result.genes : [];
-        const log2fc = Array.isArray(result.log2foldchanges)
-            ? result.log2foldchanges
-            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
-        const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
-        const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(result.padj_cutoff, 0.05), 0), 1);
-        const log2fcCutoff = normalizePositiveThreshold(result.log2fc_cutoff, 0.5);
         const target = String(gene);
         for (let i = 0; i < genes.length; i++) {{
             if (String(genes[i]) !== target) continue;
-            const fc = Number(log2fc[i]);
-            const padj = Number(pvalsAdj[i]);
-            return Number.isFinite(fc)
-                && Number.isFinite(padj)
-                && padj <= padjCutoff
-                && fc >= log2fcCutoff;
+            return doesClusterDEIndexPassThresholds(result, i, 'positive');
         }}
         return false;
+    }}
+
+    function getSignificantDEResultGeneSet(result) {{
+        const significant = new Set();
+        if (!result || result.available === false) return significant;
+        const genes = Array.isArray(result.genes) ? result.genes : [];
+        genes.forEach((gene, index) => {{
+            if (doesClusterDEIndexPassThresholds(result, index, 'positive')) {{
+                significant.add(String(gene));
+            }}
+        }});
+        return significant;
     }}
 
     function computeCategoryGeneMeans(colorCol, genes, categories) {{
@@ -23467,7 +24029,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function computeClusterGeneMeanMatrix(colorCol, genes, categories) {{
-        const payload = getClusterGeneMeansColumn(colorCol);
+        const payload = getPseudobulkGeneMeansPayload(colorCol) || getClusterGeneMeansColumn(colorCol);
         if (!payload) return null;
         const meanGenes = payload.genes;
         const colData = payload.column;
@@ -23483,10 +24045,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
-    function getGeneDEHeatmapData(colorCol, selectedGene = '') {{
+    function getGeneDEHeatmapData(colorCol, selectedGene = '', topN = 3) {{
         const colorMeta = DATA.colors_meta?.[colorCol];
         if (!colorMeta || colorMeta.is_continuous) return null;
-        const meanPayload = getClusterGeneMeansColumn(colorCol);
+        const meanPayload = getPseudobulkGeneMeansPayload(colorCol) || getClusterGeneMeansColumn(colorCol);
         if (!meanPayload) return null;
         const meanGeneSet = new Set(meanPayload.genes);
         const meanGeneByLower = new Map(meanPayload.genes.map(gene => [String(gene).toLowerCase(), gene]));
@@ -23507,27 +24069,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const fullGeneSet = new Set();
         const visibleGeneSet = new Set();
         const deStars = new Set();
+        const limit = Math.max(1, Math.min(10000, Number(topN) || 3));
         categories.forEach((category) => {{
-            getMarkerGenesForColorCategory(colorCol, category).forEach((gene) => {{
-                const token = String(gene || '').trim();
-                if (!token) return;
-                const meanToken = resolveMeanGeneToken(token);
-                if (!meanToken) return;
-                fullGeneSet.add(meanToken);
-                if (!selected || meanToken === selectedMeanGene || token === selected || resolveCanonicalGeneName(token) === selected) visibleGeneSet.add(meanToken);
-            }});
+            let categoryVisible = 0;
             getRestOrFallbackDEResults(colorCol, category).forEach((comparison) => {{
                 if (comparison.reference !== '__rest__') return;
                 const result = comparison.result || {{}};
+                const significantGenes = getSignificantDEResultGeneSet(result);
                 (Array.isArray(result.genes) ? result.genes : []).forEach((gene) => {{
                     const token = String(gene || '').trim();
                     if (!token) return;
                     const meanToken = resolveMeanGeneToken(token);
                     if (!meanToken) return;
-                    if (isDEResultGeneSignificant(result, token)) {{
+                    if (significantGenes.has(token)) {{
                         fullGeneSet.add(meanToken);
-                        if (!selected || meanToken === selectedMeanGene || token === selected || resolveCanonicalGeneName(token) === selected) visibleGeneSet.add(meanToken);
                         deStars.add(`${{meanToken}}\u0000${{category}}`);
+                        if (!selected && categoryVisible < limit) {{
+                            visibleGeneSet.add(meanToken);
+                            categoryVisible += 1;
+                        }}
                     }}
                 }});
             }});
@@ -23537,7 +24097,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             visibleGeneSet.add(selectedMeanGene);
         }}
         const fullGenes = Array.from(fullGeneSet);
-        const genes = Array.from(visibleGeneSet).slice(0, selected ? 1 : 50);
+        const genes = Array.from(visibleGeneSet);
         if (!genes.length || !fullGenes.length) {{
             return {{ categories, genes: [], means: [], zscores: [], deStars, source: 'cluster_gene_means' }};
         }}
@@ -23589,7 +24149,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const z = data.zscores[rowIdx]?.[colIdx];
                 const mean = data.means[rowIdx]?.[colIdx];
                 const star = data.deStars.has(`${{gene}}\u0000${{category}}`);
-                parts.push(`<rect x="${{x}}" y="${{y}}" width="${{cellW - 1}}" height="${{cellH - 1}}" fill="${{heatmapZColor(z)}}" stroke="var(--input-bg)" data-volcano-gene="${{escapeHtml(gene)}}" data-tooltip-title="${{escapeHtml(gene)}}" data-tooltip-line1="Category: ${{escapeHtml(formatCategoryLabel(colorCol, category))}}" data-tooltip-line2="Mean expression: ${{escapeHtml(Number.isFinite(mean) ? formatScaleNumber(mean) : 'n/a')}}" data-tooltip-line3="Z-score: ${{escapeHtml(Number.isFinite(z) ? z.toFixed(3) : 'n/a')}}" data-tooltip-line4="${{star ? 'DE vs rest' : 'Not DE vs rest'}}"/>`);
+                parts.push(`<rect x="${{x}}" y="${{y}}" width="${{cellW - 1}}" height="${{cellH - 1}}" fill="${{heatmapZColor(z)}}" stroke="var(--input-bg)" data-volcano-gene="${{escapeHtml(gene)}}" data-tooltip-title="${{escapeHtml(gene)}}" data-tooltip-line1="Category: ${{escapeHtml(formatCategoryLabel(colorCol, category))}}" data-tooltip-line2="Mean expression: ${{escapeHtml(Number.isFinite(mean) ? formatScaleNumber(mean) : 'n/a')}}" data-tooltip-line3="Z-score: ${{escapeHtml(Number.isFinite(z) ? z.toFixed(3) : 'n/a')}}" data-tooltip-line4="${{star ? 'DE vs balanced rest' : 'Not DE vs balanced rest'}}"/>`);
                 if (star) {{
                     parts.push(`<text x="${{(x + cellW / 2).toFixed(1)}}" y="${{(y + cellH / 2 + 4).toFixed(1)}}" text-anchor="middle" font-size="11" fill="#111">*</text>`);
                 }}
@@ -23677,6 +24237,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return all.map((pt, idx) => `${{idx === 0 ? 'M' : 'L'}}${{pt[0].toFixed(1)}},${{pt[1].toFixed(1)}}`).join(' ') + ' Z';
         }}
         parts.push(`<svg class="gene-graph-svg cluster-de-qc-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        const axisY = H - mb;
+        parts.push(`<line x1="${{ml}}" y1="${{axisY}}" x2="${{W - mr}}" y2="${{axisY}}" stroke="var(--border-color)"/>`);
         rows.forEach((row, idx) => {{
             const y = mt + idx * rowH + rowH / 2;
             const label = String(row.cat);
@@ -23692,6 +24254,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         [minV, (minV + maxV) / 2, maxV].forEach((tick) => {{
             const x = xs(tick);
+            parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{axisY - 4}}" x2="${{x.toFixed(1)}}" y2="${{axisY + 4}}" stroke="var(--border-color)"/>`);
             parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 12}}" text-anchor="middle">${{formatScaleNumber(tick)}}</text>`);
         }});
         parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 1}}" text-anchor="middle">expression</text>`);
@@ -23794,14 +24357,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const deForColor = (DATA.pseudobulk_de || {{}})[markerColorCol] || null;
         const hasDEForColor = !!(deForColor && typeof deForColor === 'object' && Object.keys(deForColor).some((key) => !String(key).startsWith('_')));
         const groupMarkers = markers[markerColorCol] || {{}};
-        if (!hasDEForColor && Object.keys(groupMarkers).length === 0) {{
-            const availableColors = getAvailableMarkerGeneColors();
-            const extra = availableColors.length
-                ? ` Available for: ${{availableColors.join(', ')}}.`
-                : ' No pseudobulk DE genes were embedded in this viewer.';
+        if (!hasDEForColor) {{
             if (exportBtn) exportBtn.disabled = true;
-            container.innerHTML = toggleHtml + `<div class="marker-empty">No pseudobulk DE genes available for this color.${{escapeHtml(extra)}}</div>`;
-            bindGeneSubtabViewToggle(container, subtab, renderMarkerGenes);
+            container.innerHTML = '';
             return;
         }}
         if (exportBtn) {{
@@ -23826,10 +24384,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         if (viewMode === 'graph') {{
-            const heatmapData = getGeneDEHeatmapData(markerColorCol, selectedGene);
-            container.innerHTML = toggleHtml + buildGeneDEHeatmap(heatmapData, markerColorCol);
+            const heatmapData = getGeneDEHeatmapData(markerColorCol, selectedGene, markerHeatmapTopN);
+            const heatmapControls = selectedGene
+                ? ''
+                : `<div class="marker-heatmap-controls"><label for="marker-heatmap-topn">Top N genes per category</label><input id="marker-heatmap-topn" type="number" min="1" max="10000" step="1" value="${{Math.max(1, Math.min(10000, Number(markerHeatmapTopN) || 3))}}" aria-label="Top N marker genes per category to display"></div>`;
+            container.innerHTML = heatmapControls + toggleHtml + buildGeneDEHeatmap(heatmapData, markerColorCol);
             bindGeneSubtabViewToggle(container, subtab, renderMarkerGenes);
             bindClusterDEPlotInteractions(container, renderMarkerGenes);
+            container.querySelector('#marker-heatmap-topn')?.addEventListener('change', () => {{
+                const input = container.querySelector('#marker-heatmap-topn');
+                markerHeatmapTopN = Math.max(1, Math.min(10000, Number(input?.value) || 3));
+                renderMarkerGenes();
+            }});
             return;
         }}
 
@@ -23853,15 +24419,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (!hasMatch) return '';
             }}
             const geneButtons = genes.length
-                ? genes.map((entry) => renderGeneTokenButton(entry.raw, {{
-                    allowUnknown: true,
-                    isActive: !!entry.canonical && entry.canonical === currentGene,
-                    isSearchActive: !!selectedGene && (entry.raw === selectedGene || entry.canonical === selectedGene),
-                    showMeta: false,
-                    title: entry.canonical
-                        ? 'Load pseudobulk DE gene into the viewer'
-                        : 'DE gene name only; this gene was not embedded in the viewer',
-                }})).join('')
+                ? genes.map((entry) => {{
+                    const embedded = isEmbeddedViewerGene(entry.raw);
+                    return renderGeneTokenButton(entry.raw, {{
+                        allowUnknown: true,
+                        disableActivation: !embedded,
+                        isActive: embedded && !!entry.canonical && entry.canonical === currentGene,
+                        isSearchActive: !!selectedGene && (entry.raw === selectedGene || entry.canonical === selectedGene),
+                        showMeta: false,
+                        title: embedded
+                            ? 'Load pseudobulk DE gene into the viewer'
+                            : 'This category-vs-balanced-rest gene is not embedded in the HTML viewer',
+                    }});
+                }}).join('')
                 : '<div class="marker-empty">No pseudobulk DE genes found.</div>';
             const isSpotlit = linkedSpotlightEnabled && spotlightPinnedCategory === key;
             return `
@@ -24150,10 +24720,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
+    function setInsightsGeneSubtabContentVisibility(subtab, visible) {{
+        const content = document.getElementById(`genes-tab-${{subtab}}-content`);
+        if (content) content.style.display = visible ? '' : 'none';
+    }}
+
     function renderGeneDistributionInsights() {{
         const container = document.getElementById('gene-distribution-panel');
         if (!container) return;
         const subtab = 'distribution';
+        const selectedGene = getInsightsSelectedGene();
+        if (!selectedGene) {{
+            setInsightsGeneSubtabContentVisibility(subtab, false);
+            container.innerHTML = '';
+            return;
+        }}
+        setInsightsGeneSubtabContentVisibility(subtab, true);
         const toggleHtml = renderGeneSubtabViewToggle(subtab);
         const isGraphView = getGeneSubtabView(subtab) === 'graph';
         const exportBtn = document.getElementById('gene-distribution-export-svg');
@@ -24232,15 +24814,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
             </div>
         `;
-        const selectedGene = getInsightsSelectedGene();
-
-        if (!selectedGene) {{
-            container.innerHTML = toggleHtml + controlsHtml + '<div class="marker-empty">Select a gene to see per-group expression stats.</div>';
-            bindGeneSubtabViewToggle(container, subtab, renderGeneDistributionInsights);
-            wireGeneDistributionInputs(container);
-            return;
-        }}
-
         const stats = computeGeneDistributionStats(
             selectedGene,
             spec,
@@ -24285,12 +24858,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </tr>
         `).join('');
 
-        const scopeLabel = spec.kind === 'meta' ? 'sample metadata' : 'cell annotation';
         const restrictLabel = activeRestrict
             ? ` \u2014 restricted to ${{escapeHtml(formatMetadataLabel(restrictSpec.key))}} = <strong>${{escapeHtml(String(geneDistributionRestrictValue))}}</strong>`
             : '';
         const tableHtml = `
-            <div class="gene-distribution-summary">Expression of <strong>${{escapeHtml(selectedGene)}}</strong> across ${{escapeHtml(formatMetadataLabel(spec.key))}} (${{scopeLabel}}, ${{stats.length}} groups)${{restrictLabel}}</div>
+            <div class="gene-distribution-summary">Expression of <strong>${{escapeHtml(selectedGene)}}</strong> across ${{escapeHtml(formatMetadataLabel(spec.key))}}${{restrictLabel}}</div>
             <table class="gene-distribution-table">
                 <thead>
                     <tr>
@@ -24306,7 +24878,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         `;
 
         const graphHtml = `
-            <div class="gene-distribution-summary">Expression of <strong>${{escapeHtml(selectedGene)}}</strong> across ${{escapeHtml(formatMetadataLabel(spec.key))}} (${{scopeLabel}}, ${{stats.length}} groups)${{restrictLabel}}</div>
+            <div class="gene-distribution-summary">Expression of <strong>${{escapeHtml(selectedGene)}}</strong> across ${{escapeHtml(formatMetadataLabel(spec.key))}}${{restrictLabel}}</div>
             ${{buildGeneDistributionBoxplot(sorted, spec)}}
         `;
         container.innerHTML = toggleHtml + controlsHtml + (isGraphView ? graphHtml : tableHtml);
@@ -24315,10 +24887,41 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (isGraphView) bindClusterDEPlotInteractions(container, renderGeneDistributionInsights);
     }}
 
+    function getPseudobulkGeneMeansPayload(colorCol) {{
+        const summary = (DATA.pseudobulk_de || {{}})[colorCol]?._summary?.category_gene_means;
+        const summaryGenes = Array.isArray(summary?.genes) ? summary.genes.map(gene => String(gene)) : [];
+        if (summaryGenes.length && summary?.means) {{
+            return {{
+                genes: summaryGenes,
+                column: {{
+                    categories: (summary.categories || Object.keys(summary.means || {{}})).map(category => String(category)),
+                    means: summary.means || {{}},
+                    background: summary.background || [],
+                    n_cells: summary.n_cells || {{}},
+                    source: summary.source || 'pseudobulk_de',
+                }},
+            }};
+        }}
+        // Compatibility fallback for viewers exported before category means were
+        // stored alongside the balanced-rest pseudobulk results.
+        const data = DATA.cluster_gene_means;
+        const genes = Array.isArray(data?.genes) ? data.genes.map(gene => String(gene)) : [];
+        const column = data?.columns?.[colorCol];
+        return genes.length && column?.means ? {{ genes, column }} : null;
+    }}
+
     function renderPseudobulkGeneMeans() {{
         const container = document.getElementById('pseudobulk-gene-means');
         if (!container) return;
         const subtab = 'means';
+        const selectedCol = explorationColorCol || currentColor || '';
+        const geneRaw = getInsightsSelectedGene();
+        if (!hasPseudobulkDEForAnnotation(selectedCol) || !geneRaw) {{
+            setInsightsGeneSubtabContentVisibility(subtab, false);
+            container.innerHTML = '';
+            return;
+        }}
+        setInsightsGeneSubtabContentVisibility(subtab, true);
         const toggleHtml = renderGeneSubtabViewToggle(subtab);
         const isGraphView = getGeneSubtabView(subtab) === 'graph';
         const exportBtn = document.getElementById('gene-means-export-svg');
@@ -24331,32 +24934,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 downloadGeneGraphSvg('pseudobulk-gene-means', `karospace-gene-means-${{gene}}`, 'No means graph is available to export.');
             }};
         }}
-        const data = DATA.cluster_gene_means;
-        const columns = data?.columns || {{}};
-        const genes = Array.isArray(data?.genes) ? data.genes.map(g => String(g)) : [];
-        const availableCols = Object.keys(columns).filter(col => columns[col]?.means);
-        if (!genes.length || !availableCols.length) {{
+        const payload = getPseudobulkGeneMeansPayload(selectedCol);
+        if (!payload) {{
             container.innerHTML = toggleHtml + '<div class="marker-empty">No pseudobulk-derived category means are available.</div>';
             bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
             return;
         }}
-
-        const selectedCol = explorationColorCol || currentColor || '';
-        if (!selectedCol || !availableCols.includes(selectedCol)) {{
-            const selectedLabel = selectedCol ? formatMetadataLabel(selectedCol) : 'the selected Exploration annotation';
-            const availableLabel = availableCols.length
-                ? ` Available colors with means: ${{availableCols.map(col => formatMetadataLabel(col)).join(', ')}}.`
-                : '';
-            container.innerHTML = toggleHtml + `<div class="marker-empty">No pseudobulk-derived category means are available for ${{escapeHtml(selectedLabel)}}.${{escapeHtml(availableLabel)}}</div>`;
-            bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
-            return;
-        }}
-        const geneRaw = getInsightsSelectedGene();
-        if (!geneRaw) {{
-            container.innerHTML = toggleHtml + '<div class="marker-empty">Select a gene to view pseudobulk-derived category means.</div>';
-            bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
-            return;
-        }}
+        const genes = payload.genes;
         if (!genes.includes(geneRaw)) {{
             container.innerHTML = toggleHtml + '<div class="marker-empty">No pseudobulk-derived category means are available for the selected gene.</div>';
             bindGeneSubtabViewToggle(container, subtab, renderPseudobulkGeneMeans);
@@ -24364,7 +24948,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         const selectedGene = geneRaw;
         const geneIdx = genes.indexOf(selectedGene);
-        const colData = columns[selectedCol] || {{}};
+        const colData = payload.column;
         const categories = (colData.categories || Object.keys(colData.means || {{}})).map(cat => String(cat));
         const background = Number(colData.background?.[geneIdx] ?? NaN);
         const meanRows = categories.map((category) => {{
@@ -24503,14 +25087,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         return `
             <div class="gene-token-grid">
-                ${{entries.map((entry) => renderGeneTokenButton(entry.raw, {{
-                    allowUnknown: true,
-                    isActive: !!entry.canonical && entry.canonical === currentGene,
-                    showMeta: false,
-                    title: entry.canonical
-                        ? activateTitle
-                        : 'Gene name only; this gene was not embedded in the viewer',
-                }})).join('')}}
+                ${{entries.map((entry) => {{
+                    const embedded = isEmbeddedViewerGene(entry.raw);
+                    return renderGeneTokenButton(entry.raw, {{
+                        allowUnknown: true,
+                        disableActivation: !embedded,
+                        isActive: embedded && !!entry.canonical && entry.canonical === currentGene,
+                        showMeta: false,
+                        title: embedded
+                            ? activateTitle
+                            : 'This DE gene is shown in the table but its expression vector was not embedded',
+                    }});
+                }}).join('')}}
             </div>
         `;
     }}
@@ -24587,37 +25175,36 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function renderComparisonMarkerSummary(colorCol, sourceCategory, referenceCategory) {{
-        const sourceMarkers = getMarkerGeneEntries(colorCol, sourceCategory, 6);
-        const referenceMarkers = getMarkerGeneEntries(colorCol, referenceCategory, 6);
-        const overlap = getMarkerOverlapEntries(colorCol, sourceCategory, referenceCategory, 6);
-        if (!sourceMarkers.length && !referenceMarkers.length) {{
-            return `
-                <div class="agg-group">
-                    <div class="agg-group-title">Marker Summary</div>
-                    <div class="agg-group-meta">Pseudobulk DE genes were not precomputed for this annotation.</div>
-                </div>
-            `;
+        const result = getPairwiseClusterDEResult(colorCol, sourceCategory, referenceCategory);
+        if (!result || result.available === false) {{
+            return '';
         }}
-
-        return `
+        const genes = Array.isArray(result.genes) ? result.genes : [];
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
+        const significantIndices = getClusterDEColoredIndices(result);
+        const sourceMarkerEntries = normalizeGeneEntries(
+            significantIndices
+                .filter((index) => Number(log2fc[index]) > 0)
+                .map((index) => genes[index])
+        );
+        const referenceMarkerEntries = normalizeGeneEntries(
+            significantIndices
+                .filter((index) => Number(log2fc[index]) < 0)
+                .map((index) => genes[index])
+        );
+        const renderMarkerGroup = (entries, enrichedCategory) => `
             <div class="agg-group">
-                <div class="agg-group-title">Marker Summary</div>
-                <div class="agg-group-meta">Top pseudobulk DE genes for each category. Click a gene to load it when available.</div>
-            </div>
-            <div class="agg-group">
-                <div class="agg-group-title">${{renderAggCategoryChip(colorCol, sourceCategory)}} DE genes</div>
-                ${{renderComparisonGeneTokenGrid(sourceMarkers, 'No pseudobulk DE genes available for Category A.', 'Load Category A DE gene into the viewer')}}
-            </div>
-            <div class="agg-group">
-                <div class="agg-group-title">${{renderAggCategoryChip(colorCol, referenceCategory)}} DE genes</div>
-                ${{renderComparisonGeneTokenGrid(referenceMarkers, 'No pseudobulk DE genes available for Category B.', 'Load Category B DE gene into the viewer')}}
-            </div>
-            <div class="agg-group">
-                <div class="agg-group-title">Marker Overlap</div>
-                <div class="agg-group-meta">Shared names across the top marker lists.</div>
-                ${{renderComparisonGeneTokenGrid(overlap, 'No shared top DE genes found.', 'Load shared DE gene into the viewer')}}
+                <div class="agg-group-title">
+                    <span class="agg-group-title-main">${{renderAggCategoryChip(colorCol, enrichedCategory)}}</span>
+                    <span class="agg-group-title-actions"><span class="agg-chip agg-count-chip">${{entries.length.toLocaleString()}} genes</span></span>
+                </div>
+                ${{renderComparisonGeneTokenGrid(entries, 'No genes pass the current adjusted p-value and log\u2082FC thresholds in this direction.', 'Load pseudobulk marker into the viewer')}}
             </div>
         `;
+        return renderMarkerGroup(sourceMarkerEntries, sourceCategory)
+            + renderMarkerGroup(referenceMarkerEntries, referenceCategory);
     }}
 
     function renderInteractionComparisonCard(colorCol, sourceCategory, targetCategory) {{
@@ -24675,9 +25262,46 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return Number.isFinite(numeric) && numeric >= 0 ? numeric : fallback;
     }}
 
-    function getClusterDESignificanceClass(log2fcValue, padjValue, padjCutoff, log2fcCutoff) {{
-        if (!Number.isFinite(log2fcValue) || !Number.isFinite(padjValue)) return 'grey';
-        if (padjValue > padjCutoff || Math.abs(log2fcValue) < log2fcCutoff) return 'grey';
+    function getClusterDEMinPctCutoff(result) {{
+        const raw = normalizePositiveThreshold(result?.min_pct_expressed, 0);
+        return raw > 1 ? raw / 100 : raw;
+    }}
+
+    function doesClusterDEIndexPassPct(result, idx) {{
+        const minPct = getClusterDEMinPctCutoff(result);
+        if (minPct <= 0) return true;
+        const pctSource = Array.isArray(result?.pct_source) ? result.pct_source : [];
+        const pctReference = Array.isArray(result?.pct_reference) ? result.pct_reference : [];
+        const sourceValue = Number(pctSource[idx]);
+        const referenceValue = Number(pctReference[idx]);
+        return (Number.isFinite(sourceValue) && sourceValue >= minPct)
+            || (Number.isFinite(referenceValue) && referenceValue >= minPct);
+    }}
+
+    function doesClusterDEIndexPassThresholds(result, idx, direction = 'both') {{
+        if (!result || result.available === false) return false;
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
+        const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
+        const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(result.padj_cutoff, 0.05), 0), 1);
+        const log2fcCutoff = normalizePositiveThreshold(result.log2fc_cutoff, 0.5);
+        const fc = Number(log2fc[idx]);
+        const padj = Number(pvalsAdj[idx]);
+        if (!Number.isFinite(fc) || !Number.isFinite(padj)) return false;
+        if (!doesClusterDEIndexPassPct(result, idx)) return false;
+        if (padj > padjCutoff) return false;
+        if (direction === 'positive') return fc >= log2fcCutoff;
+        if (direction === 'negative') return fc <= -log2fcCutoff;
+        return Math.abs(fc) >= log2fcCutoff;
+    }}
+
+    function getClusterDESignificanceClass(result, idx) {{
+        if (!doesClusterDEIndexPassThresholds(result, idx)) return 'grey';
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
+        const log2fcValue = Number(log2fc[idx]);
         return log2fcValue > 0 ? 'red' : 'blue';
     }}
 
@@ -24715,11 +25339,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             + '</span>';
     }}
 
-    function wrapClusterDEPlot(title, meta, svgText) {{
+    function wrapClusterDEPlot(title, meta, svgText, showCalcInfo = true, exportKey = '') {{
         if (!svgText) return '';
+        const exportLabel = exportKey === 'dotplot' ? 'dot plot' : title;
+        const exportButton = exportKey
+            ? `<button class="icon-btn cluster-de-plot-export" type="button" data-cluster-de-download-plot="${{escapeHtml(exportKey)}}" title="Download ${{escapeHtml(exportLabel)}} as SVG" aria-label="Download ${{escapeHtml(exportLabel)}} as SVG">${{LEGEND_EXPORT_ICON}}</button>`
+            : '';
         return `
-            <div class="cluster-de-plot-panel">
-                <div class="cluster-de-plot-title">${{escapeHtml(title)}}${{renderCalcInfoButton('de_genes')}}</div>
+            <div class="cluster-de-plot-panel"${{exportKey ? ` data-cluster-de-plot="${{escapeHtml(exportKey)}}"` : ''}}>
+                <div class="cluster-de-plot-title"><span>${{escapeHtml(title)}}</span>${{showCalcInfo ? renderCalcInfoButton('de_genes') : ''}}${{exportButton}}</div>
                 ${{meta ? `<div class="cluster-de-plot-meta">${{escapeHtml(meta)}}</div>` : ''}}
                 ${{svgText}}
                 <div class="volcano-tooltip"></div>
@@ -24727,10 +25355,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         `;
     }}
 
+    function wrapClusterDEVolcanoPlot(volcanoHtml) {{
+        if (!volcanoHtml) return '';
+        return `
+            <div class="cluster-de-plot-panel cluster-de-volcano-panel" data-cluster-de-plot="volcano">
+                <div class="cluster-de-plot-title"><span>Volcano</span>${{renderCalcInfoButton('de_genes')}}</div>
+                <div class="cluster-de-volcano-container">${{volcanoHtml}}</div>
+            </div>
+        `;
+    }}
+
     function buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5) {{
         if (!genes.length) return '';
         const rawPThreshold = 0.05;
-        const W = 390, H = 190, ml = 44, mr = 14, mt = 10, mb = 30;
+        const W = 390, H = 180, ml = 38, mr = 10, mt = 8, mb = 24;
         const iw = W - ml - mr, ih = H - mt - mb;
         const xValues = genes.map((_, i) => {{
             const value = Number(baseMean[i]);
@@ -24770,7 +25408,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const padjDisplay = formatAdjustedPValue(padj);
             const baseDisplay = formatScaleNumber(xValues[i]);
             const color = isRawSignificant ? '#2f9e67' : 'var(--border-color)';
-            parts.push('<circle class="volcano-dot" cx="' + xs(xValues[i]).toFixed(1) + '" cy="' + ys(fc).toFixed(1) + '" r="2.8" fill="' + color + '" fill-opacity="0.78" data-volcano-gene="' + escapeHtml(gene) + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-p="' + rawPDisplay + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="baseMean: ' + escapeHtml(baseDisplay) + '" data-tooltip-line2="logFC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line3="pvalue: ' + escapeHtml(rawPDisplay) + '" data-tooltip-line4="adj. p: ' + escapeHtml(padjDisplay) + '"/>');
+            const embedded = isEmbeddedViewerGene(gene);
+            const extraLine = embedded ? '' : '" data-tooltip-line5="Expression vector not embedded"';
+            parts.push('<circle class="volcano-dot" cx="' + xs(xValues[i]).toFixed(1) + '" cy="' + ys(fc).toFixed(1) + '" r="2.8" fill="' + color + '" fill-opacity="0.78" data-volcano-gene="' + escapeHtml(gene) + '" data-gene-embedded="' + (embedded ? 'true' : 'false') + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-p="' + rawPDisplay + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="baseMean: ' + escapeHtml(baseDisplay) + '" data-tooltip-line2="logFC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line3="pvalue: ' + escapeHtml(rawPDisplay) + '" data-tooltip-line4="adj. p: ' + escapeHtml(padjDisplay) + extraLine + '"/>');
         }});
         parts.push('</svg>');
         const summary = [
@@ -24779,7 +25419,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             buildClusterDESummaryItem('p >= 0.05', 'var(--border-color)', counts.grey),
             '</div>',
         ].join('');
-        return wrapClusterDEPlot('MA Plot', 'Mean expression vs log fold-change', parts.join('') + summary);
+        return wrapClusterDEPlot('MA Plot', 'Mean expression vs log fold-change', parts.join('') + summary, false, 'ma-plot');
     }}
 
     function buildPseudobulkPCAPlot(sampleInfo, colorCol) {{
@@ -24791,7 +25431,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const nCells = Array.isArray(sampleInfo.n_cells) ? sampleInfo.n_cells : [];
         const librarySizes = Array.isArray(sampleInfo.library_size) ? sampleInfo.library_size : [];
         const uniqueGroups = Array.from(new Set(groups.map(g => String(g))));
-        const W = 390, H = 210, ml = 42, mr = 14, mt = 12, mb = 30;
+        const W = 390, H = 198, ml = 38, mr = 10, mt = 10, mb = 24;
         const iw = W - ml - mr, ih = H - mt - mb;
         const xsRaw = points.map(p => Number(p?.[0])).filter(Number.isFinite);
         const ysRaw = points.map(p => Number(p?.[1])).filter(Number.isFinite);
@@ -24830,7 +25470,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">' + escapeHtml(yLabel) + '</text>');
         const legend = uniqueGroups.slice(0, 6).map((group) => buildClusterDESummaryItem(group, groupColor(group))).join('');
         parts.push('</svg>');
-        return wrapClusterDEPlot('PCA', `Pseudobulk samples, ${{Number(sampleInfo.pca_features || 0).toLocaleString()}} variable genes`, parts.join('') + '<div class="volcano-summary">' + legend + '</div>');
+        return wrapClusterDEPlot('PCA', `Pseudobulk samples, ${{Number(sampleInfo.pca_features || 0).toLocaleString()}} variable genes`, parts.join('') + '<div class="volcano-summary">' + legend + '</div>', false, 'dotplot');
     }}
 
     function buildPseudobulkDistanceHeatmap(sampleInfo, colorCol) {{
@@ -24840,12 +25480,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const groups = Array.isArray(sampleInfo.distance_groups) ? sampleInfo.distance_groups : [];
         const labels = Array.isArray(sampleInfo.distance_labels) ? sampleInfo.distance_labels : [];
         const uniqueGroups = Array.from(new Set(groups.map(g => String(g))));
-        const W = 390, H = 390, ml = 82, mt = 20, mr = 8, mb = 82;
+        const showLabels = n <= 24;
+        const W = 390, H = 390, ml = showLabels ? 72 : 20, mt = 16, mr = 8, mb = showLabels ? 72 : 20;
         const size = Math.min(W - ml - mr, H - mt - mb);
         const cell = size / n;
         const values = matrix.flat().map(Number).filter(Number.isFinite);
-        const minV = Math.min.apply(null, values.concat([0]));
-        const maxV = Math.max.apply(null, values.concat([1]));
+        // A complex design can contain hundreds of pseudobulk samples. Avoid
+        // Math.min/max.apply here: spreading a large distance matrix into
+        // function arguments overflows the browser call stack.
+        let minV = 0;
+        let maxV = 1;
+        values.forEach((value) => {{
+            if (value < minV) minV = value;
+            if (value > maxV) maxV = value;
+        }});
         function heatColor(v) {{
             const t = maxV > minV ? Math.max(0, Math.min(1, (Number(v) - minV) / (maxV - minV))) : 0;
             const shade = Math.round(255 * (1 - t));
@@ -24865,7 +25513,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 parts.push('<rect x="' + (ml + j * cell).toFixed(2) + '" y="' + (mt + i * cell).toFixed(2) + '" width="' + Math.max(1, cell).toFixed(2) + '" height="' + Math.max(1, cell).toFixed(2) + '" fill="' + heatColor(matrix[i][j]) + '"/>');
             }}
         }}
-        if (n <= 24) {{
+        if (showLabels) {{
             labels.forEach((label, i) => {{
                 const shortLabel = String(label || '').split(' | ')[0];
                 parts.push('<text class="volcano-axis-label" x="' + (ml - 12) + '" y="' + (mt + i * cell + cell / 2).toFixed(1) + '" text-anchor="end" dy="0.35em">' + escapeHtml(shortLabel) + '</text>');
@@ -24877,14 +25525,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return wrapClusterDEPlot(
             'Distance Matrix',
             'Hierarchical clustering of pseudobulk samples, Euclidean distance on log1p CPM',
-            parts.join('') + '<div class="volcano-summary">' + legend + '</div>'
+            parts.join('') + '<div class="volcano-summary">' + legend + '</div>',
+            false,
+            'distance-matrix'
         );
     }}
 
-    function buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5, colorCol = null, sourceCategory = null, referenceCategory = null) {{
+    function buildVolcanoPlot(genes, log2fc, pvalsAdj, pctSource = [], pctReference = [], minPctCutoff = 0, padjCutoff = 0.05, log2fcCutoff = 0.5, colorCol = null, sourceCategory = null, referenceCategory = null) {{
         if (!genes.length) return '';
         const padjThreshold = Math.min(Math.max(normalizePositiveThreshold(padjCutoff, 0.05), 0), 1);
         const fcThr = normalizePositiveThreshold(log2fcCutoff, 0.5);
+        const pctThr = normalizePositiveThreshold(minPctCutoff, 0);
         const sourceColor = colorCol && sourceCategory !== null ? getCategoryColorForValue(colorCol, sourceCategory) : '#d94f4f';
         const referenceColor = colorCol && referenceCategory !== null ? getCategoryColorForValue(colorCol, referenceCategory) : '#4f82d9';
         const sourceLabel = sourceCategory !== null ? String(sourceCategory) : 'Source';
@@ -24931,17 +25582,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         genes.forEach(function(gene, i) {{
             const fc = logfcValues[i], nlpi = nlp[i];
             const pvalAdj = Number(pvalsAdj[i]);
-            const sig = Number.isFinite(pvalAdj) && pvalAdj <= padjThreshold && Math.abs(fc) >= fcThr;
+            const sourcePct = Number(pctSource[i]);
+            const referencePct = Number(pctReference[i]);
+            const passesPct = pctThr <= 0
+                || (Number.isFinite(sourcePct) && sourcePct >= pctThr)
+                || (Number.isFinite(referencePct) && referencePct >= pctThr);
+            const sig = Number.isFinite(pvalAdj) && pvalAdj <= padjThreshold && Math.abs(fc) >= fcThr && passesPct;
             const dotClass = sig ? (fc > 0 ? 'source' : 'reference') : 'grey';
             counts[dotClass] += 1;
             const col = dotClass === 'source' ? sourceColor : (dotClass === 'reference' ? referenceColor : 'var(--border-color)');
             const safePAdj = Number.isFinite(pvalAdj) ? pvalAdj : 1;
             const padjDisplay = formatAdjustedPValue(safePAdj);
-            parts.push('<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(nlpi).toFixed(1) + '" r="3" fill="' + col + '" fill-opacity="0.82" data-volcano-class="' + dotClass + '" data-volcano-gene="' + escapeHtml(gene) + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="log\u2082FC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line2="adj. p: ' + escapeHtml(padjDisplay) + '"/>');
+            const embedded = isEmbeddedViewerGene(gene);
+            const pctLine = 'pct expr: ' + escapeHtml(formatClusterDEPct(Number.isFinite(sourcePct) ? sourcePct : NaN)) + ' / ' + escapeHtml(formatClusterDEPct(Number.isFinite(referencePct) ? referencePct : NaN));
+            const extraLine = embedded ? '' : '" data-tooltip-line4="Expression vector not embedded"';
+            parts.push('<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(nlpi).toFixed(1) + '" r="3" fill="' + col + '" fill-opacity="0.82" data-volcano-class="' + dotClass + '" data-volcano-gene="' + escapeHtml(gene) + '" data-gene-embedded="' + (embedded ? 'true' : 'false') + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="log\u2082FC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line2="adj. p: ' + escapeHtml(padjDisplay) + '" data-tooltip-line3="' + pctLine + extraLine + '"/>');
         }});
         parts.push('</svg>');
         const greyLabel = 'adj. p > ' + formatAdjustedPValue(padjThreshold)
-            + ' or |log2FC| < ' + formatScaleNumber(fcThr);
+            + ' or |log2FC| < ' + formatScaleNumber(fcThr)
+            + (pctThr > 0 ? ' or max % expr < ' + formatClusterDEPct(pctThr) : '');
         const summary = [
             '<div class="volcano-summary" aria-label="Volcano dot counts">',
             buildClusterDESummaryItem(referenceLabel, referenceColor, counts.reference),
@@ -24949,10 +25609,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             buildClusterDESummaryItem(greyLabel, 'var(--border-color)', counts.grey),
             '</div>',
         ].join('');
-        return '<div class="volcano-container"><div style="display:flex;justify-content:flex-end;">' + renderCalcInfoButton('de_genes') + '</div>' + parts.join('') + summary + '<div class="volcano-tooltip"></div></div>';
+        return '<div class="volcano-container">' + parts.join('') + summary + '<div class="volcano-tooltip"></div></div>';
     }}
 
-    function buildGroupVolcanoPlot(entries) {{
+    function getComparisonMetricChipBackground(chipColor, titleStatsColor) {{
+        const opacity = String(chipColor) === String(titleStatsColor) ? 60 : 20;
+        return `color-mix(in srgb, ${{chipColor}} ${{opacity}}%, var(--input-bg))`;
+    }}
+
+    function buildGroupVolcanoPlot(entries, toolbarHtml = '', colors = {{}}) {{
         if (!entries || !entries.length) return '';
         const VOLCANO_MAX_DOTS = 500;
         if (entries.length > VOLCANO_MAX_DOTS) entries = entries.slice(0, VOLCANO_MAX_DOTS);
@@ -24991,11 +25656,36 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">Score</text>');
         entries.forEach(function(entry, i) {{
             const fc = logfc[i], sc = scores[i];
-            const col = fc >= 0 ? '#d94f4f' : '#4f82d9';
+            const col = fc >= 0
+                ? (colors.positive || '#d94f4f')
+                : (colors.negative || '#4f82d9');
             parts.push('<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(sc).toFixed(1) + '" r="3.5" fill="' + col + '" fill-opacity="0.82" data-volcano-gene="' + escapeHtml(entry.gene) + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-score="' + sc.toFixed(3) + '"/>');
         }});
         parts.push('</svg>');
-        return '<div class="volcano-container"><div style="display:flex;justify-content:flex-end;">' + renderCalcInfoButton('group_de') + '</div>' + parts.join('') + '<div class="volcano-tooltip"></div></div>';
+        const toolbar = toolbarHtml ? '<div class="group-volcano-toolbar">' + toolbarHtml + '</div>' : '';
+        return '<div class="volcano-container group-volcano-container">' + toolbar + parts.join('') + '<div class="volcano-tooltip"></div></div>';
+    }}
+
+    function downloadAnnotationDEVolcanoSvg(container, annotationA, annotationB) {{
+        const text = getClusterDEVolcanoSvgText(container);
+        if (!text) {{
+            alert('No volcano plot is available for this region comparison.');
+            return;
+        }}
+        const sourceLabel = sanitizeFilenamePart(annotationA?.label || `region-${{annotationA?.id || 'a'}}`);
+        const referenceLabel = sanitizeFilenamePart(annotationB?.label || `region-${{annotationB?.id || 'b'}}`);
+        const filename = `karospace-region-de-${{sourceLabel}}-vs-${{referenceLabel}}-volcano-${{getScreenshotTimestamp()}}.svg`;
+        downloadTextFile(text, filename, 'image/svg+xml;charset=utf-8');
+    }}
+
+    function downloadComparisonVolcanoSvg(container, labelA, labelB, prefix = 'comparison-de') {{
+        const text = getClusterDEVolcanoSvgText(container);
+        if (!text) {{
+            alert('No volcano plot is available for this comparison.');
+            return;
+        }}
+        const filename = `karospace-${{prefix}}-${{sanitizeFilenamePart(labelA || 'a')}}-vs-${{sanitizeFilenamePart(labelB || 'b')}}-volcano-${{getScreenshotTimestamp()}}.svg`;
+        downloadTextFile(text, filename, 'image/svg+xml;charset=utf-8');
     }}
 
     function bindVolcanoGroupInteraction(container, rerenderFn) {{
@@ -25074,6 +25764,29 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function bindClusterDEPlotInteractions(container, rerenderFn) {{
+        container.querySelectorAll('[data-pathway-annotation-select]').forEach((select) => {{
+            select.addEventListener('change', () => {{
+                const result = select.closest('[data-pathway-analysis-result]');
+                const selected = String(select.value || 'source');
+                result?.querySelectorAll?.('[data-pathway-annotation-panel]').forEach((panel) => {{
+                    panel.hidden = panel.getAttribute('data-pathway-annotation-panel') !== selected;
+                }});
+                result?.querySelectorAll?.('.volcano-tooltip').forEach((tooltip) => {{
+                    tooltip.style.display = 'none';
+                }});
+            }});
+        }});
+        container.querySelectorAll('[data-pathway-gsea-select]').forEach((select) => {{
+            select.addEventListener('change', () => {{
+                const panel = select.closest('.cluster-de-plot-panel');
+                const selected = String(select.value || '0');
+                panel?.querySelectorAll?.('[data-gsea-pathway-panel]').forEach((item) => {{
+                    item.hidden = item.getAttribute('data-gsea-pathway-panel') !== selected;
+                }});
+                const tooltip = panel?.querySelector?.('.volcano-tooltip');
+                if (tooltip) tooltip.style.display = 'none';
+            }});
+        }});
         container.querySelectorAll('.volcano-svg, .cluster-de-qc-svg').forEach((plotSvg) => {{
             const plotContainer = plotSvg.closest('.volcano-container, .cluster-de-plot-panel') || plotSvg.parentElement;
             const tooltip = plotContainer?.querySelector('.volcano-tooltip');
@@ -25091,6 +25804,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             plotSvg.addEventListener('click', async (e) => {{
                 const dot = e.target.closest('[data-volcano-gene]');
                 if (!dot) return;
+                if (dot.getAttribute('data-gene-embedded') === 'false') return;
                 const gene = dot.getAttribute('data-volcano-gene') || '';
                 if (!gene) return;
                 const ok = await activateViewerGene(gene, {{ showErrors: true }});
@@ -25102,21 +25816,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function getClusterDEColoredIndices(result) {{
         if (!result || result.available === false) return [];
         const genes = Array.isArray(result.genes) ? result.genes : [];
-        const log2fc = Array.isArray(result.log2foldchanges)
-            ? result.log2foldchanges
-            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
-        const pvals = Array.isArray(result.pvals) ? result.pvals : [];
-        const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
-        const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(result.padj_cutoff, 0.05), 0), 1);
-        const log2fcCutoff = normalizePositiveThreshold(result.log2fc_cutoff, 0.5);
-        return genes.map((gene, idx) => idx).filter((idx) => {{
-            const log2fcValue = Number(log2fc[idx]);
-            const pvalAdjValue = Number(pvalsAdj[idx]);
-            return Number.isFinite(log2fcValue)
-                && Number.isFinite(pvalAdjValue)
-                && pvalAdjValue <= padjCutoff
-                && Math.abs(log2fcValue) >= log2fcCutoff;
-        }});
+        return genes.map((gene, idx) => idx)
+            .filter((idx) => doesClusterDEIndexPassThresholds(result, idx));
     }}
 
     function getClusterDETableEntries(result, coloredOnly = false) {{
@@ -25208,8 +25909,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
-    function getClusterDEVolcanoSvgText(container) {{
-        const svg = container?.querySelector?.('.volcano-svg');
+    function getClusterDESvgText(svg) {{
         if (!svg) {{
             return null;
         }}
@@ -25217,6 +25917,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
         clone.querySelectorAll('.volcano-dot').forEach((dot) => dot.removeAttribute('class'));
         return new XMLSerializer().serializeToString(clone);
+    }}
+
+    function getClusterDEVolcanoSvgText(container) {{
+        return getClusterDESvgText(container?.querySelector?.('.volcano-svg'));
+    }}
+
+    function downloadClusterDEPlotSvg(container, exportKey) {{
+        const panel = container?.querySelector?.(`[data-cluster-de-plot="${{String(exportKey || '')}}"]`);
+        const selectedSvg = panel?.querySelector?.('[data-gsea-pathway-panel]:not([hidden]) .cluster-de-qc-svg')
+            || panel?.querySelector?.('.cluster-de-qc-svg');
+        const text = getClusterDESvgText(selectedSvg);
+        if (!text) {{
+            alert('This plot is not available for download.');
+            return;
+        }}
+        downloadTextFile(text, `${{getClusterDEFilenameStem()}}-${{sanitizeFilenamePart(exportKey || 'plot')}}.svg`, 'image/svg+xml;charset=utf-8');
     }}
 
     function downloadCurrentClusterDEVolcanoSvg(container) {{
@@ -25261,15 +25977,351 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         img.src = url;
     }}
 
+    function getPathwayEnrichmentRows(result, method, direction) {{
+        const payload = result?.pathway_enrichment?.[method]?.[direction];
+        return Array.isArray(payload) ? payload : [];
+    }}
+
+    function formatPathwayPValue(value) {{
+        const numeric = Number(value);
+        if (!Number.isFinite(numeric)) return 'n/a';
+        if (numeric > 0 && numeric < 0.001) return numeric.toExponential(2);
+        return formatScaleNumber(numeric);
+    }}
+
+    function shortenPathwayTerm(term, maxLen = 34) {{
+        const text = String(term || '');
+        return text.length > maxLen ? text.slice(0, Math.max(1, maxLen - 1)) + '…' : text;
+    }}
+
+    function pathwayOraGeneRatio(row) {{
+        const overlap = Number(row?.overlap ?? 0);
+        const querySize = Number(row?.query_size ?? 0);
+        return Number.isFinite(overlap) && Number.isFinite(querySize) && querySize > 0
+            ? Math.max(0, overlap / querySize)
+            : 0;
+    }}
+
+    function pathwayAdjustedPScore(row) {{
+        const padj = Number(row?.padj);
+        if (!Number.isFinite(padj)) return 0;
+        return -Math.log10(Math.max(padj, Number.MIN_VALUE));
+    }}
+
+    function pathwayAdjustedPColor(row, minScore, maxScore) {{
+        const padj = Number(row?.padj);
+        if (!Number.isFinite(padj)) return 'var(--border-color)';
+        const score = pathwayAdjustedPScore(row);
+        const denom = Math.max(maxScore - minScore, 1e-9);
+        const t = Math.min(1, Math.max(0, (score - minScore) / denom));
+        const stops = [
+            [219, 234, 254],
+            [96, 165, 250],
+            [37, 99, 235],
+            [127, 29, 29],
+        ];
+        const scaled = t * (stops.length - 1);
+        const idx = Math.min(stops.length - 2, Math.max(0, Math.floor(scaled)));
+        const localT = scaled - idx;
+        const a = stops[idx];
+        const b = stops[idx + 1];
+        const r = Math.round(a[0] + (b[0] - a[0]) * localT);
+        const g = Math.round(a[1] + (b[1] - a[1]) * localT);
+        const blue = Math.round(a[2] + (b[2] - a[2]) * localT);
+        return `rgb(${{r}},${{g}},${{blue}})`;
+    }}
+
+    function buildPathwayORADotPlot(rows, sourceCategory, referenceCategory, sourceColor, referenceColor) {{
+        const cleanRows = (Array.isArray(rows) ? rows : [])
+            .filter(row => row && String(row.term || '').trim())
+            .slice(0, 16);
+        if (!cleanRows.length) return '';
+
+        const W = 420, rowH = 23, ml = 156, mr = 72, mt = 18, mb = 40;
+        const H = Math.max(174, mt + mb + cleanRows.length * rowH);
+        const iw = W - ml - mr;
+        const ratios = cleanRows.map(pathwayOraGeneRatio);
+        const overlaps = cleanRows.map(row => Number(row.overlap || 0)).filter(Number.isFinite);
+        const scores = cleanRows.map(pathwayAdjustedPScore).filter(Number.isFinite);
+        const minOverlap = Math.min.apply(null, overlaps.concat([1]));
+        const maxOverlap = Math.max.apply(null, overlaps.concat([1]));
+        const minScore = Math.min.apply(null, scores.concat([0]));
+        const maxScore = Math.max.apply(null, scores.concat([1]));
+        const overlapDenom = Math.max(maxOverlap - minOverlap, 1);
+        const xs = value => ml + (Math.max(0, value) / Math.max(maxScore, 1e-6)) * iw;
+        const radiusForOverlap = overlap => 4 + Math.sqrt(Math.max(0, Number(overlap || 0) - minOverlap) / overlapDenom) * 7;
+
+        const parts = [];
+        parts.push(`<svg class="cluster-de-qc-svg pathway-enrichment-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        parts.push(`<line x1="${{ml}}" y1="${{H - mb}}" x2="${{W - mr}}" y2="${{H - mb}}" stroke="var(--border-color)"/>`);
+        [0, maxScore / 2, maxScore].forEach((tick) => {{
+            const x = xs(tick);
+            parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{H - mb - 4}}" x2="${{x.toFixed(1)}}" y2="${{H - mb + 4}}" stroke="var(--border-color)"/>`);
+            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 16}}" text-anchor="middle">${{formatScaleNumber(tick)}}</text>`);
+        }});
+
+        cleanRows.forEach((row, idx) => {{
+            const y = mt + idx * rowH + rowH / 2;
+            const ratio = pathwayOraGeneRatio(row);
+            const padjScore = pathwayAdjustedPScore(row);
+            const x = xs(padjScore);
+            const overlap = Number(row.overlap || 0);
+            const querySize = Number(row.query_size || 0);
+            const pathwaySize = Number(row.pathway_size || 0);
+            const r = radiusForOverlap(overlap);
+            const term = String(row.term || '');
+            const genes = Array.isArray(row.genes) ? row.genes : [];
+            const directionLabel = row.pathwayDirection === 'up'
+                ? `Favors ${{sourceCategory}}`
+                : `Favors ${{referenceCategory}}`;
+            const stroke = row.pathwayDirection === 'up' ? sourceColor : referenceColor;
+            const fill = pathwayAdjustedPColor(row, minScore, maxScore);
+            const line1 = `-log10 adj. p: ${{formatScaleNumber(padjScore)}} | adj. p: ${{formatPathwayPValue(row.padj)}}`;
+            const line2 = `GeneRatio: ${{overlap.toLocaleString()}} / ${{querySize.toLocaleString()}} (${{formatScaleNumber(ratio)}}) | pathway size: ${{pathwaySize.toLocaleString()}}`;
+            const line3 = genes.length ? `${{directionLabel}} | ${{genes.slice(0, 10).join(', ')}}${{genes.length > 10 ? ', …' : ''}}` : directionLabel;
+            parts.push(`<text class="volcano-axis-label" x="${{ml - 6}}" y="${{y.toFixed(1)}}" text-anchor="end" dy="0.35em" font-size="7">${{escapeHtml(shortenPathwayTerm(term))}}</text>`);
+            parts.push(`<circle cx="${{x.toFixed(1)}}" cy="${{y.toFixed(1)}}" r="${{r.toFixed(1)}}" fill="${{fill}}" fill-opacity="0.86" stroke="${{stroke}}" stroke-width="1.5" data-tooltip-title="${{escapeHtml(term)}}" data-tooltip-line1="${{escapeHtml(line1)}}" data-tooltip-line2="${{escapeHtml(line2)}}" data-tooltip-line3="${{escapeHtml(line3)}}"/>`);
+        }});
+
+        const legendX = W - 58;
+        const colorY = mt + 4;
+        parts.push(`<text class="volcano-axis-label" x="${{legendX}}" y="${{colorY - 6}}" text-anchor="start">adj. p</text>`);
+        [0, 0.25, 0.5, 0.75, 1].forEach((t, idx) => {{
+            const score = minScore + (maxScore - minScore) * t;
+            const pseudoPadj = Math.pow(10, -score);
+            const color = pathwayAdjustedPColor({{ padj: pseudoPadj }}, minScore, maxScore);
+            parts.push(`<rect x="${{legendX}}" y="${{colorY + idx * 9}}" width="18" height="9" fill="${{color}}"/>`);
+        }});
+        parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{colorY + 8}}" text-anchor="start">${{formatPathwayPValue(Math.pow(10, -maxScore))}}</text>`);
+        parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{colorY + 44}}" text-anchor="start">${{formatPathwayPValue(Math.pow(10, -minScore))}}</text>`);
+
+        const sizeY = colorY + 72;
+        const sizeTicks = Array.from(new Set([minOverlap, Math.round((minOverlap + maxOverlap) / 2), maxOverlap]))
+            .filter(value => Number.isFinite(value) && value > 0);
+        parts.push(`<text class="volcano-axis-label" x="${{legendX}}" y="${{sizeY - 8}}" text-anchor="start">genes</text>`);
+        sizeTicks.forEach((value, idx) => {{
+            const y = sizeY + idx * 21;
+            const rr = radiusForOverlap(value);
+            parts.push(`<circle cx="${{legendX + 8}}" cy="${{y}}" r="${{rr.toFixed(1)}}" fill="none" stroke="var(--muted-color)" stroke-width="1"/>`);
+            parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{y + 3}}" text-anchor="start">${{Number(value).toLocaleString()}}</text>`);
+        }});
+
+        parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 2}}" text-anchor="middle">-log10 adjusted p</text>`);
+        parts.push('</svg>');
+        return parts.join('');
+    }}
+
+    function buildPathwayORAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide) {{
+        const direction = annotationSide === 'reference' ? 'down' : 'up';
+        const rows = getPathwayEnrichmentRows(result, 'ora', direction)
+            .map(row => ({{ ...row, pathwayDirection: direction }}))
+            .sort((a, b) => {{
+                const ar = pathwayOraGeneRatio(a), br = pathwayOraGeneRatio(b);
+                if (Number.isFinite(ar) && Number.isFinite(br) && ar !== br) return br - ar;
+                const ap = Number(a.padj), bp = Number(b.padj);
+                if (Number.isFinite(ap) && Number.isFinite(bp) && ap !== bp) return ap - bp;
+                return String(a.term || '').localeCompare(String(b.term || ''));
+            }})
+            .slice(0, 16);
+        if (!rows.length) return '';
+        const label = annotationSide === 'reference' ? referenceCategory : sourceCategory;
+        const svg = buildPathwayORADotPlot(rows, sourceCategory, referenceCategory, sourceColor, referenceColor);
+        const meta = `ORA on significant genes favoring ${{label}}`;
+        return wrapClusterDEPlot('ORA Pathways', meta, svg, false, 'pathway-ora');
+    }}
+
+    function buildPathwayORAPlot(result, sourceCategory, referenceCategory, sourceColor, referenceColor) {{
+        return [
+            buildPathwayORAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'source'),
+            buildPathwayORAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'reference'),
+        ].filter(Boolean).join('');
+    }}
+
+    function buildPathwayGSEAEnrichmentPlot(row, sourceCategory, referenceCategory, sourceColor, referenceColor) {{
+        const profile = Array.isArray(row?.running_profile) ? row.running_profile : [];
+        const hitIndices = Array.isArray(row?.hit_indices) ? row.hit_indices.map(Number).filter(Number.isFinite) : [];
+        const metricProfile = Array.isArray(row?.rank_metric_profile) ? row.rank_metric_profile : [];
+        const rankCount = Math.max(2, Number(row?.rank_count || 0));
+        if (!profile.length || !hitIndices.length || !Number.isFinite(rankCount)) return '';
+
+        const W = 420, H = 286, ml = 48, mr = 16, mt = 18;
+        const topH = 102, hitH = 42, metricH = 76, gap = 8;
+        const topY = mt;
+        const hitY = topY + topH + gap;
+        const metricY = hitY + hitH + gap;
+        const iw = W - ml - mr;
+        const xForRank = rank => ml + (Math.min(Math.max(Number(rank), 0), rankCount - 1) / (rankCount - 1)) * iw;
+        const esValues = profile.map(point => Number(point?.[1])).filter(Number.isFinite);
+        const minES = Math.min.apply(null, esValues.concat([0]));
+        const maxES = Math.max.apply(null, esValues.concat([0]));
+        const esRange = Math.max(maxES - minES, 1e-9);
+        const yForES = value => topY + topH - ((Number(value) - minES) / esRange) * topH;
+        const metricValues = metricProfile.map(point => Number(point?.[1])).filter(Number.isFinite);
+        const minMetric = Math.min.apply(null, metricValues.concat([0]));
+        const maxMetric = Math.max.apply(null, metricValues.concat([0]));
+        const metricRange = Math.max(maxMetric - minMetric, 1e-9);
+        const yForMetric = value => metricY + metricH - ((Number(value) - minMetric) / metricRange) * metricH;
+        const zeroMetricY = yForMetric(0);
+        const directionPositive = String(row?.pathwayDirection || row?.direction || '') !== 'negative';
+        const profileColor = directionPositive ? sourceColor : referenceColor;
+        const oppositeColor = directionPositive ? referenceColor : sourceColor;
+        const term = String(row?.term || 'GSEA pathway');
+        const zeroCross = Number(row?.zero_cross_rank);
+        const peakRank = Number(row?.peak_rank);
+        const leading = Array.isArray(row?.leading_edge) ? row.leading_edge : [];
+        const labelA = directionPositive ? sourceCategory : referenceCategory;
+        const labelB = directionPositive ? referenceCategory : sourceCategory;
+
+        const parts = [];
+        parts.push(`<svg class="cluster-de-qc-svg pathway-enrichment-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
+        [topY, hitY, metricY].forEach((panelY, panelIdx) => {{
+            const panelH = panelIdx === 0 ? topH : (panelIdx === 1 ? hitH : metricH);
+            parts.push(`<rect x="${{ml}}" y="${{panelY}}" width="${{iw}}" height="${{panelH}}" fill="transparent" stroke="var(--border-color)" stroke-opacity="0.7"/>`);
+            [0.25, 0.5, 0.75].forEach(frac => {{
+                const y = panelY + panelH * frac;
+                parts.push(`<line x1="${{ml}}" y1="${{y.toFixed(1)}}" x2="${{W - mr}}" y2="${{y.toFixed(1)}}" stroke="var(--border-color)" stroke-opacity="0.35" stroke-dasharray="2 2"/>`);
+            }});
+        }});
+
+        const zeroESY = yForES(0);
+        parts.push(`<line x1="${{ml}}" y1="${{zeroESY.toFixed(1)}}" x2="${{W - mr}}" y2="${{zeroESY.toFixed(1)}}" stroke="var(--muted-color)" stroke-opacity="0.8"/>`);
+        const profilePoints = profile
+            .map(point => `${{xForRank(Number(point?.[0])).toFixed(1)}},${{yForES(Number(point?.[1])).toFixed(1)}}`)
+            .join(' ');
+        parts.push(`<polyline points="${{profilePoints}}" fill="none" stroke="${{profileColor}}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`);
+        if (Number.isFinite(peakRank)) {{
+            const peakX = xForRank(peakRank);
+            parts.push(`<line x1="${{peakX.toFixed(1)}}" y1="${{topY}}" x2="${{peakX.toFixed(1)}}" y2="${{topY + topH}}" stroke="${{profileColor}}" stroke-opacity="0.28" stroke-dasharray="3 3"/>`);
+        }}
+
+        hitIndices.forEach(rank => {{
+            const x = xForRank(rank);
+            parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{hitY + 2}}" x2="${{x.toFixed(1)}}" y2="${{hitY + hitH - 2}}" stroke="var(--text-color)" stroke-width="1"/>`);
+        }});
+        const gradientSteps = 36;
+        for (let i = 0; i < gradientSteps; i++) {{
+            const x0 = ml + (i / gradientSteps) * iw;
+            const x1 = ml + ((i + 1) / gradientSteps) * iw;
+            const t = i / Math.max(1, gradientSteps - 1);
+            const fill = t < 0.5 ? colorToRgbaCss(profileColor, 0.32 - t * 0.22) : colorToRgbaCss(oppositeColor, 0.1 + (t - 0.5) * 0.44);
+            parts.push(`<rect x="${{x0.toFixed(1)}}" y="${{(hitY + hitH - 13).toFixed(1)}}" width="${{Math.max(1, x1 - x0).toFixed(1)}}" height="11" fill="${{fill}}"/>`);
+        }}
+
+        parts.push(`<line x1="${{ml}}" y1="${{zeroMetricY.toFixed(1)}}" x2="${{W - mr}}" y2="${{zeroMetricY.toFixed(1)}}" stroke="var(--muted-color)" stroke-opacity="0.7"/>`);
+        metricProfile.forEach((point, idx) => {{
+            const rank = Number(point?.[0]);
+            const value = Number(point?.[1]);
+            if (!Number.isFinite(rank) || !Number.isFinite(value)) return;
+            const x = xForRank(rank);
+            const nextRank = idx + 1 < metricProfile.length ? Number(metricProfile[idx + 1]?.[0]) : rank + Math.max(1, rankCount / 100);
+            const w = Math.max(1, xForRank(nextRank) - x);
+            const y = yForMetric(value);
+            parts.push(`<rect x="${{x.toFixed(1)}}" y="${{Math.min(y, zeroMetricY).toFixed(1)}}" width="${{w.toFixed(1)}}" height="${{Math.max(1, Math.abs(zeroMetricY - y)).toFixed(1)}}" fill="#b7b7b7" fill-opacity="0.82"/>`);
+        }});
+        if (Number.isFinite(zeroCross)) {{
+            const zx = xForRank(zeroCross);
+            parts.push(`<line x1="${{zx.toFixed(1)}}" y1="${{metricY}}" x2="${{zx.toFixed(1)}}" y2="${{metricY + metricH}}" stroke="var(--muted-color)" stroke-dasharray="3 3"/>`);
+            parts.push(`<text class="volcano-axis-label" x="${{zx.toFixed(1)}}" y="${{metricY + metricH / 2}}" text-anchor="middle">Zero cross</text>`);
+        }}
+
+        const tickRanks = [0, Math.round((rankCount - 1) / 2), rankCount - 1];
+        tickRanks.forEach(rank => {{
+            const x = xForRank(rank);
+            parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{metricY + metricH}}" x2="${{x.toFixed(1)}}" y2="${{metricY + metricH + 4}}" stroke="var(--border-color)"/>`);
+            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 6}}" text-anchor="middle">${{Math.round(rank + 1).toLocaleString()}}</text>`);
+        }});
+        parts.push(`<text class="volcano-axis-label" x="10" y="${{(topY + topH / 2).toFixed(1)}}" text-anchor="middle" transform="rotate(-90,10,${{(topY + topH / 2).toFixed(1)}})">ES</text>`);
+        parts.push(`<text class="volcano-axis-label" x="10" y="${{(metricY + metricH / 2).toFixed(1)}}" text-anchor="middle" transform="rotate(-90,10,${{(metricY + metricH / 2).toFixed(1)}})">Rank metric</text>`);
+        parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 1}}" text-anchor="middle">Rank in ordered dataset</text>`);
+        parts.push(`<text class="volcano-axis-label" x="${{ml + 3}}" y="${{hitY + hitH - 16}}" text-anchor="start" fill="${{profileColor}}">${{escapeHtml(labelA)}} enriched</text>`);
+        parts.push(`<text class="volcano-axis-label" x="${{W - mr - 3}}" y="${{hitY + hitH - 16}}" text-anchor="end" fill="${{oppositeColor}}">${{escapeHtml(labelB)}} enriched</text>`);
+        const tooltip1 = `NES: ${{formatScaleNumber(Number(row?.nes))}} | ES: ${{formatScaleNumber(Number(row?.es))}} | adj. p: ${{formatPathwayPValue(row?.padj)}}`;
+        const tooltip2 = `Hits: ${{hitIndices.length.toLocaleString()}} | leading edge: ${{leading.length ? leading.slice(0, 10).join(', ') : 'n/a'}}${{leading.length > 10 ? ', …' : ''}}`;
+        parts.push(`<rect x="${{ml}}" y="${{topY}}" width="${{iw}}" height="${{metricY + metricH - topY}}" fill="transparent" data-tooltip-title="${{escapeHtml(term)}}" data-tooltip-line1="${{escapeHtml(tooltip1)}}" data-tooltip-line2="${{escapeHtml(tooltip2)}}"/>`);
+        parts.push('</svg>');
+        return parts.join('');
+    }}
+
+    function buildPathwayGSEAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide) {{
+        const direction = annotationSide === 'reference' ? 'negative' : 'positive';
+        const rows = getPathwayEnrichmentRows(result, 'gsea', direction)
+            .map(row => ({{ ...row, pathwayDirection: direction }}))
+            .sort((a, b) => {{
+                const ap = Number(a.padj), bp = Number(b.padj);
+                if (Number.isFinite(ap) && Number.isFinite(bp) && ap !== bp) return ap - bp;
+                return Math.abs(Number(b.nes || 0)) - Math.abs(Number(a.nes || 0));
+            }})
+            .slice(0, 16);
+        if (!rows.length) return '';
+        const options = [];
+        const panels = [];
+        rows.forEach((row) => {{
+            const svg = buildPathwayGSEAEnrichmentPlot(row, sourceCategory, referenceCategory, sourceColor, referenceColor);
+            if (!svg) return;
+            const idx = panels.length;
+            const nes = Number(row.nes);
+            const label = `${{shortenPathwayTerm(row.term || 'pathway', 64)}} (NES ${{formatScaleNumber(Number.isFinite(nes) ? nes : NaN)}})`;
+            options.push(`<option value="${{idx}}">${{escapeHtml(label)}}</option>`);
+            panels.push(`<div data-gsea-pathway-panel="${{idx}}"${{idx === 0 ? '' : ' hidden'}}>${{svg}}</div>`);
+        }});
+        if (!panels.length) return '';
+        const control = `
+            <div class="pathway-gsea-control">
+                <label>Pathway</label>
+                <select data-pathway-gsea-select>${{options.join('')}}</select>
+            </div>
+        `;
+        const targetLabel = annotationSide === 'reference' ? referenceCategory : sourceCategory;
+        const meta = `Preranked GSEA enrichment profile for pathways favoring ${{targetLabel}}.`;
+        return wrapClusterDEPlot('GSEA Enrichment', meta, control + panels.join(''), false, 'pathway-gsea');
+    }}
+
+    function buildPathwayGSEAPlot(result, sourceCategory, referenceCategory, sourceColor, referenceColor) {{
+        return [
+            buildPathwayGSEAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'source'),
+            buildPathwayGSEAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'reference'),
+        ].filter(Boolean).join('');
+    }}
+
+    function renderPathwayAnnotationPanel(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide) {{
+        const panels = [
+            buildPathwayORAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide),
+            buildPathwayGSEAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide),
+        ].filter(Boolean).join('');
+        if (panels) {{
+            return `<div class="cluster-de-plot-grid">${{panels}}</div>`;
+        }}
+        const label = annotationSide === 'reference' ? referenceCategory : sourceCategory;
+        return `<div class="pathway-analysis-empty">No ORA or GSEA pathways were retained for ${{escapeHtml(label)}}.</div>`;
+    }}
+
+    function renderClusterPAResultSection(colorCol, sourceCategory, referenceCategory) {{
+        const result = getPairwiseClusterDEResult(colorCol, sourceCategory, referenceCategory);
+        if (!result?.pathway_enrichment) return '';
+        const sourceColor = colorCol && sourceCategory !== null ? getCategoryColorForValue(colorCol, sourceCategory) : '#d94f4f';
+        const referenceColor = colorCol && referenceCategory !== null ? getCategoryColorForValue(colorCol, referenceCategory) : '#4f82d9';
+        const sourcePanel = renderPathwayAnnotationPanel(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'source');
+        const referencePanel = renderPathwayAnnotationPanel(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'reference');
+        if (!sourcePanel && !referencePanel) return '';
+        return `
+            <div class="cluster-PA-result cluster-pa-result" data-pathway-analysis-result>
+                <div class="pathway-analysis-controls">
+                    <label>Annotation</label>
+                    <select data-pathway-annotation-select>
+                        <option value="source">Annotation A (${{escapeHtml(String(sourceCategory || 'A'))}})</option>
+                        <option value="reference">Annotation B (${{escapeHtml(String(referenceCategory || 'B'))}})</option>
+                    </select>
+                </div>
+                <div data-pathway-annotation-panel="source">${{sourcePanel}}</div>
+                <div data-pathway-annotation-panel="reference" hidden>${{referencePanel}}</div>
+            </div>
+        `;
+    }}
+
     function renderClusterDEResultSection(colorCol, sourceCategory, referenceCategory) {{
         const result = getPairwiseClusterDEResult(colorCol, sourceCategory, referenceCategory);
         if (!result) {{
-            return `
-                <div class="agg-group">
-                    <div class="agg-group-title">Pseudobulk DE</div>
-                    <div class="agg-group-meta">No pseudobulk DE result is available for this comparison.</div>
-                </div>
-            `;
+            return '';
         }}
 
         if (result.available === false) {{
@@ -25303,9 +26355,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const pctSource = Array.isArray(result.pct_source) ? result.pct_source : [];
         const pctReference = Array.isArray(result.pct_reference) ? result.pct_reference : [];
         const baseMean = Array.isArray(result.base_mean) ? result.base_mean : [];
-        const sampleInfo = result.pseudobulk_samples || null;
+        const sampleInfo = getPseudobulkPairDiagnostics(
+            colorCol, sourceCategory, referenceCategory, result
+        );
         const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(result.padj_cutoff, 0.05), 0), 1);
         const log2fcCutoff = normalizePositiveThreshold(result.log2fc_cutoff, 0.5);
+        const minPctCutoff = getClusterDEMinPctCutoff(result);
         if (!genes.length) {{
             return `
                 <div class="agg-group">
@@ -25326,6 +26381,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const scoreValue = scores[idx];
             const pctSourceValue = pctSource[idx];
             const pctReferenceValue = pctReference[idx];
+            const embedded = isEmbeddedViewerGene(gene);
             const rowColor = Number.isFinite(log2fcValue)
                 ? (log2fcValue >= 0 ? sourceColor : referenceColor)
                 : '';
@@ -25335,7 +26391,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 : '';
             return `
                 <tr style="background:${{rowBackground}};" data-most-expressed="${{escapeHtml(mostExpressed || '')}}">
-                    <td><button type="button" class="cluster-de-gene-btn" data-cluster-de-gene="${{escapeHtml(gene)}}">${{escapeHtml(gene)}}</button></td>
+                    <td><button type="button" class="cluster-de-gene-btn" ${{embedded ? `data-cluster-de-gene="${{escapeHtml(gene)}}"` : 'disabled'}} title="${{embedded ? 'Load DE gene into the viewer' : 'Expression vector not embedded'}}">${{escapeHtml(gene)}}</button></td>
                     <td>${{formatScaleNumber(Number.isFinite(log2fcValue) ? log2fcValue : NaN)}}</td>
                     <td>${{formatAdjustedPValue(pvalAdjValue)}}</td>
                     <td>${{formatScaleNumber(Number.isFinite(scoreValue) ? scoreValue : NaN)}}</td>
@@ -25360,30 +26416,34 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </table>
             ` : `
                 <div class="agg-group-meta">
-                    No genes pass adj. p <= ${{formatScaleNumber(padjCutoff)}} and |log\u2082FC| >= ${{formatScaleNumber(log2fcCutoff)}}.
+                    No genes pass adj. p <= ${{formatScaleNumber(padjCutoff)}}, |log\u2082FC| >= ${{formatScaleNumber(log2fcCutoff)}}${{minPctCutoff > 0 ? `, and max % expressed >= ${{formatClusterDEPct(minPctCutoff)}}` : ''}}.
                 </div>
             `;
+        const volcanoHtml = buildVolcanoPlot(
+            genes, log2fc, pvalsAdj, pctSource, pctReference, minPctCutoff, padjCutoff, log2fcCutoff,
+            colorCol, sourceCategory, referenceCategory
+        );
+        const tablePanel = `
+            <div class="cluster-de-plot-panel cluster-de-table-panel">
+                <div class="cluster-de-plot-title">
+                    <span>Differential Expression Table</span>
+                    <button class="icon-btn cluster-de-plot-export" type="button" data-cluster-de-download-csv title="Download differential-expression table as CSV" aria-label="Download differential-expression table as CSV">${{LEGEND_EXPORT_ICON}}</button>
+                </div>
+                ${{tableHtml}}
+            </div>
+        `;
         const plotPanels = [
             buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff, log2fcCutoff),
             buildPseudobulkPCAPlot(sampleInfo, colorCol),
             buildPseudobulkDistanceHeatmap(sampleInfo, colorCol),
+            wrapClusterDEVolcanoPlot(volcanoHtml),
+            tablePanel,
         ].filter(Boolean).join('');
-        const diagnosticPlots = plotPanels
-            ? `<div class="cluster-de-plot-grid"><div class="cluster-de-plot-grid-title">Pseudobulk Analysis Diagnostics${{renderCalcInfoButton('de_genes')}}</div>${{plotPanels}}</div>`
-            : '';
+        const diagnosticPlots = `<div class="cluster-de-plot-grid">${{plotPanels}}</div>`;
 
         return `
             <div class="cluster-de-result">
                 ${{diagnosticPlots}}
-                ${{buildVolcanoPlot(genes, log2fc, pvalsAdj, padjCutoff, log2fcCutoff, colorCol, sourceCategory, referenceCategory)}}
-                <div class="cluster-de-meta">Differential expression table${{renderCalcInfoButton('de_genes')}}</div>
-                <div class="cluster-de-actions">
-                    <button type="button" class="legend-btn" data-cluster-de-download-volcano>Save Volcano SVG</button>
-                    <button type="button" class="legend-btn" data-cluster-de-download-volcano-png>Save Volcano PNG</button>
-                    <button type="button" class="legend-btn" data-cluster-de-download-csv>Save Table CSV</button>
-                    <button type="button" class="legend-btn" data-cluster-de-download-excel>Save Table Excel</button>
-                </div>
-                ${{tableHtml}}
             </div>
         `;
     }}
@@ -25414,7 +26474,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return {{ availableGroupbys, categories: [] }};
         }}
 
-        if (!clusterDeGroupby || !availableGroupbys.includes(clusterDeGroupby)) {{
+        const activeAnnotation = String(explorationColorCol || '');
+        if (availableGroupbys.includes(activeAnnotation)) {{
+            if (clusterDeGroupby !== activeAnnotation) {{
+                clusterDeGroupby = activeAnnotation;
+                clusterDeSourceCategory = null;
+                clusterDeReferenceCategory = null;
+            }}
+        }} else if (!clusterDeGroupby || !availableGroupbys.includes(clusterDeGroupby)) {{
             clusterDeGroupby = availableGroupbys.includes(currentColor) ? currentColor : availableGroupbys[0];
         }}
         if (groupbySelect) groupbySelect.value = clusterDeGroupby;
@@ -25451,9 +26518,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!container) return;
 
         const {{ availableGroupbys, categories }} = syncClusterDEControls();
-        if (!availableGroupbys.length) {{
-            setCompareSectionSummary('cluster-de-summary', 'Available for categorical annotations only.');
-            container.innerHTML = '<div class="agg-group-meta">Category comparison is available for categorical annotations only.</div>';
+        const activeAnnotation = String(explorationColorCol || '');
+        const selectedAnnotation = availableGroupbys.includes(activeAnnotation) ? activeAnnotation : null;
+        if (!selectedAnnotation || !hasPseudobulkDEForAnnotation(selectedAnnotation)) {{
+            const availableComparisons = getAvailablePseudobulkDEColors();
+            const comparisonChips = availableComparisons.length
+                ? availableComparisons.map((color) => renderAggChip(
+                    getAnnotationColumnLabel(color),
+                    'color-mix(in srgb, #eab308 18%, var(--input-bg))'
+                )).join('')
+                : renderAggChip('none', 'color-mix(in srgb, #eab308 18%, var(--input-bg))');
+            container.innerHTML = `<div class="pseudobulk-comparison-warning"><strong>Pseudobulk warning.</strong> No pseudobulk DE result is available for this comparison.<br>Available comparison: ${{comparisonChips}}</div>`;
             return;
         }}
         if (!clusterDeGroupby) {{
@@ -25476,19 +26551,119 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             container.innerHTML = '<div class="agg-group-meta">Choose two different categories to compare.</div>';
             return;
         }}
-        setCompareSectionSummary(
-            'cluster-de-summary',
-            `${{formatMetadataLabel(clusterDeGroupby)}}: ${{clusterDeSourceCategory}} vs ${{clusterDeReferenceCategory}}`,
+        const contrastResult = getPairwiseClusterDEResult(
+            clusterDeGroupby,
+            clusterDeSourceCategory,
+            clusterDeReferenceCategory
+        );
+        const sourceColor = getCategoryColorForValue(clusterDeGroupby, clusterDeSourceCategory) || 'var(--accent-strong)';
+        const referenceColor = getCategoryColorForValue(clusterDeGroupby, clusterDeReferenceCategory) || '#4cc9f0';
+        const buildCategoryOptions = (otherCategory) => categories.map((category) => {{
+            const label = formatCategoryLabel(clusterDeGroupby, category);
+            const pairResult = getPairwiseClusterDEResult(clusterDeGroupby, category, otherCategory);
+            const count = getPseudobulkContrastCellCount(pairResult, clusterDeGroupby, category);
+            const countLabel = Number.isFinite(count) ? count.toLocaleString() : '—';
+            return `<option value="${{escapeHtml(category)}}">${{escapeHtml(label)}} (${{countLabel}} cells)</option>`;
+        }}).join('');
+        const sourceOptions = buildCategoryOptions(clusterDeReferenceCategory);
+        const referenceOptions = buildCategoryOptions(clusterDeSourceCategory);
+        const controlsHtml = `
+            <div class="cluster-de-controls">
+                <div class="cluster-de-select-row comparison-pair-select-row">
+                    <div><label>Annotation A</label><select id="cluster-de-source" style="border-color:${{sourceColor}}">${{sourceOptions}}</select></div>
+                    <div><label>Annotation B</label><select id="cluster-de-reference" style="border-color:${{referenceColor}}">${{referenceOptions}}</select></div>
+                </div>
+                <div class="annotation-de-action-row">
+                    <div class="annotation-de-action-buttons">
+                        <button class="legend-btn icon-only" id="cluster-de-swap" type="button" title="Swap Annotation A and Annotation B" aria-label="Swap Annotation A and Annotation B"><svg class="lucide lucide-arrow-left-right" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"></path><path d="M4 7h16"></path><path d="m16 21 4-4-4-4"></path><path d="M20 17H4"></path></svg></button>
+                    </div>
+                </div>
+            </div>
+        `;
+        const replicateMetadata = formatMetadataLabel(
+            DATA.pseudobulk_replicate_annotation || DATA.groupby || 'replicate'
+        );
+        const conditionMetadata = formatMetadataLabel(clusterDeGroupby);
+        const pseudobulkSettings = DATA.pseudobulk_settings || {{}};
+        const minReplicates = Math.max(1, Number(
+            contrastResult?.min_replicates_required ?? pseudobulkSettings.min_replicates ?? 2
+        ) || 2);
+        const pAdjustMethod = String(
+            contrastResult?.p_adjust_method || pseudobulkSettings.p_adjust_method || 'fdr_bh'
+        );
+        const minPctRaw = Number(
+            contrastResult?.min_pct_expressed ?? pseudobulkSettings.min_pct_expressed ?? 0
+        );
+        const minPct = Number.isFinite(minPctRaw)
+            ? (minPctRaw > 1 ? minPctRaw / 100 : minPctRaw)
+            : 0;
+        const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(
+            contrastResult?.padj_cutoff ?? pseudobulkSettings.padj_cutoff,
+            0.05
+        ), 0), 1);
+        const log2fcCutoff = normalizePositiveThreshold(
+            contrastResult?.log2fc_cutoff ?? pseudobulkSettings.log2fc_cutoff,
+            0.5
+        );
+        const contrastInfo = `
+            <div class="comparison-info">
+                <strong>DESeq2 contrast.</strong> Shared model: ~ ${{escapeHtml(replicateMetadata)}} + ${{escapeHtml(conditionMetadata)}}. The selected annotations are evaluated as a category-versus-category contrast from this shared fit.
+                <div class="comparison-info-settings">
+                    <span><code>--pseudobulk-min-replicates</code> ≥ ${{minReplicates}}</span>
+                    <span><code>--pseudobulk-p-adjust-method</code> = ${{escapeHtml(pAdjustMethod)}}</span>
+                    <span><code>--pseudobulk-min-pct-expressed</code> ≥ ${{formatScaleNumber(100 * minPct)}}%</span>
+                    <span><code>--pseudobulk-padj-cutoff</code> ≤ ${{formatScaleNumber(padjCutoff)}}</span>
+                    <span><code>--pseudobulk-log2fc-cutoff</code> |log₂FC| ≥ ${{formatScaleNumber(log2fcCutoff)}}</span>
+                </div>
+            </div>
+        `;
+
+        const markerSummary = renderComparisonMarkerSummary(
+            clusterDeGroupby,
+            clusterDeSourceCategory,
+            clusterDeReferenceCategory
+        );
+        const markerSection = markerSummary
+            ? `<div class="selection-summary-title">Pseudobulk Markers${{renderCalcInfoButton('de_genes')}}</div>${{markerSummary}}`
+            : '';
+        const pathwaySection = renderClusterPAResultSection(
+            clusterDeGroupby,
+            clusterDeSourceCategory,
+            clusterDeReferenceCategory
         );
 
         container.innerHTML = `
-            <div class="cluster-de-meta">
-                Comparing <strong>${{escapeHtml(clusterDeSourceCategory)}}</strong> vs <strong>${{escapeHtml(clusterDeReferenceCategory)}}</strong>
-                in <strong>${{escapeHtml(formatMetadataLabel(clusterDeGroupby))}}</strong> with pseudobulk DESeq2.
-            </div>
-            ${{renderComparisonMarkerSummary(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory)}}
+            ${{controlsHtml}}
+            ${{contrastInfo}}
+            ${{markerSection}}
+            <div class="selection-summary-title">Pseudobulk gene expression differential analysis</div>
             ${{renderClusterDEResultSection(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory)}}
+            ${{pathwaySection ? '<div class="selection-summary-title">Gene Enrichment</div>' + pathwaySection : ''}}
         `;
+
+        const sourceSelect = container.querySelector('#cluster-de-source');
+        const referenceSelect = container.querySelector('#cluster-de-reference');
+        if (sourceSelect) {{
+            sourceSelect.value = clusterDeSourceCategory;
+            sourceSelect.addEventListener('change', () => {{
+                clusterDeSourceCategory = sourceSelect.value || null;
+                renderClusterDE();
+            }});
+        }}
+        if (referenceSelect) {{
+            referenceSelect.value = clusterDeReferenceCategory;
+            referenceSelect.disabled = categories.length < 2;
+            referenceSelect.addEventListener('change', () => {{
+                clusterDeReferenceCategory = referenceSelect.value || null;
+                renderClusterDE();
+            }});
+        }}
+        container.querySelector('#cluster-de-swap')?.addEventListener('click', () => {{
+            const source = clusterDeSourceCategory;
+            clusterDeSourceCategory = clusterDeReferenceCategory;
+            clusterDeReferenceCategory = source;
+            renderClusterDE();
+        }});
 
         bindGeneActivateButtons(container, renderClusterDE);
         container.querySelectorAll('[data-cluster-de-gene]').forEach((btn) => {{
@@ -25499,17 +26674,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (ok) renderClusterDE();
             }});
         }});
-        container.querySelector('[data-cluster-de-download-volcano]')?.addEventListener('click', () => {{
-            downloadCurrentClusterDEVolcanoSvg(container);
-        }});
-        container.querySelector('[data-cluster-de-download-volcano-png]')?.addEventListener('click', () => {{
-            downloadCurrentClusterDEVolcanoPng(container);
+        container.querySelectorAll('[data-cluster-de-download-plot]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                downloadClusterDEPlotSvg(container, button.getAttribute('data-cluster-de-download-plot'));
+            }});
         }});
         container.querySelector('[data-cluster-de-download-csv]')?.addEventListener('click', () => {{
             downloadCurrentClusterDETable('csv');
-        }});
-        container.querySelector('[data-cluster-de-download-excel]')?.addEventListener('click', () => {{
-            downloadCurrentClusterDETable('excel');
         }});
         bindClusterDEPlotInteractions(container, renderClusterDE);
     }}
@@ -25911,7 +27082,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
     }}
 
-    function renderGroupDE() {{
+    // Retained for reference while saved sessions that contain the older group-DE
+    // controls remain readable. The visible Annotations panel is rendered below.
+    function renderLegacyGroupDE() {{
         groupDeRenderDepth += 1;
         if (groupDeRenderDepth > 3) {{
             console.error('renderGroupDE re-entrant depth', groupDeRenderDepth);
@@ -26374,14 +27547,229 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
-    function renderCompareInsights() {{
-        if (insightsCompareTab === 'regions') {{
-            renderAnnotationComparison();
-        }} else if (insightsCompareTab === 'cell-de') {{
-            renderClusterDE();
-        }} else {{
-            renderGroupDE();
+    function getActiveAnnotationGroupDESpec() {{
+        const column = String(explorationColorCol || '');
+        if (!column || column.startsWith(SECTION_METADATA_COLOR_PREFIX)) return null;
+        if (!getCategoricalColorColumns().includes(column)) return null;
+        return {{ kind: 'annotation', column }};
+    }}
+
+    function getAnnotationGroupDEPairKey(spec, valueA, valueB, restrictSpec, restrictValue) {{
+        const groupAKey = buildGroupDEKey(spec, valueA, restrictSpec, restrictValue, 'all');
+        const groupBKey = buildGroupDEKey(spec, valueB, restrictSpec, restrictValue, 'all');
+        return `${{groupAKey}}::${{groupBKey}}`;
+    }}
+
+    function syncAnnotationGroupDEState() {{
+        const sourceSpec = getActiveAnnotationGroupDESpec();
+        const restrictionSpecs = getGroupDESourceSpecs();
+        if (!sourceSpec) {{
+            groupDeSourceSpecValue = '';
+            groupDeSourceValue = null;
+            groupDeReferenceValue = null;
+            return {{ sourceSpec: null, groupValues: [], restrictSpec: null, restrictValues: [], restrictionSpecs }};
         }}
+        const sourceEncoded = encodeGroupDESourceSpec(sourceSpec);
+        if (groupDeSourceSpecValue !== sourceEncoded) {{
+            groupDeSourceSpecValue = sourceEncoded;
+            groupDeSourceValue = null;
+            groupDeReferenceValue = null;
+        }}
+        const groupValues = getGroupDEValuesForSpec(sourceSpec);
+        if (!groupValues.includes(String(groupDeSourceValue ?? ''))) {{
+            groupDeSourceValue = groupValues[0] || null;
+        }}
+        if (!groupValues.includes(String(groupDeReferenceValue ?? '')) || String(groupDeReferenceValue) === String(groupDeSourceValue ?? '')) {{
+            groupDeReferenceValue = groupValues.find((value) => value !== String(groupDeSourceValue ?? '')) || null;
+        }}
+        const validRestrictionValues = restrictionSpecs.map((item) => encodeGroupDESourceSpec(item));
+        if (groupDeRestrictSpecValue && !validRestrictionValues.includes(groupDeRestrictSpecValue)) {{
+            groupDeRestrictSpecValue = '';
+            groupDeRestrictValue = null;
+        }}
+        const restrictSpec = decodeGroupDESourceSpec(groupDeRestrictSpecValue);
+        const restrictValues = restrictSpec ? getGroupDEValuesForSpec(restrictSpec) : [];
+        if (restrictSpec && !restrictValues.includes(String(groupDeRestrictValue ?? ''))) {{
+            groupDeRestrictValue = restrictValues[0] || null;
+        }}
+        if (!restrictSpec) groupDeRestrictValue = null;
+        groupDeScope = 'all';
+        groupDeTopN = Math.max(1, Math.min(20, Number(groupDeTopN) || ANNOTATION_DE_TOP_N));
+        groupDeMinPct = Math.max(0, Math.min(100, Number(groupDeMinPct) || 0));
+        return {{ sourceSpec, groupValues, restrictSpec, restrictValues, restrictionSpecs }};
+    }}
+
+    function invertGroupDEResult(result) {{
+        return invertAnnotationDEResult(result);
+    }}
+
+    async function runAnnotationGroupDEQuick(sourceSpec, valueA, valueB, restrictSpec, restrictValue) {{
+        const token = ++groupDeQuickRunToken;
+        groupDeQuickRunning = true;
+        renderGroupDE();
+        await new Promise((resolve) => window.setTimeout(resolve, 30));
+        const options = {{ restrictSpec, restrictValue, scope: 'all', isCancelled: () => token !== groupDeQuickRunToken }};
+        const groupA = await buildGroupDECellSetAsync(sourceSpec, valueA, options);
+        const groupB = await buildGroupDECellSetAsync(sourceSpec, valueB, options);
+        if (token !== groupDeQuickRunToken || !groupA || !groupB) return;
+        const result = computePooledWelchCellSetDE(groupA, groupB);
+        if (token !== groupDeQuickRunToken) return;
+        groupDeQuickGroups = {{ key: getGroupDECacheKey(groupA, groupB), groupA, groupB }};
+        groupDeQuickResult = result;
+        groupDeQuickResultKey = groupDeQuickGroups.key;
+        groupDeQuickRunning = false;
+        renderGroupDE();
+    }}
+
+    function renderGroupDE() {{
+        const container = document.getElementById('group-de-panel');
+        if (!container) return;
+        const {{ sourceSpec, groupValues, restrictSpec, restrictValues, restrictionSpecs }} = syncAnnotationGroupDEState();
+        const downsampleWarningHtml = getOverviewDownsampleWarningHtml();
+        if (!sourceSpec) {{
+            setCompareSectionSummary('group-de-summary', 'Choose a cell annotation in Exploration.');
+            container.innerHTML = downsampleWarningHtml + '<div class="agg-group-meta">Choose a cell annotation in Exploration to compare two annotation values.</div>';
+            return;
+        }}
+        if (groupValues.length < 2) {{
+            setCompareSectionSummary('group-de-summary', 'This annotation needs at least two values.');
+            container.innerHTML = downsampleWarningHtml + '<div class="agg-group-meta">This annotation needs at least two values to compare.</div>';
+            return;
+        }}
+        const renderValues = (values, selected) => values.map((value) => {{
+            const text = String(value);
+            const count = Number(getCategoryCountsForColor(sourceSpec.column)?.counts?.[text] || 0);
+            return `<option value="${{escapeHtml(text)}}"${{text === String(selected ?? '') ? ' selected' : ''}}>${{escapeHtml(formatCategoryLabel(sourceSpec.column, text))}} (${{count.toLocaleString()}} cells)</option>`;
+        }}).join('');
+        const renderRestrictionOptions = (kind) => restrictionSpecs.filter((spec) => spec.kind === kind).map((spec) => {{
+            const encoded = encodeGroupDESourceSpec(spec);
+            return `<option value="${{escapeHtml(encoded)}}"${{encoded === groupDeRestrictSpecValue ? ' selected' : ''}}>${{escapeHtml(formatGroupDESourceSpecLabel(spec))}}</option>`;
+        }}).join('');
+        const renderRestrictionValues = restrictValues.map((value) => {{
+            const text = String(value);
+            return `<option value="${{escapeHtml(text)}}"${{text === String(groupDeRestrictValue ?? '') ? ' selected' : ''}}>${{escapeHtml(text)}}</option>`;
+        }}).join('');
+        const colorA = getCategoryColorForValue(sourceSpec.column, groupDeSourceValue) || 'var(--accent-strong)';
+        const colorB = getCategoryColorForValue(sourceSpec.column, groupDeReferenceValue) || '#4cc9f0';
+        const pairKey = getAnnotationGroupDEPairKey(sourceSpec, groupDeSourceValue, groupDeReferenceValue, restrictSpec, groupDeRestrictValue);
+        const quickResult = groupDeQuickResultKey === pairKey ? groupDeQuickResult : null;
+        const fullCached = groupDeFullCache.get(pairKey) || null;
+        const fullRun = groupDeFullRun?.key === pairKey ? groupDeFullRun : null;
+        const hasCompletedCalculation = !!quickResult?.available || !!fullCached?.available;
+        const runButtonHtml = groupDeQuickRunning
+            ? '<div class="selection-query-icon-btn selection-summary-find-markers loading" role="status" aria-label="Finding annotation markers"><span class="selection-summary-find-markers-spinner"></span></div>'
+            : (!hasCompletedCalculation ? '<button class="selection-query-icon-btn" id="group-de-run" type="button" title="Find annotation markers" aria-label="Find annotation markers"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></button>' : '');
+        const controlsHtml = `
+            <div class="selection-summary-title">Gene expression — annotation A vs annotation B${{renderCalcInfoButton('group_de')}}</div>
+            <div class="cluster-de-controls">
+                <div class="cluster-de-select-row comparison-pair-select-row">
+                    <div><label>Annotation A</label><select id="group-de-source-value" style="border-color:${{colorA}}">${{renderValues(groupValues, groupDeSourceValue)}}</select></div>
+                    <div><label>Annotation B</label><select id="group-de-reference-value" style="border-color:${{colorB}}">${{renderValues(groupValues, groupDeReferenceValue)}}</select></div>
+                </div>
+                <div>
+                    <label>Restrict within</label>
+                    <select id="group-de-restrict-spec"><option value="">None</option>${{renderRestrictionOptions('metadata') ? `<optgroup label="Section metadata">${{renderRestrictionOptions('metadata')}}</optgroup>` : ''}}${{renderRestrictionOptions('annotation') ? `<optgroup label="Cell annotations">${{renderRestrictionOptions('annotation')}}</optgroup>` : ''}}</select>
+                </div>
+                <div>
+                    <label>Restrict value</label>
+                    <select id="group-de-restrict-value"${{restrictSpec ? '' : ' disabled'}}>${{renderRestrictionValues}}</select>
+                </div>
+                <div class="annotation-de-action-row">
+                    ${{hasCompletedCalculation ? `<div class="selection-summary-welch-controls"><div class="selection-summary-welch-control-row"><label>Top N per direction</label><input id="group-de-topn" type="number" min="1" max="20" step="1" value="${{groupDeTopN}}"></div><div class="selection-summary-welch-control-row"><label>Min expressed %</label><input id="group-de-min-pct" type="range" min="0" max="100" step="1" value="${{groupDeMinPct}}"><output id="group-de-min-pct-value">${{groupDeMinPct}}%</output></div></div>` : ''}}
+                    <div class="annotation-de-action-buttons"><button class="legend-btn icon-only" id="group-de-swap" type="button" title="Swap Annotation A and Annotation B" aria-label="Swap Annotation A and Annotation B"><svg class="lucide lucide-arrow-left-right" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"></path><path d="M4 7h16"></path><path d="m16 21 4-4-4-4"></path><path d="M20 17H4"></path></svg></button>${{runButtonHtml}}</div>
+                </div>
+            </div>`;
+        let html = downsampleWarningHtml + controlsHtml;
+        const result = fullCached?.available ? fullCached : quickResult;
+        const displayed = result?.available ? selectWelchTopResults(result.results || [], groupDeTopN, groupDeMinPct, 1) : [];
+        const renderCards = () => displayed.map((entry) => {{
+            const sideColor = Number(entry.score || 0) >= 0 ? colorA : colorB;
+            return `<div class="comparison-card"><div class="comparison-card-title annotation-de-card-title"><div class="annotation-de-card-title-main">${{renderGeneTokenButton(entry.gene, {{ isActive: entry.gene === currentGene, showMeta: false, title: 'Load annotation DE gene into the viewer' }})}}${{renderGeneGoogleSearchButton(entry.gene, {{ title: 'Search Google for this gene' }})}}</div><div class="annotation-de-title-stats" style="border-color:${{sideColor}}"><span>log2FC ${{formatScaleNumber(entry.log2fc)}}</span><span>Score ${{formatScaleNumber(entry.score)}}</span></div></div><div class="comparison-metric-grid"><span class="annotation-de-region-chip" style="background:${{getComparisonMetricChipBackground(colorA, sideColor)}};color:${{getTextColorForBackground(colorA)}}"><span>% expr A</span><strong>${{formatClusterDEPct(entry.pctA)}}</strong><span>Mean A</span><strong>${{formatScaleNumber(entry.meanA)}}</strong></span><span class="annotation-de-region-chip" style="background:${{getComparisonMetricChipBackground(colorB, sideColor)}};color:${{getTextColorForBackground(colorB)}}"><span>% expr B</span><strong>${{formatClusterDEPct(entry.pctB)}}</strong><span>Mean B</span><strong>${{formatScaleNumber(entry.meanB)}}</strong></span></div></div>`;
+        }}).join('');
+        if (groupDeQuickRunning) {{
+            html += '<div id="group-de-results"></div>';
+        }} else if (fullRun?.running) {{
+            const maximum = Math.max(1, Number(fullRun.totalGenes || fullRun.totalShards || 1));
+            const value = Math.min(maximum, Number(fullRun.completedGenes || fullRun.completedShards || 0));
+            html += `<div id="group-de-results"><div class="agg-group-meta">Scanning the full sidecar in the background.</div><progress value="${{value}}" max="${{maximum}}" style="width:100%;height:12px"></progress></div>`;
+        }} else if (result?.available && displayed.length) {{
+            const groups = groupDeQuickGroups?.key === pairKey ? groupDeQuickGroups : null;
+            if (groups) {{
+                const summaries = [groups.groupA, groups.groupB].map((group) =>
+                    computeSelectionSummary(cellSetGroupToSelectionSet(group), explorationColorCol || currentColor)
+                );
+                const typeColumn = summaries[0]?.typeColumn;
+                if (typeColumn) {{
+                    const types = Array.from(new Set(summaries.flatMap((summary) => summary.types.map(([type]) => type))));
+                    html += '<div class="selection-summary-title">Cell Composition by Annotation</div>';
+                    [groupDeSourceValue, groupDeReferenceValue].forEach((value, index) => {{
+                        const summary = summaries[index]; const typeMap = new Map(summary.types); const color = index === 0 ? colorA : colorB;
+                        html += `<div class="annot-comp-row"><div class="annot-comp-header"><span class="annot-comp-dot" style="background:${{color}}"></span><span>${{escapeHtml(formatCategoryLabel(sourceSpec.column, value))}}</span><span class="annot-comp-count">${{summary.total.toLocaleString()}} cells</span></div><div class="annot-comp-bar-track">${{types.map((type) => {{ const count = typeMap.get(type) || 0; const pct = summary.total ? 100 * count / summary.total : 0; return pct ? `<div class="annot-comp-segment" style="width:${{pct}}%;background:${{getCategoryColorForValue(typeColumn, type)}}" title="${{escapeHtml(type)}}: ${{count}}"></div>` : ''; }}).join('')}}</div></div>`;
+                    }});
+                }}
+            }}
+            html += `<div class="selection-summary-expr"><div class="selection-summary-title">Gene Expression by Annotation</div>${{displayed.map((entry) => {{ const vmax = Math.max(1e-12, Number(entry.meanA || 0), Number(entry.meanB || 0)); const factor = entry.meanB > 0 ? `${{(entry.meanA / entry.meanB).toFixed(1)}}x` : '—'; return `<div class="selection-summary-expr-row"><span class="selection-summary-expr-gene" data-gene-activate="${{escapeHtml(entry.gene)}}">${{escapeHtml(entry.gene)}}</span><div class="selection-summary-expr-bars"><div class="selection-summary-expr-bar" style="width:${{clampPercent(100 * entry.meanA / vmax)}}%;background:${{colorA}}">${{formatCompactNumber(entry.meanA)}} (${{(100 * entry.pctA).toFixed(0)}}%)</div><div class="selection-summary-expr-bar" style="width:${{clampPercent(100 * entry.meanB / vmax)}}%;background:${{colorB}}">${{formatCompactNumber(entry.meanB)}} (${{(100 * entry.pctB).toFixed(0)}}%)</div></div><span class="selection-summary-expr-factor">${{factor}}</span></div>`; }}).join('')}}</div>`;
+            const volcanoToolbar = '<button class="icon-btn" type="button" data-group-de-export-volcano title="Download volcano plot as SVG" aria-label="Download volcano plot as SVG"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></button>';
+            html += `<div id="group-de-results">${{buildGroupVolcanoPlot(displayed, volcanoToolbar, {{ positive: colorA, negative: colorB }})}}<div class="comparison-stack">${{renderCards()}}</div><div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px;"><button class="icon-btn" type="button" data-group-de-export-csv title="Download all annotation comparison genes as CSV" aria-label="Download all annotation comparison genes as CSV"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></button></div>${{DATA.gene_aux_url && result === quickResult && Number(result.loadedGeneCount || 0) < Number(result.totalGeneCount || 0) ? '<div style="display:flex;justify-content:flex-end"><button class="legend-btn" id="group-de-run-full" type="button">Run Full DE</button></div>' : ''}}</div>`;
+        }} else if (quickResult && !quickResult.available) {{
+            const noLoadedGenes = quickResult.reason === 'no_loaded_genes' && !!DATA.gene_aux_url;
+            const message = noLoadedGenes
+                ? 'No genes are currently loaded. Run the full sidecar comparison to scan all genes.'
+                : (quickResult.reason === 'too_few_cells' ? 'Each annotation needs at least two cells.' : 'The selected annotations could not be compared.');
+            html += `<div id="group-de-results"><div class="agg-group-meta">${{message}}</div>${{noLoadedGenes ? '<div style="display:flex;justify-content:flex-end"><button class="legend-btn" id="group-de-run-full" type="button">Run Full DE</button></div>' : ''}}</div>`;
+        }} else {{
+            html += '<div id="group-de-results"></div>';
+        }}
+        container.innerHTML = html;
+        setCompareSectionSummary('group-de-summary', '');
+        const reset = () => {{ invalidateGroupDEState(false); renderGroupDE(); }};
+        container.querySelector('#group-de-source-value')?.addEventListener('change', (event) => {{ groupDeSourceValue = event.target.value || null; reset(); }});
+        container.querySelector('#group-de-reference-value')?.addEventListener('change', (event) => {{ groupDeReferenceValue = event.target.value || null; reset(); }});
+        container.querySelector('#group-de-restrict-spec')?.addEventListener('change', (event) => {{ groupDeRestrictSpecValue = event.target.value || ''; groupDeRestrictValue = null; reset(); }});
+        container.querySelector('#group-de-restrict-value')?.addEventListener('change', (event) => {{ groupDeRestrictValue = event.target.value || null; reset(); }});
+        container.querySelector('#group-de-topn')?.addEventListener('change', (event) => {{ groupDeTopN = Math.max(1, Math.min(20, Number(event.target.value) || ANNOTATION_DE_TOP_N)); renderGroupDE(); }});
+        container.querySelector('#group-de-min-pct')?.addEventListener('input', (event) => {{ container.querySelector('#group-de-min-pct-value').textContent = `${{Math.round(Number(event.target.value) || 0)}}%`; }});
+        container.querySelector('#group-de-min-pct')?.addEventListener('change', (event) => {{ groupDeMinPct = Math.max(0, Math.min(100, Math.round(Number(event.target.value) || 0))); renderGroupDE(); }});
+        container.querySelector('#group-de-swap')?.addEventListener('click', () => {{
+            const oldKey = pairKey; const oldQuick = groupDeQuickResult; const oldFull = groupDeFullCache.get(oldKey);
+            const oldA = groupDeSourceValue; groupDeSourceValue = groupDeReferenceValue; groupDeReferenceValue = oldA;
+            const nextKey = getAnnotationGroupDEPairKey(sourceSpec, groupDeSourceValue, groupDeReferenceValue, restrictSpec, groupDeRestrictValue);
+            if (groupDeQuickResultKey === oldKey && oldQuick) {{ groupDeQuickResult = invertGroupDEResult(oldQuick); groupDeQuickResultKey = nextKey; if (groupDeQuickGroups) groupDeQuickGroups = {{ key: nextKey, groupA: groupDeQuickGroups.groupB, groupB: groupDeQuickGroups.groupA }}; }}
+            if (oldFull) groupDeFullCache.set(nextKey, invertGroupDEResult(oldFull));
+            renderGroupDE();
+        }});
+        container.querySelector('#group-de-run')?.addEventListener('click', () => {{ runAnnotationGroupDEQuick(sourceSpec, groupDeSourceValue, groupDeReferenceValue, restrictSpec, groupDeRestrictValue); }});
+        container.querySelector('#group-de-run-full')?.addEventListener('click', () => {{ if (groupDeQuickGroups?.key === pairKey) runFullGroupDE(groupDeQuickGroups.groupA, groupDeQuickGroups.groupB); }});
+        container.querySelector('[data-group-de-export-volcano]')?.addEventListener('click', () => {{
+            downloadComparisonVolcanoSvg(
+                container,
+                formatCategoryLabel(sourceSpec.column, groupDeSourceValue),
+                formatCategoryLabel(sourceSpec.column, groupDeReferenceValue),
+                'annotation-de',
+            );
+        }});
+        container.querySelector('[data-group-de-export-csv]')?.addEventListener('click', () => {{
+            exportComparisonDECsv(
+                formatCategoryLabel(sourceSpec.column, groupDeSourceValue),
+                formatCategoryLabel(sourceSpec.column, groupDeReferenceValue),
+                result,
+                'annotation-de',
+            );
+        }});
+        bindVolcanoGroupInteraction(container, renderGroupDE);
+        bindGeneActivateButtons(container, renderGroupDE);
+        bindGeneGoogleSearchButtons(container);
+    }}
+
+    function renderComplexPseudobulkDesign() {{
+        const container = document.getElementById('complex-pseudobulk-design');
+        if (!container) return;
+        // Complex design is deliberately dormant while the generic contrast
+        // interface is being redesigned. Do not initialize or render any
+        // previously exported complex-design payload here.
+        container.innerHTML = '<div class="pseudobulk-comparison-warning"><strong>In the making.</strong> Complex design is currently under development and is not available yet.</div>';
+        return;
+
     }}
 
     function renderCellTypeTrend() {{
@@ -26391,7 +27779,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const selectRow = document.getElementById('celltype-select-row');
         if (!container || !groupBy) return;
         const groupKey = groupBy.value;
-        if (!groupKey) {{
+        if (!groupKey || !String(groupKey).startsWith(SECTION_METADATA_COLOR_PREFIX)) {{
             if (selectRow) selectRow.style.display = 'none';
             if (select) {{
                 select.innerHTML = '';
@@ -26400,6 +27788,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             container.innerHTML = '';
             return;
         }}
+        const metadataKey = String(groupKey).slice(SECTION_METADATA_COLOR_PREFIX.length);
         if (selectRow) selectRow.style.display = '';
 
         const colorCol = explorationColorCol || currentColor;
@@ -26438,7 +27827,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const groups = new Map();
 
         DATA.sections.forEach(section => {{
-            const groupVal = section.metadata?.[groupKey] || 'unknown';
+            const groupVal = String(section.metadata?.[metadataKey] ?? 'unknown');
             if (!groups.has(groupVal)) {{
                 groups.set(groupVal, {{ total: 0, count: 0 }});
             }}
@@ -26459,7 +27848,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const pct = stats.total > 0 ? (stats.count / stats.total) * 100 : 0;
             return `
                 <tr>
-                    <td>${{groupVal}}</td>
+                    <td>${{escapeHtml(groupVal)}}</td>
                     <td>${{stats.count}}</td>
                     <td>${{stats.total}}</td>
                     <td>${{pct.toFixed(1)}}%</td>
@@ -26468,11 +27857,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}).join('');
 
         container.innerHTML = `
-            <div class="gene-distribution-summary">Per Annotation trend for <strong>${{escapeHtml(formatCategoryLabel(colorCol, target))}}</strong>${{renderCalcInfoButton('color_trend')}}</div>
+            <div class="gene-distribution-summary">Per Annotation trend for ${{renderAggCategoryChip(colorCol, target)}}${{renderCalcInfoButton('color_trend')}}</div>
             <table class="trend-table">
                 <thead>
                     <tr>
-                        <th>${{formatMetadataLabel(groupKey)}}</th>
+                        <th>${{escapeHtml(formatMetadataLabel(metadataKey))}}</th>
                         <th>Count</th>
                         <th>Total</th>
                         <th>%</th>
@@ -28494,9 +29883,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         const topEntries = sortedEntries.slice(0, 12);
-        const renderInlineGeneLinks = (genes) => genes.map(g =>
-            `<span class="interaction-gene-link" data-gene-activate="${{escapeHtml(g)}}" title="Load ${{escapeHtml(g)}} into the viewer">${{escapeHtml(g)}}</span>`
-        ).join(', ');
+        const renderInlineGeneLinks = (genes) => genes.map(g => {{
+            const embedded = isEmbeddedViewerGene(g);
+            const cls = embedded ? 'interaction-gene-link' : 'interaction-gene-link disabled';
+            const activateAttr = embedded ? ` data-gene-activate="${{escapeHtml(g)}}"` : '';
+            const title = embedded
+                ? `Load ${{g}} into the viewer`
+                : `${{g}} is shown in DE results but its expression vector was not embedded`;
+            return `<span class="${{cls}}"${{activateAttr}} title="${{escapeHtml(title)}}">${{escapeHtml(g)}}</span>`;
+        }}).join(', ');
         const sourceMarkerLabel = sourceMarkers.length ? renderInlineGeneLinks(sourceMarkers) : 'No pseudobulk DE genes available.';
         const sourceN = (nCells[sourceIdx] ?? 0).toLocaleString();
         const degreeLabel = Number.isFinite(meanDegree[sourceIdx]) ? meanDegree[sourceIdx].toFixed(2) : '0.00';
@@ -29472,7 +30867,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const geneInput = document.getElementById('gene-input');
             const requested = resolveCanonicalGeneName(geneInput?.value || '')
                 || resolveCanonicalGeneName(currentGene)
-                || getActiveFeatureList()[0]
                 || '';
             if (!requested) return;
             await activateViewerGene(requested, {{ showErrors: false }});
@@ -30848,13 +32242,24 @@ def export_to_html(
     gene_sparse_zero_threshold: float = 0.8,
     pseudobulk: Optional[str] = "auto",
     pseudobulk_additional_annotations: Optional[List[str]] = None,
+    pseudobulk_replicate_annotation: Optional[str] = None,
+    pseudobulk_simple_constrast_categories: Optional[List[str]] = None,
     pseudobulk_counts_layer: Optional[str] = "counts",
+    pseudobulk_min_cell_counts: int = 0,
+    pseudobulk_min_gene_counts: int = 0,
     pseudobulk_min_replicates: int = 2,
     pseudobulk_min_pct_expressed: float = 0.0,
     pseudobulk_p_adjust_method: str = "fdr_bh",
     pseudobulk_padj_cutoff: float = 0.05,
     pseudobulk_log2fc_cutoff: float = 0.5,
     pseudobulk_deseq2_fit_type: str = "parametric",
+    pseudobulk_n_cpus: int = 1,
+    pseudobulk_embed_top_n_per_comparison: int = 20,
+    pathway_gmt: Optional[Union[str, Sequence[str]]] = None,
+    pathway_organism: str = "Human",
+    pathway_top_n: int = 20,
+    pathway_min_overlap: int = 3,
+    pathway_gsea_permutations: int = 100,
     neighbor_stats_groupby: Optional[List[str]] = None,
     neighbor_stats_permutations: Union[int, None] = None,
     neighbor_stats_seed: int = 0,
@@ -30940,11 +32345,26 @@ def export_to_html(
     pseudobulk_additional_annotations : list, optional
         Additional annotation columns to analyze with category pseudobulk DE and
         interaction pseudobulk DE when their modes are enabled.
+    pseudobulk_replicate_annotation : str, optional
+        Obs annotation used as the biological replicate for pseudobulk analyses.
+        Defaults to the dataset groupby annotation.
+    pseudobulk_simple_constrast_categories : list, optional
+        Categories to include in Simple design category-versus-category contrasts.
+        All retained categories remain in the shared DESeq2 fit, and each
+        retained category receives a balanced-rest contrast.
     pseudobulk_counts_layer : str, optional
         Raw-count AnnData layer for pseudobulk aggregation. Defaults to "counts";
         falls back to adata.X with a warning if absent.
+    pseudobulk_min_cell_counts : int
+        Exclude cells below this total raw-count threshold before pseudobulk
+        aggregation. Zero disables filtering.
+    pseudobulk_min_gene_counts : int
+        Exclude genes below this total raw pseudobulk-count threshold in the
+        shared DESeq2 fit. Zero disables filtering.
     pseudobulk_min_replicates : int
-        Minimum paired replicates required for each group-vs-group contrast.
+        Minimum paired replicates required for each reported group-vs-group
+        contrast.
+        Pseudobulk DE always requires at least two replicates.
     pseudobulk_min_pct_expressed : float
         Minimum fraction of cells expressing a gene required in both compared
         groups. Values > 1 are interpreted as percentages.
@@ -30956,6 +32376,26 @@ def export_to_html(
         Absolute log2 fold-change cutoff used for volcano coloring and DE table inclusion.
     pseudobulk_deseq2_fit_type : str
         PyDESeq2 dispersion trend fit type: "parametric" or "mean".
+    pseudobulk_n_cpus : int
+        Number of CPU workers used for PyDESeq2 pseudobulk fitting and contrast
+        evaluation. Must be at least one.
+    pseudobulk_embed_top_n_per_comparison : int
+        Maximum significant DE genes to auto-embed per category or contact
+        comparison. Explicitly requested genes are still embedded. Use 0 to
+        disable automatic DE-gene embedding.
+    pathway_gmt : str or list, optional
+        GMT pathway file(s) used for ORA and preranked GSEA. When omitted,
+        KaroSpace attempts to load the default Reactome library through
+        GSEApy.
+    pathway_organism : str
+        Organism name passed to GSEApy when loading the default Reactome
+        library. Common values include "Human" and "Mouse".
+    pathway_top_n : int
+        Maximum enriched pathways stored per method/direction/comparison.
+    pathway_min_overlap : int
+        Minimum overlap between a pathway and a comparison gene universe.
+    pathway_gsea_permutations : int
+        Label permutations used for compact preranked GSEA p-values.
     neighbor_stats_groupby : list, optional
         Obs columns to compute neighbor composition stats for (categorical only).
         If None/empty, neighbor stats are not computed.
@@ -31068,8 +32508,37 @@ def export_to_html(
 
     pseudobulk_enabled = _analysis_mode_enabled(pseudobulk, "pseudobulk")
     interaction_markers_enabled = _analysis_mode_enabled(interaction_markers, "interaction_markers")
+    resolved_pseudobulk_replicate_annotation = (
+        str(pseudobulk_replicate_annotation).strip()
+        if pseudobulk_replicate_annotation is not None
+        else ""
+    )
+    if not resolved_pseudobulk_replicate_annotation:
+        resolved_pseudobulk_replicate_annotation = None
+    if (
+        resolved_pseudobulk_replicate_annotation is not None
+        and resolved_pseudobulk_replicate_annotation not in dataset.adata.obs.columns
+    ):
+        raise ValueError(
+            "pseudobulk_replicate_annotation "
+            f"'{resolved_pseudobulk_replicate_annotation}' is not an obs column"
+        )
     if int(pseudobulk_min_replicates) < 1:
         raise ValueError("pseudobulk_min_replicates must be >= 1")
+    if int(pseudobulk_min_cell_counts) < 0:
+        raise ValueError("pseudobulk_min_cell_counts must be >= 0")
+    if int(pseudobulk_min_gene_counts) < 0:
+        raise ValueError("pseudobulk_min_gene_counts must be >= 0")
+    if int(pseudobulk_n_cpus) < 1:
+        raise ValueError("pseudobulk_n_cpus must be >= 1")
+    if int(pseudobulk_embed_top_n_per_comparison) < 0:
+        raise ValueError("pseudobulk_embed_top_n_per_comparison must be >= 0")
+    if int(pathway_top_n) < 1:
+        raise ValueError("pathway_top_n must be >= 1")
+    if int(pathway_min_overlap) < 1:
+        raise ValueError("pathway_min_overlap must be >= 1")
+    if int(pathway_gsea_permutations) < 0:
+        raise ValueError("pathway_gsea_permutations must be >= 0")
     correction_method = str(pseudobulk_p_adjust_method or "fdr_bh").strip().lower().replace("-", "_")
     if correction_method not in {"fdr_bh", "bh", "benjamini_hochberg", "bonferroni", "bonf", "holm", "holm_bonferroni", "none", "raw", "pvalue", "pvalues"}:
         raise ValueError("pseudobulk_p_adjust_method must be one of: fdr_bh, bonferroni, holm, none")
@@ -31144,13 +32613,19 @@ def export_to_html(
         gene_encoding=gene_encoding,
         gene_sparse_zero_threshold=gene_sparse_zero_threshold,
         pseudobulk_de_groupby=pseudobulk_de_groupby,
+        pseudobulk_replicate_annotation=resolved_pseudobulk_replicate_annotation,
+        pseudobulk_simple_constrast_categories=pseudobulk_simple_constrast_categories,
         pseudobulk_counts_layer=pseudobulk_counts_layer,
+        pseudobulk_min_cell_counts=pseudobulk_min_cell_counts,
+        pseudobulk_min_gene_counts=pseudobulk_min_gene_counts,
         pseudobulk_min_replicates=pseudobulk_min_replicates,
         pseudobulk_min_pct_expressed=pseudobulk_min_pct_expressed,
         pseudobulk_p_adjust_method=correction_method,
         pseudobulk_padj_cutoff=pseudobulk_padj_cutoff,
         pseudobulk_log2fc_cutoff=pseudobulk_log2fc_cutoff,
         pseudobulk_deseq2_fit_type=fit_type,
+        pseudobulk_n_cpus=int(pseudobulk_n_cpus),
+        pseudobulk_embed_top_n_per_comparison=int(pseudobulk_embed_top_n_per_comparison),
         interaction_markers_groupby=interaction_markers_groupby,
         neighbor_stats_groupby=neighbor_stats_groupby,
         neighbor_stats_permutations=neighbor_stats_permutations,
@@ -31185,6 +32660,30 @@ def export_to_html(
 
     if section_images:
         _embed_section_images(data, section_images, max_px=section_images_max_px)
+
+    try:
+        from .pathways import add_pathway_enrichment_to_pseudobulk_de
+
+        print("  - computing pathway ORA/GSEA summaries...")
+        data["pathway_settings"] = add_pathway_enrichment_to_pseudobulk_de(
+            data.get("pseudobulk_de"),
+            pathway_gmt=pathway_gmt,
+            top_n=int(pathway_top_n),
+            min_overlap=int(pathway_min_overlap),
+            gsea_permutations=int(pathway_gsea_permutations),
+            organism=str(pathway_organism or "Human"),
+        )
+        if not data["pathway_settings"].get("available"):
+            reason = data["pathway_settings"].get("reason") or "unavailable"
+            error = data["pathway_settings"].get("error")
+            print(f"  Warning: pathway enrichment unavailable ({reason}{': ' + error if error else ''}).")
+    except Exception as exc:
+        data["pathway_settings"] = {
+            "available": False,
+            "reason": "pathway_enrichment_failed",
+            "error": str(exc),
+        }
+        print(f"  Warning: pathway enrichment failed ({exc}).")
 
     # Resolve which non-default modalities to export. Only meaningful when sidecar-based.
     available_modalities = list(getattr(dataset, "modalities", {}).keys())

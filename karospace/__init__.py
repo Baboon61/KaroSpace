@@ -39,6 +39,7 @@ _register_anndata_null_reader()
 __version__ = "0.1.0"
 __all__ = [
     "load_spatial_data",
+    "inspect_input_file",
     "SpatialDataset",
     "export_to_html",
     "package_sidecar_viewer",
@@ -48,7 +49,7 @@ __all__ = [
 
 
 def __getattr__(name):
-    if name in {"load_spatial_data", "SpatialDataset"}:
+    if name in {"load_spatial_data", "inspect_input_file", "SpatialDataset"}:
         module = import_module(".data_loader", __name__)
         return getattr(module, name)
     if name in {"export_to_html", "package_sidecar_viewer"}:
