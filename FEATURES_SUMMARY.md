@@ -15,7 +15,8 @@ This document summarizes the current capabilities in this repository, focused on
 - Optional SpatialData input: load a SpatialData `.zarr` store or in-memory SpatialData object, select one AnnData table with `spatialdata_table` / `--spatialdata-table`, then export through the same AnnData-based pipeline.
 - Section grouping by any obs column (`groupby`).
 - For SpatialData tables, the table's `region_key` is used automatically as the section grouping column when `sample_id` is absent and the region key is available.
-- Optional metadata columns for filter chips and panel metadata.
+- Section metadata is split into `metadata_section` (shown in the visual params bar/filter chips) and `metadata_section_extra` (stored as section metadata without filter chips).
+- Extra cell annotation dropdowns use `cells_annotations`.
 - Optional metadata value ordering for deterministic section/filter order.
 - Optional UMAP support from `adata.obsm["X_umap"]`.
 - Optional neighborhood graph support from `adata.obsp` keys (for graph overlays and neighbor analytics).
@@ -26,7 +27,7 @@ This document summarizes the current capabilities in this repository, focused on
 - Optional sidecar gene storage (`gene_storage="sidecar"`) with manifest + shard directory for lazy loading.
 - Per-section arrays are packed into base64 typed arrays by default for smaller/faster files.
 - Gene vectors support `dense`, `sparse`, or `auto` encoding.
-- Gene loading can be manual (`genes=[...]`) and significant pseudobulk DE genes are embedded automatically.
+- Gene loading can be manual (`genes=[...]`) and significant pseudobulk DE genes are embedded automatically up to the per-comparison cap.
 - Gene discovery can be enriched with DE-gene and pseudobulk/category correlation suggestions (`gene_correlation_top_n`).
 - Adaptive spot size mode (`spot_size="auto"`), or fixed numeric spot size.
 - Optional exact initial per-section rotations via `section_rotations={section_id: angle}`.
@@ -40,7 +41,7 @@ This document summarizes the current capabilities in this repository, focused on
   - Single true section dataset gets centered single-section layout.
   - Filtered-to-one-section view gets capped-width layout (prevents full-page stretch).
 - Category legend with hide/show toggles and spotlight behavior.
-- Light viewer styling is built in.
+- Light and dark viewer styling is built in.
 - Screenshot export for current grid view.
 - Category/ gene annotation switching from the top controls.
 - Gene discovery panel with fuzzy search, keyboard navigation, recent genes, saved panels, and pseudobulk-DE-driven suggestions.
@@ -79,6 +80,7 @@ This document summarizes the current capabilities in this repository, focused on
 
 - Optional UMAP panel with toggle button when UMAP exists.
 - Dock positions (corner cycling), panel sizing controls.
+- UMAP panel remains pinned while scrolling the section grid.
 - UMAP pan/zoom and point-size control.
 - Linked lasso selection with grid/modal synchronization.
 
@@ -92,13 +94,16 @@ This document summarizes the current capabilities in this repository, focused on
 
 ### 8.2 Neighbors Tab
 
-- Neighbor composition stats by categorical annotation.
+- Neighbor composition stats by the selected Exploration categorical annotation.
 - Optional permutation-based enrichment z-scores.
-- Target search/filter.
+- Yellow warnings when no neighbor graph is available, or when the selected annotation has no neighbor stats; warnings list annotations that do have stats.
 - Interaction browser:
   - Source/target interaction summaries.
   - Contact-conditioned DE genes (if precomputed).
   - Type DE genes per target.
+- Spatial dispersion:
+  - Computed from all cells before HTML downsampling.
+  - Reports clustered/random/dispersed patterns per category for the initial annotation and requested `cells_annotations`.
 
 ### 8.3 Genes Tab
 
@@ -118,10 +123,14 @@ This document summarizes the current capabilities in this repository, focused on
   - Recent genes and saved gene panels stored per viewer.
   - DE-gene and correlated-gene suggestions when available.
 - Compare:
-  - Pairwise pseudobulk category-vs-category DE for precomputed categorical columns.
+  - Simple design pseudobulk category-vs-category DE for precomputed categorical columns.
   - Select source category and reference category within an annotation.
-  - Ranked result table with log fold change, adjusted p-value, score, and percent expressing.
-  - Clicking a DE gene activates that gene in the viewer.
+  - Raw table, marker list, MA plot, volcano plot, PCA, and distance matrix views.
+  - Pairwise PCA/distance diagnostics are generated for the selected comparison.
+  - Genes that do not reach the minimum percent-expressed threshold in at least one compared group are removed before `DeseqStats`.
+  - DE calls require adjusted p-value strictly below the configured cutoff and the configured absolute log2FC threshold.
+  - Non-embedded DE genes remain visible in tables/lists but have disabled expression links.
+  - Pathway Enrichment panel with ORA dot plots and selectable preranked GSEA enrichment profiles.
 
 ## 9. Annotation Integration Back to AnnData
 
@@ -138,6 +147,7 @@ This document summarizes the current capabilities in this repository, focused on
 - CLI supports core export settings:
   - H5AD and SpatialData `.zarr` inputs
   - SpatialData table selection with `--spatialdata-table`
+  - `--cells-annotations`, `--metadata-section`, and `--metadata-section-extra`
   - color, groupby, panel size, spot size, downsample
   - gene encoding options
   - sidecar gene storage options
@@ -146,7 +156,7 @@ This document summarizes the current capabilities in this repository, focused on
   - interaction pseudobulk controls
   - section rotations
 - GUI supports:
-  - Searchable list editors for additional annotations and genes
+  - Searchable list editors for cell annotations and genes
   - Advanced controls for gene storage, pseudobulk DE, neighbor stats, and interaction markers
   - Inspect/validate + export workflow with logs
 

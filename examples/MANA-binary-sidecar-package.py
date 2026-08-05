@@ -33,7 +33,7 @@ GENE_AUX_PATH = "RRMap-binary.genes.json"
 dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",
-    metadata_columns=["stage", "condition", "day_of_sacrifice", "score_sacrifice", "region", "sex", "model"],
+    metadata_section=["stage", "condition", "day_of_sacrifice", "score_sacrifice", "region", "sex", "model"],
     metadata_value_order={
         "stage": [
             "MOG CFA",
@@ -63,7 +63,7 @@ common_kwargs = dict(
     spot_size="auto",
     downsample=100000,
     outline_by=OUTLINE_BY,
-    additional_annotations=[
+    cells_annotations=[
         "anno_L3",
         "anno_L2",
         "anno_L1",

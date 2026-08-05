@@ -69,7 +69,7 @@ def main() -> None:
         H5AD_PATH,
         groupby="kmeans_split_id",
         spatial_key="spatial",
-        metadata_columns=METADATA_COLS,
+        metadata_section=METADATA_COLS,
     )
     print(f"  Loaded {dataset.n_sections} sections with {dataset.n_cells:,} total cells")
 
@@ -80,7 +80,7 @@ def main() -> None:
         spot_size="auto",
         downsample=10_000_000,
         outline_by=None,
-        additional_annotations=ADDITIONAL_COLORS,
+        cells_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",

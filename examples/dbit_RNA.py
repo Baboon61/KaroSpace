@@ -25,7 +25,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
-    metadata_columns=['condition'],
+    metadata_section=['condition'],
     metadata_value_order={
     },
     # metadata_max_columns=4,  # optional: limit number of metadata columns used
@@ -53,7 +53,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_annotations=[
+    cells_annotations=[
       
     ],
 

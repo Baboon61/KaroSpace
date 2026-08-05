@@ -63,7 +63,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="karospace_polygon_labels",
     spatial_key="spatial",
-    metadata_columns=[
+    metadata_section=[
        'animal','condition','timepoint'
     ],
 )
@@ -78,7 +78,7 @@ common_kwargs = dict(
     spot_size="auto",
     downsample=10_000_000,
     outline_by=None,
-    additional_annotations=ADDITIONAL_COLORS,
+    cells_annotations=ADDITIONAL_COLORS,
     genes=[],
     use_hvgs=False,
     hvg_limit=50,

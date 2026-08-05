@@ -61,7 +61,7 @@ def _build_dataset() -> SpatialDataset:
         groupby="sample_id",
         obs_columns=["sample_id", "leiden", "condition"],
         var_names=["G1", "G2", "G3"],
-        metadata_columns=["condition"],
+        metadata_section=["condition"],
     )
 
 
@@ -120,7 +120,7 @@ def _build_pseudobulk_dataset(cells_per_category_per_sample: int = 20) -> Spatia
         groupby="sample_id",
         obs_columns=["sample_id", "leiden", "condition"],
         var_names=["G1", "G2", "G3"],
-        metadata_columns=["condition"],
+        metadata_section=["condition"],
     )
 
 
@@ -1514,7 +1514,7 @@ def _build_dataset_with_spatial_graph() -> "SpatialDataset":
         groupby="sample_id",
         obs_columns=["sample_id", "leiden"],
         var_names=["G1", "G2", "G3"],
-        metadata_columns=[],
+        metadata_section=[],
     )
 
 

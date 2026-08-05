@@ -46,7 +46,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample", # 'sample' identifies the sections in this dataset
     spatial_key="spatial",
-    metadata_columns=[
+    metadata_section=[
         "sample",
         "tissue",
         "Run_Tissue_name",
@@ -64,7 +64,7 @@ common_kwargs = dict(
     min_panel_size=150,
     spot_size="auto",
     downsample=None, # Keep all cells for high-res exploration
-    additional_annotations=ADDITIONAL_COLORS,
+    cells_annotations=ADDITIONAL_COLORS,
     
     # Feature discovery
     genes=[],        # Can specify initial genes if desired

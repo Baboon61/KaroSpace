@@ -24,7 +24,7 @@ GENE_AUX_PATH = "BALO.genes.json"
 dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",
-    metadata_columns=[
+    metadata_section=[
         "sample_id",
         "run",
     ],
@@ -42,7 +42,7 @@ export_to_html(
     spot_size="auto",
     downsample=100000,
     outline_by="sample_id",
-    additional_annotations=[
+    cells_annotations=[
         "leiden_2",
         "leiden_0.5",
         "run",

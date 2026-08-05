@@ -25,7 +25,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
-    metadata_columns=['stage', 'condition', 'day_of_sacrifice', 'score_sacrifice', 'region', 'sex', 'model'],
+    metadata_section=['stage', 'condition', 'day_of_sacrifice', 'score_sacrifice', 'region', 'sex', 'model'],
     metadata_value_order={
         "stage": ['MOG CFA','PLP CFA',
                   'NONSYMPTOM','OS1','ONSET1','ONSET2','MONOPHASIC',
@@ -58,7 +58,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_annotations=[
+    cells_annotations=[
        'anno_L3', 
        'anno_L2', 
        'anno_L1',

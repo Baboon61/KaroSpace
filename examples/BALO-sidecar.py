@@ -31,7 +31,7 @@ if H5AD_PATH.startswith("/path/to/"):
 dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",
-    metadata_columns=['condition'],
+    metadata_section=['condition'],
     metadata_value_order={
         "stage": [],
     },
@@ -56,7 +56,7 @@ export_to_html(
     spot_size="auto",
     downsample=100000,
     outline_by=OUTLINE_BY,
-    additional_annotations=[
+    cells_annotations=[
         'leiden_0.5',
     ],
     genes=[

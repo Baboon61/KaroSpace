@@ -63,7 +63,7 @@ def main() -> None:
         groupby="sample_NewNAME",
         spatial_key="spatial",
         # condition / status intentionally excluded; expose patient identifiers.
-        metadata_columns=["sample_NewNAME", "pID", "patient_id", "slide"],
+        metadata_section=["sample_NewNAME", "pID", "patient_id", "slide"],
     )
     print(f"  {dataset.n_sections} section(s), {dataset.n_cells:,} cells")
     print(f"  section IDs: {[s.section_id for s in dataset.sections][:6]} ...")
@@ -74,7 +74,7 @@ def main() -> None:
         min_panel_size=140,
         spot_size="auto",
         outline_by=None,
-        additional_annotations=ADDITIONAL_COLORS,
+        cells_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",

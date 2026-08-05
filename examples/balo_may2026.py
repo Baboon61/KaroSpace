@@ -63,7 +63,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",
     spatial_key="spatial",
-    metadata_columns=["sample_id"],
+    metadata_section=["sample_id"],
 )
 
 print(f"Loaded {dataset.n_sections} sections, {dataset.n_cells:,} cells")
@@ -75,7 +75,7 @@ common_kwargs = dict(
     min_panel_size=120,
     spot_size="auto",
     outline_by=None,
-    additional_annotations=ADDITIONAL_COLORS,
+    cells_annotations=ADDITIONAL_COLORS,
     genes=[],
     use_hvgs=False,
     hvg_limit=50,

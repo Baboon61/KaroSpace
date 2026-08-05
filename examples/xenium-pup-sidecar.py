@@ -30,7 +30,7 @@ if H5AD_PATH.startswith("/path/to/"):
 
 PRIMARY_CLUSTER = "leiden_0.5"
 ANALYTICS_COLUMNS = [PRIMARY_CLUSTER, "leiden_0.1", "leiden_1", "leiden_1.5", "leiden_2"]
-additional_annotations=ANALYTICS_COLUMNS[1:],
+cells_annotations=ANALYTICS_COLUMNS[1:],
 marker_genes_groupby=ANALYTICS_COLUMNS,
 cluster_de_groupby=ANALYTICS_COLUMNS,
 neighbor_stats_groupby=ANALYTICS_COLUMNS,
@@ -40,7 +40,7 @@ GENE_AUX_PATH = "xenium-mouse-pup-sidecar.genes.json"
 dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",
-    metadata_columns=[],
+    metadata_section=[],
     metadata_value_order={
         "condition": [],
     },
@@ -58,7 +58,7 @@ export_to_html(
       spot_size="auto",
       downsample=10_000_000,
       outline_by=None,
-      additional_annotations=ANALYTICS_COLUMNS[1:],
+      cells_annotations=ANALYTICS_COLUMNS[1:],
       genes=[],
       use_hvgs=False,
       hvg_limit=50,

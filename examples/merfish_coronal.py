@@ -24,7 +24,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="slice_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
-    metadata_columns=[''],
+    metadata_section=[''],
     metadata_value_order={
         "stage": [
                   ],
@@ -54,7 +54,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_annotations=[
+    cells_annotations=[
     ],
 
     # Pre-load specific genes for expression visualization

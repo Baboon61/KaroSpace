@@ -69,7 +69,7 @@ def main() -> None:
         H5AD_PATH,
         groupby="sample_id",
         spatial_key="spatial",
-        metadata_columns=[
+        metadata_section=[
             "sample_id",
             "sample_name",
             "condition",
@@ -90,7 +90,7 @@ def main() -> None:
         min_panel_size=140,
         spot_size="auto",
         outline_by=None,
-        additional_annotations=ADDITIONAL_COLORS,
+        cells_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",

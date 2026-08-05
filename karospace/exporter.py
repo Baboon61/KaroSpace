@@ -25,6 +25,7 @@ try:
 except Exception:  # pragma: no cover - optional dependency fallback
     tqdm = None
 
+from .console import log_detail, log_step, log_warning
 from .data_loader import SpatialDataset
 
 
@@ -71,7 +72,7 @@ def _read_image_for_embed(path: Path, max_px: int):
                 shape = best.shape
                 h = shape[-3] if len(shape) >= 3 else shape[0]
                 w = shape[-2] if len(shape) >= 3 else shape[1]
-                print(f"    Pyramid level {w}×{h}px from {path.name}")
+                log_detail(f"Using TIFF pyramid level {w}x{h}px from {path.name}.", level=2)
                 arr = best.asarray()
                 while arr.ndim > 3:
                     arr = arr[0]
@@ -98,7 +99,7 @@ def _read_image_for_embed(path: Path, max_px: int):
                 arr = best_page.asarray()
                 img = _PILImage.fromarray(arr).convert("RGB")
                 tf.close()
-                print(f"    Reduced-image page {img.size[0]}×{img.size[1]}px from {path.name}")
+                log_detail(f"Using TIFF reduced-image page {img.size[0]}x{img.size[1]}px from {path.name}.", level=2)
                 if max(img.size) > max_px:
                     img.thumbnail((max_px, max_px), _PILImage.LANCZOS)
                 return img
@@ -106,10 +107,9 @@ def _read_image_for_embed(path: Path, max_px: int):
             tf.close()
 
         except ImportError:
-            print(f"    tifffile not installed — falling back to PIL for {path.name}. "
-                  "Run: pip install tifffile")
+            log_warning(f"tifffile not installed; falling back to PIL for {path.name}. Install with: pip install tifffile", level=2)
         except Exception as e:
-            print(f"    tifffile fallback for {path.name}: {e}")
+            log_warning(f"tifffile fallback for {path.name}: {e}", level=2)
 
     # Plain PIL fallback
     img = _PILImage.open(path).convert("RGB")
@@ -168,19 +168,19 @@ def _embed_section_images(data: dict, section_images: Dict[str, object], max_px:
     section_by_id = {s["id"]: s for s in data.get("sections", [])}
     for section_id, value in section_images.items():
         if section_id not in section_by_id:
-            print(f"  Warning: section_images key '{section_id}' not found in sections — skipping.")
+            log_warning(f"section_images key '{section_id}' not found in sections; skipping.", level=1)
             continue
         spec = _normalize_section_image_layers(value)
         if not spec:
             continue
         if not _has_pil:
-            print("  Warning: Pillow not installed — cannot embed section images. Install Pillow.")
+            log_warning("Pillow not installed; cannot embed section images. Install Pillow.", level=1)
             continue
         embedded = []
         for name, image_path in spec:
             path = Path(image_path)
             if not path.exists():
-                print(f"  Warning: section image not found: {image_path} — skipping.")
+                log_warning(f"section image not found: {image_path}; skipping.", level=1)
                 continue
             img = _read_image_for_embed(path, max_px)
             buf = io.BytesIO()
@@ -188,9 +188,10 @@ def _embed_section_images(data: dict, section_images: Dict[str, object], max_px:
             raw = buf.getvalue()
             url = f"data:image/jpeg;base64,{base64.b64encode(raw).decode()}"
             embedded.append({"name": name, "url": url})
-            print(
-                f"  Embedded {path.name} as '{name}' "
-                f"({img.size[0]}×{img.size[1]}px, {len(raw) // 1024}KB) for section '{section_id}'"
+            log_detail(
+                f"Embedded {path.name} as '{name}' "
+                f"({img.size[0]}x{img.size[1]}px, {len(raw) // 1024}KB) for section '{section_id}'.",
+                level=1,
             )
         if embedded:
             section_by_id[section_id]["he_images"] = embedded
@@ -32740,7 +32741,6 @@ def export_to_html(
     modalities: Optional[List[str]] = None,
     section_images: Optional[Dict[str, str]] = None,
     section_images_max_px: int = 4096,
-    additional_annotations: Optional[List[str]] = None,
 ) -> str:
     """
     Export spatial dataset to a standalone HTML file.
@@ -32773,8 +32773,6 @@ def export_to_html(
         HTML string shown in the Info tab of the color panel.
     cells_annotations : list, optional
         Additional cell obs columns to include for annotation switching.
-    additional_annotations : list, optional
-        Deprecated alias for ``cells_annotations``.
     genes : list, optional
         Gene names to include for expression visualization
     gene_encoding : str
@@ -32891,9 +32889,6 @@ def export_to_html(
     str
         Path to created HTML file
     """
-    if cells_annotations is None and additional_annotations is not None:
-        cells_annotations = additional_annotations
-
     requested_output_path = Path(output_path).expanduser()
     package_mode = requested_output_path.suffix.lower() == ".karospace"
     package_output_path_obj: Optional[Path] = None
@@ -32964,12 +32959,10 @@ def export_to_html(
         resolved_gene_aux_path = resolved_gene_aux_path.resolve()
         resolved_gene_aux_dir = resolved_gene_aux_path.with_suffix("")
 
-    section_metadata_columns = set(getattr(dataset, "metadata_columns", []) or [])
-    section_metadata_columns.update(getattr(dataset, "metadata_section", []) or [])
+    section_metadata_columns = set(getattr(dataset, "metadata_section", []) or [])
     section_metadata_columns.update(getattr(dataset, "metadata_section_extra", []) or [])
-    section_metadata_columns.update(getattr(dataset, "metadata_sample_extra", []) or [])
     if outline_by and outline_by not in section_metadata_columns:
-        print(f"  Warning: outline_by '{outline_by}' not in metadata columns; no outlines will be shown.")
+        log_warning(f"outline_by '{outline_by}' not in section metadata columns; no outlines will be shown.")
     def _analysis_mode_enabled(value: Optional[str], name: str) -> bool:
         if value is None:
             return False
@@ -33079,6 +33072,17 @@ def export_to_html(
             col for col in analytics_groupby if col and col not in neighbor_stats_groupby
         )
 
+    log_step("Building viewer data payload")
+    log_detail(
+        f"Initial annotation={annotation}; embedded annotation columns="
+        f"{', '.join([annotation, *(cells_annotations or [])]) or 'none'}."
+    )
+    log_detail(
+        f"Pseudobulk={'on' if pseudobulk_enabled else 'off'}; "
+        f"interaction markers={'on' if interaction_markers_enabled else 'off'}; "
+        f"neighbor stats columns={', '.join(neighbor_stats_groupby or []) or 'none'}."
+    )
+
     data = dataset.to_json_data(
         annotation,
         downsample=downsample,
@@ -33111,6 +33115,11 @@ def export_to_html(
         section_rotations=resolved_section_rotations,
         deconvolutions=deconvolutions,
     )
+    log_detail(
+        f"Viewer data payload ready: {data.get('n_sections', 0)} sections, "
+        f"{int(data.get('total_cells') or 0):,} exported cells, "
+        f"{len(data.get('available_colors') or [])} color options."
+    )
     data["scalebar_unit"] = str(scalebar_unit or "μm")
     embedded_genes = list(data.get("available_genes") or embedded_genes)
     data["embedded_genes"] = list(embedded_genes)
@@ -33133,12 +33142,19 @@ def export_to_html(
     }
 
     if section_images:
+        log_step("Embedding section image overlays")
+        log_detail(f"Requested image overlays for {len(section_images)} section(s).")
         _embed_section_images(data, section_images, max_px=section_images_max_px)
+        log_detail("Section image overlay payload stored in the HTML data.")
 
     try:
         from .pathways import add_pathway_enrichment_to_pseudobulk_de
 
-        print("  - computing pathway ORA/GSEA summaries...")
+        log_step("Computing pathway enrichment")
+        log_detail(
+            "Running ORA on significant DE genes and preranked GSEA on retained ranked genes; "
+            "output feeds Pathway Enrichment."
+        )
         data["pathway_settings"] = add_pathway_enrichment_to_pseudobulk_de(
             data.get("pseudobulk_de"),
             pathway_gmt=pathway_gmt,
@@ -33150,14 +33166,20 @@ def export_to_html(
         if not data["pathway_settings"].get("available"):
             reason = data["pathway_settings"].get("reason") or "unavailable"
             error = data["pathway_settings"].get("error")
-            print(f"  Warning: pathway enrichment unavailable ({reason}{': ' + error if error else ''}).")
+            log_warning(f"pathway enrichment unavailable ({reason}{': ' + error if error else ''}).")
+        else:
+            log_detail(
+                f"Pathway enrichment stored with top_n={int(pathway_top_n)}, "
+                f"min_overlap={int(pathway_min_overlap)}, "
+                f"GSEA permutations={int(pathway_gsea_permutations)}."
+            )
     except Exception as exc:
         data["pathway_settings"] = {
             "available": False,
             "reason": "pathway_enrichment_failed",
             "error": str(exc),
         }
-        print(f"  Warning: pathway enrichment failed ({exc}).")
+        log_warning(f"pathway enrichment failed ({exc}).")
 
     # Resolve which non-default modalities to export. Only meaningful when sidecar-based.
     available_modalities = list(getattr(dataset, "modalities", {}).keys())
@@ -33174,9 +33196,9 @@ def export_to_html(
         selected_modalities.insert(0, default_modality_name)
     extra_modalities = [m for m in selected_modalities if m != default_modality_name]
     if extra_modalities and gene_storage != "sidecar":
-        print(
-            f"  Note: extra modalities {extra_modalities} require gene_storage='sidecar'; "
-            "skipping in embedded mode."
+        log_warning(
+            f"extra modalities {extra_modalities} require gene_storage='sidecar'; "
+            "skipping them in embedded mode."
         )
         extra_modalities = []
 
@@ -33210,39 +33232,60 @@ def export_to_html(
 
     if int(spatial_variable_genes_n) > 0:
         if "spatial_variable_genes" in companion_analytics:
-            print("Using KaroSpaceCompanion spatially variable genes.")
+            log_step("Reusing KaroSpaceCompanion spatially variable genes")
+            log_detail("Stored companion Moran/spatial-variable-gene payload in the viewer.")
             data["spatial_variable_genes"] = companion_analytics["spatial_variable_genes"]
         else:
-            print(f"  - computing Moran's I for up to {int(spatial_variable_genes_n)} spatially variable genes...")
+            log_step("Computing spatially variable genes")
+            log_detail(
+                f"Running Moran's I for up to {int(spatial_variable_genes_n)} variable genes; "
+                "output feeds Insights > Genes."
+            )
             data["spatial_variable_genes"] = _compute_morans_i(
                 dataset.adata, list(dataset.var_names), n_genes=int(spatial_variable_genes_n)
             )
+            log_detail(f"Stored {len(data['spatial_variable_genes'])} spatially variable gene rows.")
     else:
         data["spatial_variable_genes"] = []
 
     if int(cluster_means_n_genes) > 0:
         if "cluster_gene_means" in companion_analytics:
-            print("Using KaroSpaceCompanion cluster gene means.")
+            log_step("Reusing KaroSpaceCompanion category gene means")
+            log_detail("Stored companion category mean payload in the viewer.")
             data["cluster_gene_means"] = companion_analytics["cluster_gene_means"]
         else:
+            log_step("Computing category gene means from pseudobulk DE genes")
+            log_detail(
+                f"Using up to {int(cluster_means_n_genes)} embedded DE genes; "
+                "output feeds Insights > Genes > Means."
+            )
             data["cluster_gene_means"] = _cluster_gene_means_from_pseudobulk_de(
                 data.get("pseudobulk_de"),
                 embedded_genes,
                 int(cluster_means_n_genes),
             )
+            mean_rows = sum(len(v or {}) for v in (data["cluster_gene_means"] or {}).values())
+            log_detail(f"Stored category mean payload for {mean_rows} category entries.")
     else:
         data["cluster_gene_means"] = None
 
     if int(gene_correlation_top_n) > 0 and embedded_genes:
         if "gene_correlations" in companion_analytics:
-            print("Using KaroSpaceCompanion gene correlations.")
+            log_step("Reusing KaroSpaceCompanion gene correlations")
+            log_detail("Stored companion gene correlation payload in the viewer.")
             data["gene_correlations"] = companion_analytics["gene_correlations"]
         else:
+            log_step("Computing gene correlations from category means")
+            log_detail(
+                f"Keeping top {int(gene_correlation_top_n)} correlated genes per embedded gene; "
+                "output feeds Insights > Genes."
+            )
             data["gene_correlations"] = _compute_gene_correlations_from_category_means(
                 data.get("cluster_gene_means"),
                 embedded_genes,
                 top_n=int(gene_correlation_top_n),
             )
+            log_detail(f"Stored correlations for {len(data['gene_correlations'])} genes.")
     else:
         data["gene_correlations"] = {}
 
@@ -33340,9 +33383,10 @@ def export_to_html(
         sidecar_t0 = time.perf_counter()
         progress = None
         if total_sidecar_genes:
-            print(
-                f"Building gene sidecar: {total_sidecar_genes} genes across "
-                f"{total_shards} shard{'s' if total_shards != 1 else ''}..."
+            log_step("Writing gene sidecar")
+            log_detail(
+                f"{total_sidecar_genes} genes will be stored outside the HTML across "
+                f"{total_shards} shard{'s' if total_shards != 1 else ''}."
             )
             if tqdm is not None:
                 progress = tqdm(
@@ -33375,9 +33419,10 @@ def export_to_html(
             shard_end = genes_written + len(shard_genes)
             shard_t0 = time.perf_counter()
             if shard_genes and progress is None:
-                print(
-                    f"  - shard {shard_idx + 1}/{total_shards}: genes {shard_start}-{shard_end} "
-                    f"({shard_genes[0]} .. {shard_genes[-1]})"
+                log_step(
+                    f"Sidecar shard {shard_idx + 1}/{total_shards}: genes {shard_start}-{shard_end} "
+                    f"({shard_genes[0]} .. {shard_genes[-1]})",
+                    level=1,
                 )
             elif shard_genes and progress is not None:
                 progress.set_postfix_str(
@@ -33415,9 +33460,10 @@ def export_to_html(
                     f"shard {shard_idx + 1}/{total_shards} wrote {shard_filename} in {shard_elapsed:.1f}s"
                 )
             else:
-                print(
-                    f"    wrote {shard_filename} ({genes_written}/{total_sidecar_genes} genes) "
-                    f"in {shard_elapsed:.1f}s"
+                log_detail(
+                    f"Wrote {shard_filename} ({genes_written}/{total_sidecar_genes} genes) "
+                    f"in {shard_elapsed:.1f}s",
+                    level=2,
                 )
         # Mirror RNA fields under manifest.modalities for forward-compat.
         manifest["modalities"] = {
@@ -33441,9 +33487,14 @@ def export_to_html(
             mod_aux_dir = resolved_gene_aux_dir / mod_name
             mod_aux_dir.mkdir(parents=True, exist_ok=True)
             mod_shard_groups = _chunked(mod_features, gene_sidecar_shard_size)
-            print(
-                f"Building modality '{mod_name}' sidecar: {len(mod_features)} features × "
-                f"{len(mod_shard_groups)} shard{'s' if len(mod_shard_groups) != 1 else ''}..."
+            log_step(
+                f"Writing modality sidecar: {mod_name}",
+                level=1,
+            )
+            log_detail(
+                f"{len(mod_features)} features x {len(mod_shard_groups)} shard"
+                f"{'s' if len(mod_shard_groups) != 1 else ''}; value_kind={mod.value_kind}.",
+                level=2,
             )
             mod_entry: Dict[str, Any] = {
                 "shards": {},
@@ -33498,7 +33549,9 @@ def export_to_html(
             total_elapsed = time.perf_counter() - sidecar_t0
             if progress is not None:
                 progress.close()
-            print(f"Completed gene sidecar build in {total_elapsed:.1f}s")
+            log_detail(f"Completed gene sidecar build in {total_elapsed:.1f}s.")
+    log_step("Writing HTML viewer")
+    log_detail(f"Output path: {output_path}")
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(html)
 
@@ -33521,40 +33574,41 @@ def export_to_html(
             written_loader_path = _write_karospace_package_loader(
                 loader_path=package_loader_output_path,
             )
-        print(f"Exported KaroSpace package to: {package_output_path_obj}")
-        print(f"  - entry HTML: {package_entry_html}")
-        print(f"  - packaged gene manifest: {package_gene_manifest_name}")
-        print(f"  - packaged shard directory: {Path(package_gene_manifest_name).with_suffix('').as_posix()}")
+        log_step(f"Exported KaroSpace package: {package_output_path_obj}")
+        log_detail(f"Entry HTML: {package_entry_html}")
+        log_detail(f"Packaged gene manifest: {package_gene_manifest_name}")
+        log_detail(f"Packaged shard directory: {Path(package_gene_manifest_name).with_suffix('').as_posix()}")
         if written_loader_path is not None:
-            print(f"  - local package loader: {written_loader_path}")
+            log_detail(f"Local package loader: {written_loader_path}")
         else:
-            print(f"  - local package loader: unavailable (template not found)")
+            log_warning("local package loader unavailable (template not found).")
     else:
-        print(f"Exported HTML viewer to: {output_path}")
+        log_step(f"Exported HTML viewer: {output_path}")
         if resolved_gene_aux_path is not None:
-            print(f"Exported gene sidecar to: {resolved_gene_aux_path}")
-            print(f"  - shard directory: {resolved_gene_aux_dir}")
-    print(f"  - {data['n_sections']} sections")
-    print(f"  - {data['total_cells']:,} cells")
+            log_detail(f"Gene sidecar manifest: {resolved_gene_aux_path}")
+            log_detail(f"Gene shard directory: {resolved_gene_aux_dir}")
+    log_step("Export summary")
+    log_detail(f"Sections: {data['n_sections']}")
+    log_detail(f"Cells in viewer: {data['total_cells']:,}")
     if used_auto_spot_size:
-        print(f"  - spot size auto-resolved to {resolved_spot_size:.2f}")
+        log_detail(f"Spot size auto-resolved to {resolved_spot_size:.2f}.")
     else:
-        print(f"  - spot size {resolved_spot_size:.2f}")
-    print(f"  - {len(data['available_colors'])} color options")
+        log_detail(f"Spot size: {resolved_spot_size:.2f}.")
+    log_detail(f"Color options: {len(data['available_colors'])}")
     if embedded_genes:
-        print(f"  - {len(data['genes_meta'])} genes embedded in HTML")
+        log_detail(f"Genes embedded in HTML: {len(data['genes_meta'])}")
         enc = data.get("gene_encodings") or {}
         if enc:
             n_sparse = sum(1 for v in enc.values() if v == "sparse")
             n_dense = sum(1 for v in enc.values() if v == "dense")
-            print(f"  - gene encoding: {n_sparse} sparse, {n_dense} dense")
+            log_detail(f"Embedded gene encoding: {n_sparse} sparse, {n_dense} dense.")
     if gene_aux_url:
         if not embedded_genes:
-            print("  - 0 genes embedded in HTML; gene expression is sidecar-only")
-        print(f"  - sidecar genes available via {gene_aux_url}")
-        print("  - sidecar viewers must be opened over HTTP(S) with the .genes.json file and .genes/ directory next to the HTML")
-        print(f"  - sidecar format: {GENE_SIDECAR_FORMAT_BINARY}")
-        print(f"  - sidecar value encoding: {gene_value_encoding}")
+            log_detail("Genes embedded in HTML: 0; gene expression is sidecar-only.")
+        log_detail(f"Sidecar genes available via: {gene_aux_url}")
+        log_detail("Sidecar viewers must be opened over HTTP(S) with the .genes.json file and .genes/ directory next to the HTML.")
+        log_detail(f"Sidecar format: {GENE_SIDECAR_FORMAT_BINARY}")
+        log_detail(f"Sidecar value encoding: {gene_value_encoding}")
     if package_temp_dir is not None:
         package_temp_dir.cleanup()
     return str(package_output_path_obj) if package_output_path_obj is not None else output_path

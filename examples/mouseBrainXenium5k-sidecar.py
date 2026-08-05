@@ -42,7 +42,7 @@ ENABLE_ANALYTICS = True
 dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",
-    metadata_columns=[""],
+    metadata_section=[""],
     metadata_value_order={
        
     },
@@ -60,7 +60,7 @@ export_to_html(
     spot_size="auto",
     downsample=100000,
     outline_by=None,
-    additional_annotations=[
+    cells_annotations=[
         "CellCharter_5",
         "CellCharter_15",
         "CellCharter_20",

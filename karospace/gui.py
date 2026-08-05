@@ -90,7 +90,7 @@ Core Options
 - Downsample: Empty (disabled) or integer > 0 (max cells per section).
 
 Dataset Loading Options
-- Metadata columns: Comma/newline-separated obs columns used as metadata/filter chips.
+- Metadata section: Comma/newline-separated obs columns used as section metadata/filter chips.
   Empty uses defaults (course, region, condition, timepoint, ...).
 - Metadata max columns: Empty or integer >= 0.
 - Metadata value order (JSON): Dict mapping metadata column -> ordered values.
@@ -101,7 +101,7 @@ Dataset Loading Options
   {"sample_id": "Sample", "last_score": "Disease score"}
 
 Annotation & Gene Content
-- Additional annotations: Comma/newline-separated obs columns to include in the annotation dropdown.
+- Cells annotations: Comma/newline-separated obs columns to include in the annotation dropdown.
 - Genes: Hand-picked gene symbols (comma/newline-separated) to pre-load for expression view.
 - Significant shared-fit pseudobulk DE genes are embedded automatically up to the per-comparison cap.
 
@@ -281,7 +281,7 @@ class KaroSpaceExportGUI:
         self.annotation = tk.StringVar(value="leiden")
         self.outline_by = tk.StringVar(value="condition")
         self.title = tk.StringVar(value="KaroSpace")
-        self.metadata_columns = tk.StringVar(value="condition")
+        self.metadata_section = tk.StringVar(value="condition")
         self.metadata_max_columns = tk.StringVar(value="")
         self.metadata_labels = tk.StringVar(value='{\n  "condition": "Condition"\n}')
         self.min_panel_size = tk.StringVar(value="150")
@@ -577,8 +577,8 @@ class KaroSpaceExportGUI:
         dataset_group.pack(fill="x", pady=(0, 10))
         dataset_group.columnconfigure(1, weight=1)
         dataset_group.columnconfigure(3, weight=1)
-        ttk.Label(dataset_group, text="Metadata columns").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(dataset_group, textvariable=self.metadata_columns).grid(row=0, column=1, sticky="ew", padx=(8, 16), pady=4)
+        ttk.Label(dataset_group, text="Metadata section").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(dataset_group, textvariable=self.metadata_section).grid(row=0, column=1, sticky="ew", padx=(8, 16), pady=4)
         ttk.Label(dataset_group, text="Metadata max columns").grid(row=0, column=2, sticky="w", pady=4)
         ttk.Entry(dataset_group, textvariable=self.metadata_max_columns).grid(row=0, column=3, sticky="ew", pady=4)
         ttk.Label(dataset_group, text="Metadata value order (JSON)").grid(row=1, column=0, sticky="nw", pady=4)
@@ -620,13 +620,13 @@ class KaroSpaceExportGUI:
 
         colors_group = ttk.LabelFrame(colors_tab, text="Annotation Layers", padding=12, style="Card.TLabelframe")
         colors_group.pack(fill="x", pady=(0, 10))
-        self.additional_annotations_editor = SearchableListEditor(
+        self.cells_annotations_editor = SearchableListEditor(
             colors_group,
-            "Additional annotations",
+            "Cells annotations",
             height=6,
             help_text="Search obs columns, then click + Add. This controls extra items in the viewer annotation dropdown.",
         )
-        self.additional_annotations_editor.pack(fill="x")
+        self.cells_annotations_editor.pack(fill="x")
 
         genes_group = ttk.LabelFrame(colors_tab, text="Gene Layers", padding=12, style="Card.TLabelframe")
         genes_group.pack(fill="x", pady=(0, 10))
@@ -875,7 +875,7 @@ class KaroSpaceExportGUI:
             self.title.set("KaroSpace")
             self.min_panel_size.set("120")
             self.downsample.set("1000000")
-            self.metadata_columns.set("condition")
+            self.metadata_section.set("condition")
             self.metadata_max_columns.set("")
             self._set_text_widget(self.metadata_value_order_text, '{\n  "stage": []\n}')
             self._merge_json_text_widget(self.metadata_labels_text, '{\n  "condition": "Condition",\n  "stage": "Stage"\n}')
@@ -911,7 +911,7 @@ class KaroSpaceExportGUI:
                 "Ptgds",
                 "Serpina3n",
             ]
-            self.additional_annotations_editor.set_items(pancreas_colors)
+            self.cells_annotations_editor.set_items(pancreas_colors)
             self.genes_editor.set_items(pancreas_genes)
 
             self.neighbor_stats_auto.set(False)
@@ -933,12 +933,12 @@ class KaroSpaceExportGUI:
             self.title.set("KaroSpace")
             self.min_panel_size.set("140")
             self.downsample.set("50000")
-            self.metadata_columns.set("condition")
+            self.metadata_section.set("condition")
             self.metadata_max_columns.set("2")
             self._set_text_widget(self.metadata_value_order_text, '{\n  "condition": ["control", "treated"]\n}')
             self._merge_json_text_widget(self.metadata_labels_text, '{\n  "condition": "Condition"\n}')
 
-            self.additional_annotations_editor.set_items(["leiden_1"])
+            self.cells_annotations_editor.set_items(["leiden_1"])
             self.genes_editor.set_items(["Cd4", "Cd8a", "Mki67"])
 
             self.neighbor_stats_auto.set(True)
@@ -960,12 +960,12 @@ class KaroSpaceExportGUI:
             self.title.set("KaroSpace")
             self.min_panel_size.set("150")
             self.downsample.set("")
-            self.metadata_columns.set("condition")
+            self.metadata_section.set("condition")
             self.metadata_max_columns.set("")
             self._set_text_widget(self.metadata_value_order_text, '{\n  "condition": ["control", "treated"]\n}')
             self._merge_json_text_widget(self.metadata_labels_text, '{\n  "condition": "Condition"\n}')
 
-            self.additional_annotations_editor.set_items(["leiden_1", "leiden_2", "gmm_mana_10"])
+            self.cells_annotations_editor.set_items(["leiden_1", "leiden_2", "gmm_mana_10"])
             self.genes_editor.set_items(["Cd4", "Cd8a", "Gfap", "Mki67"])
 
             self.neighbor_stats_auto.set(True)
@@ -1114,7 +1114,7 @@ class KaroSpaceExportGUI:
         self.groupby_combo.configure(values=self._obs_columns)
         self.color_combo.configure(values=self._obs_columns)
         self.outline_combo.configure(values=[""] + self._obs_columns)
-        self.additional_annotations_editor.set_choices(self._obs_columns)
+        self.cells_annotations_editor.set_choices(self._obs_columns)
         self.neighbor_stats_groupby_editor.set_choices(self._obs_columns)
         self.genes_editor.set_choices(self._var_names)
         self.spatial_key_combo.configure(values=self._obsm_keys)
@@ -1196,7 +1196,7 @@ class KaroSpaceExportGUI:
         if not annotation:
             raise ValueError("Initial annotation is required.")
 
-        metadata_columns = _unique(_parse_tokens(self.metadata_columns.get() or ""))
+        metadata_section = _unique(_parse_tokens(self.metadata_section.get() or ""))
         metadata_max_columns_raw = self.metadata_max_columns.get().strip()
         metadata_max_columns = None
         if metadata_max_columns_raw:
@@ -1255,13 +1255,13 @@ class KaroSpaceExportGUI:
 
         gene_correlation_top_n = _parse_non_negative_int("Corr. top N", self.gene_correlation_top_n.get())
         spatial_variable_genes_n = _parse_non_negative_int("SVG n", self.spatial_variable_genes_n.get())
-        additional_annotations = _unique(self.additional_annotations_editor.get_items())
+        cells_annotations = _unique(self.cells_annotations_editor.get_items())
         genes = _unique(self.genes_editor.get_items())
         outline_by = self.outline_by.get().strip() or None
 
         load_kwargs = {
             "groupby": groupby,
-            "metadata_columns": metadata_columns,
+            "metadata_section": metadata_section,
             "metadata_value_order": metadata_value_order,
             "metadata_max_columns": metadata_max_columns,
             "spatial_key": self.spatial_key.get().strip() or "spatial",
@@ -1276,7 +1276,7 @@ class KaroSpaceExportGUI:
             "downsample": downsample,
             "outline_by": outline_by,
             "metadata_labels": metadata_labels,
-            "additional_annotations": additional_annotations,
+            "cells_annotations": cells_annotations,
             "genes": genes,
             "gene_correlation_top_n": gene_correlation_top_n,
             "spatial_variable_genes_n": spatial_variable_genes_n,
@@ -1315,8 +1315,8 @@ class KaroSpaceExportGUI:
         self._set_busy(True, "Exporting...")
         self._log(f"Loading dataset: {input_path}")
         self._log(f"groupby={load_kwargs['groupby']}, annotation={export_kwargs['annotation']}")
-        if export_kwargs.get("additional_annotations"):
-            self._log(f"additional_annotations={len(export_kwargs['additional_annotations'])}")
+        if export_kwargs.get("cells_annotations"):
+            self._log(f"cells_annotations={len(export_kwargs['cells_annotations'])}")
         if export_kwargs.get("genes"):
             self._log(f"genes={len(export_kwargs['genes'])} (manual list)")
         if export_kwargs.get("gene_storage") == "sidecar":

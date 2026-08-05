@@ -25,7 +25,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
-    metadata_columns=["treatment"],
+    metadata_section=["treatment"],
     metadata_value_order={
         "course": [],
     },
@@ -54,7 +54,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_annotations=[
+    cells_annotations=[
        'leiden_0.5',
        'leiden_0.75', 'leiden_1', 'leiden_1.5', 'leiden_2', 'leiden_2.5',
        'region_annotation',

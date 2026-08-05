@@ -59,7 +59,7 @@ try:
         temp_h5ad_path,
         groupby="sample_id",
         spatial_key="spatial",
-        metadata_columns=[
+        metadata_section=[
             "donor_id",
             "disease",
             "sex",
@@ -79,7 +79,7 @@ common_kwargs = dict(
     spot_size="auto",
     downsample=10_000_000,
     outline_by=None,
-    additional_annotations=ADDITIONAL_COLORS,
+    cells_annotations=ADDITIONAL_COLORS,
     genes=[],
     use_hvgs=False,
     hvg_limit=50,

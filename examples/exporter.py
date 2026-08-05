@@ -32047,7 +32047,7 @@ def export_to_html(
     outline_by: Optional[str] = "course",
     metadata_labels: Optional[Mapping[str, str]] = None,
     viewer_info_html: Optional[str] = None,
-    additional_annotations: Optional[List[str]] = None,
+    cells_annotations: Optional[List[str]] = None,
     genes: Optional[List[str]] = None,
     gene_encoding: str = "auto",
     gene_value_encoding: str = "uint16",
@@ -32122,8 +32122,8 @@ def export_to_html(
         UI without renaming the underlying obs/metadata columns.
     viewer_info_html : str, optional
         HTML string shown in the Info tab of the color panel.
-    additional_annotations : list, optional
-        Additional obs columns to include for annotation switching.
+    cells_annotations : list, optional
+        Additional cell obs columns to include for annotation switching.
     genes : list, optional
         Gene names to include for expression visualization
     gene_encoding : str
@@ -32309,7 +32309,9 @@ def export_to_html(
         resolved_gene_aux_path = resolved_gene_aux_path.resolve()
         resolved_gene_aux_dir = resolved_gene_aux_path.with_suffix("")
 
-    if outline_by and outline_by not in dataset.metadata_columns:
+    section_metadata_columns = set(getattr(dataset, "metadata_section", []) or [])
+    section_metadata_columns.update(getattr(dataset, "metadata_section_extra", []) or [])
+    if outline_by and outline_by not in section_metadata_columns:
         print(f"  Warning: outline_by '{outline_by}' not in metadata columns; no outlines will be shown.")
     def _analysis_mode_enabled(value: Optional[str], name: str) -> bool:
         if value is None:
@@ -32410,9 +32412,9 @@ def export_to_html(
     )
     if neighbor_stats_groupby is None:
         neighbor_stats_groupby = list(analytics_groupby)
-        if additional_annotations:
+        if cells_annotations:
             neighbor_stats_groupby.extend(
-                col for col in additional_annotations if col and col not in neighbor_stats_groupby
+                col for col in cells_annotations if col and col not in neighbor_stats_groupby
             )
     else:
         neighbor_stats_groupby = list(neighbor_stats_groupby)
@@ -32423,7 +32425,7 @@ def export_to_html(
     data = dataset.to_json_data(
         annotation,
         downsample=downsample,
-        additional_annotations=additional_annotations,
+        cells_annotations=cells_annotations,
         genes=embedded_genes,
         gene_encoding=gene_encoding,
         gene_sparse_zero_threshold=gene_sparse_zero_threshold,

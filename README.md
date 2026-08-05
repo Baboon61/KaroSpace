@@ -19,15 +19,15 @@ Originally developed at Karolinska Institutet for visualizing Xenium spatial tra
 - **Split compare slider** — Compare two variables side-by-side in the modal (`Cell type` or `Gene`, including `All categories`), draggable directly on the canvas
 - **Legend controls + spotlight** — Toggle/hide categories and spotlight one class across grid and UMAP
 - **Flexible coloring + gene discovery** — Switch between annotation columns, fuzzy-search genes, and reuse recent or saved gene panels
-- **Insights panel** — `Summary`, `Compare`, `Genes`, `Neighborhood`, and `Regions` tabs with pseudobulk category DE, neighbor composition, interaction markers, and region comparison
+- **Insights panel** — `Summary`, `Compare`, `Genes`, `Neighbors`, and `Regions` tabs with pseudobulk category DE, pathway enrichment, neighbor composition, full-cell spatial dispersion, interaction markers, and region comparison
 - **Annotation river plot** — `Insights → Compare → River` draws a Sankey of how two annotations correspond (e.g. `leiden_1` ↔ `leiden_2`); click a node to recolor and spotlight it, or export the crosstab as CSV
 - **Numeric category ordering** — Numeric cluster labels sort naturally (`2` before `10`) in legends, dropdowns, and plots, with `adata.uns` palettes kept aligned
 - **Modal selection workflow** — Lasso in the sample view, save selections as annotations, open a focused subview, browse `Genes in selection`, and use `Space` + drag to pan while Select is active
 - **Shareable packages** — Export as `.karospace` bundles (ZIP + viewer HTML) for offline sharing; open via the hosted loader at [karospace.se/open](https://karospace.se/open) or a local `loader.html`. See [KAROSPACE_PACKAGE_FORMAT_SPEC.md](KAROSPACE_PACKAGE_FORMAT_SPEC.md)
 - **Compact sidecar options** — JSON and binary shard formats, sparse-first encoding, and optional `uint16`/`uint8` quantization for large datasets
 - **Metadata-aware browsing** — Filter sections by metadata and outline by course or another column
-- **Neighbor graph tools** — Graph overlay and hover rings (1–3 hops) when `adata.obsp` contains a spatial graph
-- **Quality-of-life controls** — Hideable toolbar, screenshots, theme toggle, keyboard shortcuts, and adjustable spot size
+- **Neighbor graph tools** — Graph overlay, hover rings (1–3 hops), enrichment, interactions, and dispersion summaries when `adata.obsp` contains a spatial graph
+- **Quality-of-life controls** — Hideable toolbar, screenshots, light/dark theme toggle, keyboard shortcuts, and adjustable spot size
 - **Standalone export** — One self-contained HTML file, no backend required
 
 ## Browser Considerations
@@ -56,8 +56,10 @@ pip install -e .
 - anndata >= 0.8.0
 - numpy >= 1.20.0
 - pandas >= 1.3.0
+- pydeseq2 >= 0.5.0
 - scipy >= 1.7.0
 - gseapy >= 1.1.0
+- tqdm >= 4.66.0
 
 SpatialData input is optional. Install the extra only when you want to load SpatialData `.zarr` stores directly:
 
@@ -109,8 +111,8 @@ from karospace import load_spatial_data, export_to_html
 dataset = load_spatial_data(
     "your_data.h5ad",
     groupby="sample_id",  # Column identifying each section
-    metadata_section=["course", "region", "condition"],  # Section metadata shown as visual filter chips
-    metadata_section_extra=["patient_id", "slide_id"],  # Section metadata stored without filter chips
+    metadata_section=["course", "region", "condition"],  # Section metadata shown in the visual params bar/filter chips
+    metadata_section_extra=["patient_id", "slide_id"],  # Section metadata stored without visual params bar chips
     metadata_value_order={
         "course": ["naive", "peak_I", "peak_II", "peak_III"],
     },
@@ -124,7 +126,7 @@ export_to_html(
     min_panel_size=150,          # Min panel width (responsive autoscaling)
     spot_size="auto",            # Adaptive by section density (or set a fixed number)
     downsample=30000,            # Max cells per section
-    cells_annotations=[          # Extra cell annotation columns for annotation dropdown
+    cells_annotations=[          # Extra cell obs annotation columns for annotation dropdowns
         "leiden",
         "condition",
     ],
@@ -206,11 +208,11 @@ karospace your_spatialdata.zarr -o viewer.html --annotation cell_type --spatiald
 |--------|-------------|---------|
 | `-o, --output` | Output HTML file path | `karospace.html` |
 | `--annotation` | Initial cell-annotation column | `leiden` |
-| `--cells-annotations` | Comma-separated extra cell obs annotation columns to embed as selectable annotations | empty |
+| `--cells-annotations` | Comma-separated extra cell obs annotation columns to embed as selectable cell annotations | empty |
 | `--genes` | Comma-separated genes to preload; significant pseudobulk DE genes are embedded automatically up to the per-comparison cap | empty |
 | `--metadata-labels` | JSON object mapping metadata/obs column keys to display labels in the viewer UI | empty |
-| `--metadata-section` | Comma-separated obs columns to use as section metadata and visual filter chips | loader defaults |
-| `--metadata-section-extra` | Comma-separated obs columns to store as section metadata without visual filter chips | empty |
+| `--metadata-section` | Comma-separated obs columns to use as section metadata shown in the visual params bar/filter chips | loader defaults |
+| `--metadata-section-extra` | Comma-separated obs columns to store as section metadata without visual params bar/filter chips | empty |
 | `--metadata-value-order` | JSON object mapping metadata columns to ordered value lists | empty |
 | `--metadata-max-columns` | Limit metadata columns used, preserving order | empty |
 | `-g, --groupby` | Column to group sections by | `sample_id` |
@@ -246,9 +248,9 @@ karospace your_spatialdata.zarr -o viewer.html --annotation cell_type --spatiald
 | `--pseudobulk-counts-layer` | Raw-count AnnData layer for pseudobulk aggregation; use `None` for `adata.X` | `counts` |
 | `--pseudobulk-simple-constrast-categories` | Categories to report in category-versus-category contrasts; all retained categories stay in the shared fit and receive balanced-rest contrasts | empty |
 | `--pseudobulk-min-replicates` | Minimum paired replicates required for each reported contrast | `2` |
-| `--pseudobulk-min-pct-expressed` | Minimum fraction of cells expressing a gene required in both compared groups; values >1 are interpreted as percentages | `0` |
+| `--pseudobulk-min-pct-expressed` | Minimum fraction of cells expressing a gene required in at least one compared group before `DeseqStats`; values >1 are interpreted as percentages | `0` |
 | `--pseudobulk-p-adjust-method` | Multiple-testing correction method (`fdr_bh`, `bonferroni`, `holm`, `none`) | `fdr_bh` |
-| `--pseudobulk-padj-cutoff` | Adjusted p-value cutoff for volcano highlighting and DE table inclusion | `0.05` |
+| `--pseudobulk-padj-cutoff` | Adjusted p-value threshold for DE calls and plot coloring; DE genes must pass `padj < cutoff` | `0.05` |
 | `--pseudobulk-log2fc-cutoff` | Absolute log2FC cutoff for volcano highlighting and DE table inclusion | `0.5` |
 | `--pseudobulk-deseq2-fit-type` | PyDESeq2 dispersion trend fit type; use `mean` to avoid parametric trend fallback warnings | `parametric` |
 | `--pseudobulk-n-cpus` | CPU workers used for pseudobulk DESeq2 fitting and contrasts | `1` |
@@ -296,8 +298,12 @@ a different target key.
 
 ### Optional metadata
 
+Use `metadata_section=[...]` / `--metadata-section ...` for section-level obs columns that should appear in the visual params bar and filter chips. Use `metadata_section_extra=[...]` / `--metadata-section-extra ...` for section-level metadata that should be stored in the viewer payload but not shown as filter chips.
+
 - `course` — Experimental phase (e.g., `"naive"`, `"peak_I"`); sections are outlined by this column when present
-- `region`, `condition`, `timepoint` — Used for filter chips
+- `region`, `condition`, `timepoint` — Typical section metadata shown as filter chips
+
+Use `cells_annotations=[...]` / `--cells-annotations ...` for additional cell-level annotation columns that should be available in annotation dropdowns and comparison panels.
 
 Control display order of metadata values and section ordering via `metadata_value_order`:
 
@@ -319,9 +325,13 @@ If `adata.uns["{col}_colors"]` exists (scanpy convention — list of hex aligned
 
 If `adata.obsp` contains a neighbor graph (`spatial_connectivities`, `connectivities`, `neighbors`, or `neighbor_graph`), KaroSpace exposes graph overlay and neighbor-hover controls.
 
+`Insights → Neighbors → Enrichment` and `Interactions` use neighbor composition statistics for the selected Exploration annotation. If no graph or no stats exist for that annotation, the viewer shows a yellow warning and lists the annotations that do have neighbor stats. `Insights → Neighbors → Dispersion` is computed from all cells before HTML downsampling for the initial annotation and any requested `cells_annotations`, then summarizes whether each category is clustered, random, or dispersed relative to the observed all-cell layout.
+
 Contact-conditioned interaction markers are computed automatically for the initial `color` column and for `pseudobulk_additional_annotations` unless `interaction_markers=None` / `--interaction-markers None` is used. KaroSpace classifies source cells as contact+ or contact- within each `groupby` replicate, aggregates raw counts by replicate/contact status, and fits pseudobulk DESeq2 with a paired replicate design.
 
-Pseudobulk category DE is precomputed automatically for the initial `color` column unless `pseudobulk=None` / `--pseudobulk None` is used, and shown in `Insights → Compare → Cell DE`. KaroSpace aggregates raw counts by replicate and annotation, fits one shared `~ replicate + annotation` DESeq2 model per annotation column, then extracts category-versus-category contrasts. It also extracts a balanced-rest contrast for every category: the category minus the equally weighted mean of all other retained annotation categories. Pairwise PCA/distance diagnostics are generated automatically for selected category pairs. ORA and compact preranked GSEA pathway summaries are generated for each available Simple design comparison and shown as pathway figures in `Compare → Per sample → Simple design`; pass `--pathway-gmt` for local GMT collections, or omit it to use Reactome via GSEApy. Significant genes passing both adjusted p-value and log2FC thresholds are embedded automatically up to `pseudobulk_embed_top_n_per_comparison` / `--pseudobulk-embed-top-n-per-comparison` per comparison, exposed in `Insights → Genes → DE Genes`, and reused for category means/correlations. Full DE tables still list non-embedded genes, but their expression links are disabled. Use `pseudobulk_additional_annotations=[...]` or `--pseudobulk-additional-annotations ...` to compute category DE and interaction pseudobulk DE for extra annotation columns.
+Pseudobulk category DE is precomputed automatically for the initial `color` column unless `pseudobulk=None` / `--pseudobulk None` is used, and shown in `Insights → Compare → Per sample → Simple design`. KaroSpace aggregates raw counts by replicate and annotation, fits one shared `~ replicate + annotation` DESeq2 model per annotation column, then extracts category-versus-category contrasts. It also extracts a balanced-rest contrast for every category: the category minus the equally weighted mean of all other retained annotation categories. Genes that do not reach `pseudobulk_min_pct_expressed` / `--pseudobulk-min-pct-expressed` in at least one compared group are removed before `DeseqStats`, so they do not enter the contrast-level multiple-testing correction. Pairwise PCA/distance diagnostics are generated automatically for selected category pairs.
+
+The Simple design DE panel includes raw tables, marker lists, MA/volcano plots, PCA, distance matrix diagnostics, and pathway enrichment. ORA uses significant DE genes favoring the selected annotation. GSEA uses the full retained ranked gene list after model-level and expression-percent filtering. Pathways come from `--pathway-gmt` when supplied, otherwise KaroSpace uses Reactome through GSEApy for `--pathway-organism`. Significant genes passing `padj < pseudobulk_padj_cutoff` and `abs(log2FC) >= pseudobulk_log2fc_cutoff` are embedded automatically up to `pseudobulk_embed_top_n_per_comparison` / `--pseudobulk-embed-top-n-per-comparison` per comparison, exposed in `Insights → Genes → DE Genes`, and reused for category means/correlations. Full DE tables still list non-embedded genes, but their expression links are disabled. Use `pseudobulk_additional_annotations=[...]` or `--pseudobulk-additional-annotations ...` to compute category DE and interaction pseudobulk DE for extra annotation columns.
 
 ## Examples
 
@@ -336,7 +346,7 @@ See [`examples/`](examples/) for complete dataset-specific export scripts.
 - **Size slider** — Adjust spot size
 - **Filter chips** — Filter sections by metadata
 - **Legend items** — Toggle categories; spotlight one across grid and UMAP
-- **Insights button** — Toggle the insights panel (`Summary`, `Compare`, `Genes`, `Neighborhood`, `Regions`)
+- **Insights button** — Toggle the insights panel (`Summary`, `Compare`, `Genes`, `Neighbors`, `Regions`)
 - **Screenshot / Theme** — Download snapshot or toggle dark/light mode
 
 ### Modal View
@@ -351,7 +361,7 @@ See [`examples/`](examples/) for complete dataset-specific export scripts.
 - **Escape or click outside** — Close modal
 
 ### UMAP View
-- **UMAP button** — Toggle panel; dock to any corner
+- **UMAP button** — Toggle panel; dock to any corner and keep it pinned while scrolling the grid
 - **Magic Wand** — Lasso selection synced to spatial views
 - **Scroll / drag** — Zoom and pan the embedding
 

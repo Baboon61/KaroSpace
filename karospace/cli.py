@@ -84,12 +84,6 @@ def _run_export_cli(argv=None):
         help="Comma-separated extra cell obs annotation columns to embed as selectable annotations "
              "(e.g. a second clustering). Needed to compare annotations in the River plot."
     )
-    viewer_args.add_argument(
-        "--additional-annotations",
-        type=str,
-        dest="cells_annotations",
-        help=argparse.SUPPRESS,
-    )
     gene_args.add_argument(
         "--genes",
         type=str,
@@ -161,12 +155,6 @@ def _run_export_cli(argv=None):
         ),
     )
     metadata_args.add_argument(
-        "--metadata-columns",
-        type=str,
-        dest="metadata_section",
-        help=argparse.SUPPRESS,
-    )
-    metadata_args.add_argument(
         "--metadata-section-extra",
         type=str,
         default="",
@@ -175,12 +163,6 @@ def _run_export_cli(argv=None):
             "Comma-separated obs columns to store as section metadata without adding "
             "visual filter chips."
         ),
-    )
-    metadata_args.add_argument(
-        "--metadata-sample-extra",
-        type=str,
-        dest="metadata_section_extra",
-        help=argparse.SUPPRESS,
     )
     metadata_args.add_argument(
         "--metadata-value-order",

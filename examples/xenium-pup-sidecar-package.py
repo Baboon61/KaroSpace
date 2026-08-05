@@ -38,7 +38,7 @@ GENE_AUX_PATH = "xenium-mouse-pup-sidecar.genes.json"
 dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_id",
-    metadata_columns=[],
+    metadata_section=[],
     metadata_value_order={
         "condition": [],
     },
@@ -54,7 +54,7 @@ common_kwargs = dict(
     spot_size="auto",
     downsample=10_000_000,
     outline_by=None,
-    additional_annotations=ANALYTICS_COLUMNS[1:],
+    cells_annotations=ANALYTICS_COLUMNS[1:],
     genes=[],
     use_hvgs=False,
     hvg_limit=50,

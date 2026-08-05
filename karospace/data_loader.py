@@ -23,6 +23,8 @@ from pandas.api.types import CategoricalDtype
 from scipy.spatial import cKDTree
 from scipy.sparse import issparse
 
+from .console import log_detail, log_step, log_warning
+
 
 sc = ad  # Compatibility alias; this module only needs AnnData/read_h5ad, not Scanpy.
 COMPANION_ANALYTICS_STORAGE = "json-string-v1"
@@ -890,10 +892,8 @@ class SpatialDataset:
     groupby: str
     obs_columns: List[str]
     var_names: List[str]
-    metadata_columns: List[str]
     metadata_section: List[str] = field(default_factory=list)
     metadata_section_extra: List[str] = field(default_factory=list)
-    metadata_sample_extra: List[str] = field(default_factory=list)
     metadata_value_order: Optional[Dict[str, List[str]]] = None
     modalities: Dict[str, Modality] = field(default_factory=dict)
     default_modality: str = "rna"
@@ -912,14 +912,9 @@ class SpatialDataset:
 
         if self.metadata_section:
             self.metadata_section = _clean(self.metadata_section)
-            self.metadata_columns = list(self.metadata_section)
         else:
-            self.metadata_columns = _clean(self.metadata_columns)
-            self.metadata_section = list(self.metadata_columns)
-        if not self.metadata_section_extra and self.metadata_sample_extra:
-            self.metadata_section_extra = self.metadata_sample_extra
+            self.metadata_section = []
         self.metadata_section_extra = _clean(self.metadata_section_extra)
-        self.metadata_sample_extra = list(self.metadata_section_extra)
 
     @property
     def n_sections(self) -> int:
@@ -1526,7 +1521,6 @@ class SpatialDataset:
         interaction_markers_min_neighbors: int = 1,
         section_rotations: Optional[Dict[str, float]] = None,
         deconvolutions: Optional[Dict[str, str]] = None,
-        additional_annotations: Optional[List[str]] = None,
     ) -> Dict:
         """
         Export dataset to JSON-serializable format for the HTML viewer.
@@ -1539,8 +1533,6 @@ class SpatialDataset:
             If set, randomly downsample to this many cells per section
         cells_annotations : list, optional
             Additional cell obs columns to include for annotation switching.
-        additional_annotations : list, optional
-            Deprecated alias for ``cells_annotations``.
         genes : list, optional
             Gene names to include for expression visualization
         gene_encoding : str
@@ -1621,9 +1613,6 @@ class SpatialDataset:
         dict
             JSON-serializable data structure
         """
-        if cells_annotations is None and additional_annotations is not None:
-            cells_annotations = additional_annotations
-
         coords = np.asarray(self.adata.obsm[self.spatial_key])[:, :2]
         export_section_indices = self._get_export_section_indices(downsample=downsample)
 
@@ -1725,7 +1714,7 @@ class SpatialDataset:
                     "_cat_perm": cat_perm,
                 }
             except Exception as e:
-                    print(f"  Warning: Could not load annotation '{col}': {e}")
+                    log_warning(f"Could not load annotation '{col}': {e}", level=1)
 
         # Pre-compute deconvolution proportion matrices (per-cell × K cell types)
         # deconvolutions: {display_name: obsm_key} where adata.obsm[obsm_key] is (N, K)
@@ -1733,7 +1722,7 @@ class SpatialDataset:
         if deconvolutions:
             for decon_name, obsm_key in deconvolutions.items():
                 if not isinstance(obsm_key, str) or obsm_key not in self.adata.obsm:
-                    print(f"  Warning: deconvolution obsm key '{obsm_key}' not found; skipping '{decon_name}'.")
+                    log_warning(f"deconvolution obsm key '{obsm_key}' not found; skipping '{decon_name}'.", level=1)
                     continue
                 raw = self.adata.obsm[obsm_key]
                 if hasattr(raw, "columns"):
@@ -1747,7 +1736,7 @@ class SpatialDataset:
                     else:
                         cat_labels = [f"comp_{i}" for i in range(matrix.shape[1])]
                 if matrix.ndim != 2 or matrix.shape[0] != self.adata.n_obs:
-                    print(f"  Warning: deconvolution '{decon_name}' has bad shape {matrix.shape}; skipping.")
+                    log_warning(f"deconvolution '{decon_name}' has bad shape {matrix.shape}; skipping.", level=1)
                     continue
                 if len(cat_labels) != matrix.shape[1]:
                     cat_labels = [f"comp_{i}" for i in range(matrix.shape[1])]
@@ -1806,12 +1795,12 @@ class SpatialDataset:
             precomputed_entry: Optional[dict] = None,
         ) -> Tuple[Optional[dict], Optional[dict]]:
             if groupby_name not in self.adata.obs.columns:
-                print(f"  Warning: neighbor stats groupby '{groupby_name}' not found in obs.")
+                log_warning(f"neighbor stats annotation '{groupby_name}' not found in obs.", level=1)
                 return None, None
 
             col = self.adata.obs[groupby_name]
             if pd.api.types.is_numeric_dtype(col):
-                print(f"  Warning: neighbor stats '{groupby_name}' is numeric; skipping.")
+                log_warning(f"neighbor stats annotation '{groupby_name}' is numeric; skipping.", level=1)
                 return None, None
             if not isinstance(col.dtype, CategoricalDtype):
                 col = col.astype("category")
@@ -1820,7 +1809,7 @@ class SpatialDataset:
             codes = col.cat.codes.to_numpy()
             valid_mask = codes >= 0
             if not valid_mask.any():
-                print(f"  Warning: neighbor stats '{groupby_name}' has no valid categories.")
+                log_warning(f"neighbor stats annotation '{groupby_name}' has no valid categories.", level=1)
                 return None, None
 
             if valid_mask.all():
@@ -1834,7 +1823,7 @@ class SpatialDataset:
 
             n_cells = np.bincount(labels, minlength=len(categories)).astype(int)
             if graph is None or graph.shape[0] == 0:
-                print(f"  Warning: neighbor stats '{groupby_name}' has empty graph.")
+                log_warning(f"neighbor stats annotation '{groupby_name}' has an empty graph.", level=1)
                 return None, None
 
             def _build_context(entry_counts, entry_zscore, entry_n_cells, entry_mean_degree):
@@ -1854,9 +1843,9 @@ class SpatialDataset:
                     str(cat) for cat in (precomputed_entry.get("categories") or [])
                 ]
                 if companion_categories and companion_categories != categories:
-                    print(
-                        f"  Warning: companion neighbor stats '{groupby_name}' "
-                        "category mismatch; recomputing."
+                    log_warning(
+                        f"companion neighbor stats '{groupby_name}' category mismatch; recomputing.",
+                        level=1,
                     )
                 else:
                     try:
@@ -1903,9 +1892,9 @@ class SpatialDataset:
 
                         return entry, _build_context(counts, zscore, n_cells_ctx, mean_degree)
                     except Exception as exc:
-                        print(
-                            f"  Warning: companion neighbor stats '{groupby_name}' "
-                            f"malformed; recomputing ({exc})."
+                        log_warning(
+                            f"companion neighbor stats '{groupby_name}' malformed; recomputing ({exc}).",
+                            level=1,
                         )
 
             onehot = sp.csr_matrix(
@@ -2161,12 +2150,9 @@ class SpatialDataset:
                 return dispersion
             message = (
                 f"Computing full-cell spatial dispersion for {len(candidates)} annotation"
-                f"{'s' if len(candidates) != 1 else ''}..."
+                f"{'s' if len(candidates) != 1 else ''}; output feeds Neighbors > Dispersion."
             )
-            if log_as_neighbor_child:
-                print(f"↳ {message}")
-            else:
-                print(message)
+            log_detail(message, level=1)
             for color_col, (cats, labels) in candidates.items():
                 rows = _compute_full_dispersion_for_labels(
                     categories=cats,
@@ -2175,6 +2161,11 @@ class SpatialDataset:
                 )
                 if rows:
                     dispersion[color_col] = rows
+                    log_detail(
+                        f"{color_col}: stored dispersion rows for {len(rows)} categor"
+                        f"{'ies' if len(rows) != 1 else 'y'}.",
+                        level=2,
+                    )
             return dispersion
 
         replicate_override = str(pseudobulk_replicate_annotation or "").strip()
@@ -2203,9 +2194,10 @@ class SpatialDataset:
                 if groupby_name in companion_pseudobulk_de
             ]
             if reused_pseudobulk_de_groupby:
-                print(
-                    f"Using KaroSpaceCompanion pseudobulk DE for {len(reused_pseudobulk_de_groupby)} "
-                    f"groupby column{'s' if len(reused_pseudobulk_de_groupby) != 1 else ''}..."
+                log_step(
+                    f"Reusing KaroSpaceCompanion pseudobulk DE for "
+                    f"{len(reused_pseudobulk_de_groupby)} annotation column"
+                    f"{'s' if len(reused_pseudobulk_de_groupby) != 1 else ''}."
                 )
                 for groupby_name in reused_pseudobulk_de_groupby:
                     pseudobulk_de[groupby_name] = _strip_category_pseudobulk_sample_diagnostics(
@@ -2217,9 +2209,11 @@ class SpatialDataset:
                 if groupby_name not in pseudobulk_de
             ]
         if pending_pseudobulk_de_groupby:
-            print(
-                f"Computing pseudobulk DE for {len(pending_pseudobulk_de_groupby)} "
-                f"groupby column{'s' if len(pending_pseudobulk_de_groupby) != 1 else ''}..."
+            log_step(
+                f"Computing pseudobulk differential expression for "
+                f"{len(pending_pseudobulk_de_groupby)} annotation column"
+                f"{'s' if len(pending_pseudobulk_de_groupby) != 1 else ''}; "
+                "output feeds Insights > Compare > Per sample."
             )
             pseudobulk_min_cells_n = 20
             pseudobulk_min_cell_counts_n = int(pseudobulk_min_cell_counts)
@@ -2233,14 +2227,17 @@ class SpatialDataset:
             from .pseudobulk import compute_pseudobulk_group_de
 
             for groupby_name in pending_pseudobulk_de_groupby:
-                print(f"  - pseudobulk DE: {groupby_name} (replicate={pseudobulk_replicate_name})")
+                log_step(
+                    f"Pseudobulk DE: annotation={groupby_name}; replicate={pseudobulk_replicate_name}",
+                    level=1,
+                )
                 pairwise_categories_label = (
                     ", ".join(str(value) for value in pseudobulk_simple_constrast_categories)
                     if pseudobulk_simple_constrast_categories
                     else "all categories"
                 )
-                print(
-                    "  ↳ parameters: "
+                log_detail(
+                    "Parameters: "
                     f"model=shared_all_category(~ {pseudobulk_replicate_name} + {groupby_name}); "
                     "rest=balanced_equal_category_weight; "
                     f"counts_layer={pseudobulk_counts_layer or 'X'}; "
@@ -2256,7 +2253,7 @@ class SpatialDataset:
                     f"n_cpus={pseudobulk_n_cpus_n}; "
                     "diagnostics=pairwise; "
                     f"reported_pairwise_categories={pairwise_categories_label}",
-                    flush=True,
+                    level=2,
                 )
                 groupby_results = compute_pseudobulk_group_de(
                     self.adata,
@@ -2291,9 +2288,10 @@ class SpatialDataset:
                 if groupby_name in companion_neighbor_stats
             ]
             if reused_neighbor_groupby:
-                print(
-                    f"Using KaroSpaceCompanion neighbor stats for {len(reused_neighbor_groupby)} "
-                    f"groupby column{'s' if len(reused_neighbor_groupby) != 1 else ''}..."
+                log_step(
+                    f"Reusing KaroSpaceCompanion neighbor stats for {len(reused_neighbor_groupby)} "
+                    f"annotation column{'s' if len(reused_neighbor_groupby) != 1 else ''}; "
+                    "output feeds Neighbors > Enrichment/Interactions."
                 )
                 for groupby_name in reused_neighbor_groupby:
                     neighbor_stats[groupby_name] = companion_neighbor_stats[groupby_name]
@@ -2306,13 +2304,22 @@ class SpatialDataset:
         printed_neighbor_stats_header = False
         if neighbor_graph is not None and pending_neighbor_stats_groupby:
             for groupby_name in pending_neighbor_stats_groupby:
-                print(f"- neighbor stats: {groupby_name}")
+                log_step(f"Neighbor stats: annotation={groupby_name}")
+                log_detail(
+                    "Computing observed neighbor composition; output feeds Neighbors > Enrichment "
+                    "and Neighbors > Interactions.",
+                    level=1,
+                )
                 printed_neighbor_stats_header = True
                 entry, context = _prepare_neighbor_stats_groupby(groupby_name)
                 if entry is None or context is None:
                     continue
                 neighbor_stats[groupby_name] = entry
                 neighbor_stats_context[groupby_name] = context
+                log_detail(
+                    f"Stored neighbor matrix for {len(entry.get('categories') or [])} categories.",
+                    level=1,
+                )
 
         # Compute contact-conditioned interaction markers:
         # for source S and target T, compare source cells contacting T vs source cells not contacting T.
@@ -2331,10 +2338,10 @@ class SpatialDataset:
                 if groupby_name in companion_interaction_markers
             ]
             if reused_interaction_groupby:
-                print(
-                    f"Using KaroSpaceCompanion interaction markers for "
+                log_step(
+                    f"Reusing KaroSpaceCompanion interaction markers for "
                     f"{len(reused_interaction_groupby)} "
-                    f"groupby column{'s' if len(reused_interaction_groupby) != 1 else ''}..."
+                    f"annotation column{'s' if len(reused_interaction_groupby) != 1 else ''}."
                 )
                 for groupby_name in reused_interaction_groupby:
                     interaction_markers[groupby_name] = companion_interaction_markers[groupby_name]
@@ -2344,9 +2351,11 @@ class SpatialDataset:
                 if groupby_name not in interaction_markers
             ]
         if neighbor_graph is not None and pending_interaction_markers_groupby:
-            print(
-                f"Computing pseudobulk interaction markers for {len(pending_interaction_markers_groupby)} "
-                f"groupby column{'s' if len(pending_interaction_markers_groupby) != 1 else ''}..."
+            log_step(
+                f"Computing contact-conditioned pseudobulk interaction markers for "
+                f"{len(pending_interaction_markers_groupby)} annotation column"
+                f"{'s' if len(pending_interaction_markers_groupby) != 1 else ''}; "
+                "output feeds Neighbors > Interactions."
             )
             top_targets = int(interaction_markers_top_targets)
             top_genes = int(interaction_markers_top_genes)
@@ -2357,9 +2366,9 @@ class SpatialDataset:
             from .pseudobulk import compute_pseudobulk_interaction_markers
 
             for groupby_name in pending_interaction_markers_groupby:
-                print(
-                    f"  - pseudobulk interaction markers: {groupby_name} "
-                    f"(replicate={interaction_replicate_name})"
+                log_step(
+                    f"Interaction markers: annotation={groupby_name}; replicate={interaction_replicate_name}",
+                    level=1,
                 )
                 if groupby_name not in neighbor_stats_context:
                     companion_neighbor_entry = None
@@ -2380,9 +2389,10 @@ class SpatialDataset:
 
                 ctx = neighbor_stats_context.get(groupby_name)
                 if ctx is None:
-                    print(
-                        f"  Warning: interaction markers '{groupby_name}' unavailable "
-                        "(missing neighbor stats for this groupby)."
+                    log_warning(
+                        f"interaction markers '{groupby_name}' unavailable "
+                        "(missing neighbor stats for this annotation).",
+                        level=2,
                     )
                     continue
 
@@ -2574,12 +2584,13 @@ class SpatialDataset:
             )
         )
         if de_gene_candidates:
-            print(
-                f"  - embedding {len(export_genes)} requested/significant DE gene"
-                f"{'s' if len(export_genes) != 1 else ''} in HTML "
-                f"(adjusted p-value < {float(pseudobulk_padj_cutoff):g}, "
-                f"abs(log2FC) >= {float(pseudobulk_log2fc_cutoff):g}; "
-                f"auto top {de_embed_limit} per comparison)"
+            log_detail(
+                f"Embedding {len(export_genes)} requested/significant DE gene"
+                f"{'s' if len(export_genes) != 1 else ''} in the HTML expression viewer "
+                f"(padj < {float(pseudobulk_padj_cutoff):g}, "
+                f"|log2FC| >= {float(pseudobulk_log2fc_cutoff):g}; "
+                f"automatic cap={de_embed_limit} per comparison).",
+                level=1,
             )
         marker_genes = _pseudobulk_de_marker_genes(
             pseudobulk_de,
@@ -2773,7 +2784,6 @@ class SpatialDataset:
             "metadata_filters": metadata_filters,
             "metadata_section": list(self.metadata_section),
             "metadata_section_extra": list(self.metadata_section_extra),
-            "metadata_sample_extra": list(self.metadata_section_extra),
             "n_sections": len(sections_data),
             "total_cells": sum(s["n_cells"] for s in sections_data),
             "loaded_genes": len(genes_meta),
@@ -2864,10 +2874,8 @@ def load_spatial_data(
     spatial_key: str = "spatial",
     spatial_columns: Optional[Tuple[str, str]] = None,
     group_order: Optional[List[str]] = None,
-    metadata_columns: Optional[List[str]] = None,
     metadata_section: Optional[List[str]] = None,
     metadata_section_extra: Optional[List[str]] = None,
-    metadata_sample_extra: Optional[List[str]] = None,
     metadata_value_order: Optional[Dict[str, List[str]]] = None,
     metadata_max_columns: Optional[int] = None,
     spatialdata_table: Optional[str] = None,
@@ -2894,10 +2902,6 @@ def load_spatial_data(
         Obs columns to use for section metadata and visual filter chips.
     metadata_section_extra : list, optional
         Additional obs columns to store as section metadata without visual filter chips.
-    metadata_sample_extra : list, optional
-        Deprecated alias for ``metadata_section_extra``.
-    metadata_columns : list, optional
-        Deprecated alias for ``metadata_section``.
     metadata_value_order : dict, optional
         Custom ordering for metadata values per column (e.g. {"course": ["A", "B"]})
         If group_order is not provided, the first key in this dict is used to order sections
@@ -2915,8 +2919,8 @@ def load_spatial_data(
         Loaded dataset ready for visualization
     """
     adata, source_label, spatialdata_table_key = _coerce_input_to_anndata(path, spatialdata_table)
-    print(f"Loading {source_label}...")
-    print(f"  Loaded {adata.n_obs:,} cells x {adata.n_vars:,} genes")
+    log_step(f"Loading input data from {source_label}")
+    log_detail(f"Loaded AnnData table with {adata.n_obs:,} cells x {adata.n_vars:,} genes.")
 
     groupby = _resolve_groupby_for_spatialdata(adata, groupby, spatialdata_table_key)
 
@@ -2957,7 +2961,10 @@ def load_spatial_data(
         else:
             section_ids = sorted(gser_str.unique())
 
-    print(f"  Found {len(section_ids)} sections")
+    log_detail(
+        f"Resolved {len(section_ids)} section{'s' if len(section_ids) != 1 else ''} "
+        f"from obs column '{groupby}'."
+    )
 
     def _clean_column_list(values: Optional[List[str]]) -> List[str]:
         cleaned = []
@@ -2969,22 +2976,28 @@ def load_spatial_data(
                 cleaned.append(text)
         return list(dict.fromkeys(cleaned))
 
-    # Determine section metadata columns. metadata_columns is kept as a
-    # backwards-compatible alias for metadata_section.
-    if metadata_section is None:
-        metadata_section = metadata_columns
+    # Determine section metadata columns.
     if metadata_section is None:
         metadata_section = ["course", "region", "condition", "timepoint", "last_score", "last_day"]
     else:
         metadata_section = _clean_column_list(metadata_section)
-    if metadata_section_extra is None:
-        metadata_section_extra = metadata_sample_extra
     metadata_section_extra = _clean_column_list(metadata_section_extra)
     if metadata_max_columns is not None:
         if metadata_max_columns < 0:
             raise ValueError("metadata_max_columns must be >= 0")
         metadata_section = metadata_section[:metadata_max_columns]
     section_metadata_columns = list(dict.fromkeys([*metadata_section, *metadata_section_extra]))
+    if section_metadata_columns:
+        log_detail(
+            "Section metadata columns: "
+            + ", ".join(section_metadata_columns)
+            + (
+                f" ({len(metadata_section)} shown in the visual params bar; "
+                f"{len(metadata_section_extra)} stored as section-only metadata)."
+            )
+        )
+    else:
+        log_detail("No section metadata columns were requested.")
 
     # Build section data
     coords = np.asarray(adata.obsm[spatial_key])[:, :2]
@@ -3022,7 +3035,7 @@ def load_spatial_data(
     default_modality = "rna" if "rna" in modalities else next(iter(modalities))
     extra_modalities = [m for m in modalities if m != default_modality]
     if extra_modalities:
-        print(f"  Modalities: {default_modality} (default) + {', '.join(extra_modalities)}")
+        log_detail(f"Modalities: {default_modality} (default) + {', '.join(extra_modalities)}.")
 
     return SpatialDataset(
         adata=adata,
@@ -3030,10 +3043,8 @@ def load_spatial_data(
         groupby=groupby,
         obs_columns=obs_columns,
         var_names=list(adata.var_names),
-        metadata_columns=metadata_section,
         metadata_section=metadata_section,
         metadata_section_extra=metadata_section_extra,
-        metadata_sample_extra=metadata_section_extra,
         metadata_value_order=metadata_value_order,
         modalities=modalities,
         default_modality=default_modality,

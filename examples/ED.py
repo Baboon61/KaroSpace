@@ -25,7 +25,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby="sample_name_updated",  # adjust to match your data
     # Choose which obs columns appear as filter chips in the viewer
-    metadata_columns=[
+    metadata_section=[
         "condition_subtype",
         "Other pathologies",
         "PAT-ID",
@@ -59,7 +59,7 @@ export_to_html(
     outline_by=OUTLINE_BY,  # metadata column for panel outline colors
 
     # Include additional color options for the dropdown
-    additional_annotations=[
+    cells_annotations=[
        'leiden_0.5', 'leiden_1', 'leiden_1.5',
        'leiden_2', 'leiden_2.5',
        'leiden_3', 'leiden_3.5', 'cytetype_annotation_leiden_3.5',

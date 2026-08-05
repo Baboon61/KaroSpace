@@ -53,7 +53,7 @@ try:
         temp_h5ad_path,
         groupby=SINGLE_SECTION_COLUMN,
         spatial_key="spatial",
-        metadata_columns=[],
+        metadata_section=[],
     )
 finally:
     if os.path.exists(temp_h5ad_path):
@@ -69,7 +69,7 @@ common_kwargs = dict(
     spot_size="auto",
     downsample=10_000_000,
     outline_by=None,
-    additional_annotations=ADDITIONAL_COLORS,
+    cells_annotations=ADDITIONAL_COLORS,
     genes=[],
     use_hvgs=False,
     hvg_limit=50,

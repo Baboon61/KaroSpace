@@ -74,7 +74,7 @@ dataset = load_spatial_data(
     H5AD_PATH,
     groupby=GROUPBY,
     spatial_key="spatial",
-    metadata_columns=METADATA_COLUMNS,
+    metadata_section=METADATA_COLUMNS,
     metadata_value_order=METADATA_VALUE_ORDER,
 )
 
@@ -117,7 +117,7 @@ common_kwargs = dict(
     spot_size="auto",
     downsample=10_000_000,
     outline_by=None,
-    additional_annotations=ADDITIONAL_COLORS,
+    cells_annotations=ADDITIONAL_COLORS,
     metadata_labels=METADATA_LABELS,
     section_images=SECTION_IMAGES,
     section_images_max_px=4096,

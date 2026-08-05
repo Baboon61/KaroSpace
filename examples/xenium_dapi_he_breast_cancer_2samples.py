@@ -119,7 +119,7 @@ def main() -> None:
         H5AD_PATH,
         groupby="sample_id",
         spatial_key="spatial",
-        metadata_columns=["sample_id"],
+        metadata_section=["sample_id"],
     )
     print(f"  {dataset.n_sections} section(s), {dataset.n_cells:,} cells")
     print(f"  section IDs: {[s.section_id for s in dataset.sections]}")
@@ -142,7 +142,7 @@ def main() -> None:
         min_panel_size=140,
         spot_size="auto",
         outline_by=None,
-        additional_annotations=ADDITIONAL_COLORS,
+        cells_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",

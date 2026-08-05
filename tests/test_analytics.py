@@ -407,7 +407,7 @@ def test_cli_accepts_spatial_key(monkeypatch, tmp_path):
     def fake_load(path, groupby="sample_id", spatial_key="spatial"):
         captured["load"] = {"path": path, "groupby": groupby, "spatial_key": spatial_key}
         class MockDataset:
-            metadata_columns = []
+            metadata_section = []
             def to_json_data(self, *args, **kwargs):
                 return {}
         return MockDataset()
@@ -454,7 +454,7 @@ def test_cli_accepts_spatial_obs_columns(monkeypatch, tmp_path):
             "spatial_columns": spatial_columns,
         }
         class MockDataset:
-            metadata_columns = []
+            metadata_section = []
             def to_json_data(self, *args, **kwargs):
                 return {}
         return MockDataset()
@@ -510,7 +510,7 @@ def test_cli_accepts_metadata_section(monkeypatch, tmp_path):
             "metadata_section_extra": metadata_section_extra,
         }
         class MockDataset:
-            metadata_columns = []
+            metadata_section = []
             def to_json_data(self, *args, **kwargs):
                 return {}
         return MockDataset()
@@ -555,7 +555,7 @@ def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
     def fake_load(path, **kwargs):
         captured["load"] = {"path": path, **kwargs}
         class MockDataset:
-            metadata_columns = ["strain", "region"]
+            metadata_section = ["strain", "region"]
             def to_json_data(self, *args, **kwargs):
                 return {}
         return MockDataset()
@@ -653,7 +653,7 @@ def test_cli_accepts_none_outline_by(monkeypatch, tmp_path):
 
     def fake_load(path, groupby="sample_id", spatial_key="spatial"):
         class MockDataset:
-            metadata_columns = []
+            metadata_section = []
             def to_json_data(self, *args, **kwargs):
                 return {}
         return MockDataset()

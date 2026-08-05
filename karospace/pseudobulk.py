@@ -14,6 +14,8 @@ import pandas as pd
 import scipy.sparse as sp
 from pandas.api.types import CategoricalDtype
 
+from .console import log_detail, log_step, log_warning
+
 
 _NUMPY_SLOGDET_WARNING_MESSAGE = r".*encountered in slogdet"
 _NUMPY_SLOGDET_PYTHONWARNINGS_FILTERS = (
@@ -1290,7 +1292,7 @@ def compute_pseudobulk_interaction_markers(
     for category pseudobulk DE.
     """
     if replicate not in adata.obs.columns:
-        print(f"  Warning: interaction pseudobulk replicate '{replicate}' not found in obs.")
+        log_warning(f"interaction pseudobulk replicate '{replicate}' not found in obs.", level=2)
         return None
 
     graph = graph.tocsr() if sp.issparse(graph) else sp.csr_matrix(graph)
@@ -1310,7 +1312,7 @@ def compute_pseudobulk_interaction_markers(
     else:
         n_cells = np.bincount(labels[labels >= 0], minlength=len(categories)).astype(int)
     if graph.shape[0] != len(labels) or len(labels) != len(obs_idx):
-        print(f"  Warning: interaction markers '{annotation}' graph/label size mismatch; skipping.")
+        log_warning(f"interaction markers '{annotation}' graph/label size mismatch; skipping.", level=2)
         return None
 
     expression_matrix, counts_layer_used, warning = _as_count_matrix(adata, counts_layer)
@@ -1339,10 +1341,10 @@ def compute_pseudobulk_interaction_markers(
                 f"{len(rep_to_positions)} biological replicate(s) are available; "
                 f"need >= {required_min_replicates}"
             )
-        print(
-            f"  Warning: pseudobulk interaction markers for '{annotation}' were skipped: {reason} "
+        log_warning(
+            f"pseudobulk interaction markers for '{annotation}' were skipped: {reason} "
             f"(replicate annotation: '{replicate}').",
-            flush=True,
+            level=2,
         )
         return None
     rep_subgraph_cache: Dict[str, Any] = {
@@ -1350,10 +1352,10 @@ def compute_pseudobulk_interaction_markers(
         for rep, positions in rep_to_positions.items()
         if positions.size > 0
     }
-    print(
-        f"    - {len(categories)} categories -> contact pseudobulk by {replicate} "
-        f"(top {top_targets} targets/source)",
-        flush=True,
+    log_detail(
+        f"{len(categories)} categories -> contact pseudobulk by {replicate}; "
+        f"testing up to top {top_targets} target categories per source.",
+        level=2,
     )
 
     results: Dict[str, Dict[str, Dict[str, Any]]] = {}
@@ -1447,10 +1449,10 @@ def compute_pseudobulk_interaction_markers(
             non_contact_reps = {rep for rep, status in sample_keys if status == "contact-"}
             paired_reps = sorted(contact_reps & non_contact_reps)
             if len(paired_reps) < required_min_replicates:
-                print(
-                    f"      - {source_name} -> {target_name}: skipped, insufficient paired replicates "
+                log_step(
+                    f"{source_name} -> {target_name}: skipped, insufficient paired replicates "
                     f"({len(paired_reps)}; need >= {required_min_replicates})",
-                    flush=True,
+                    level=3,
                 )
                 source_result[target_name] = _empty_interaction_result(
                     "insufficient_replicates",
@@ -1511,13 +1513,13 @@ def compute_pseudobulk_interaction_markers(
             pair_meta.attrs["gene_names"] = [str(g) for g in adata.var_names]
 
             try:
-                print(
-                    f"      - {source_name} -> {target_name}: fitting DESeq2 "
+                log_step(
+                    f"{source_name} -> {target_name}: fitting contact+ vs contact- DESeq2 "
                     f"({len(paired_reps)} paired replicate"
                     f"{'s' if len(paired_reps) != 1 else ''}, "
                     f"{pair_counts.shape[0]} pseudobulk samples, "
                     f"{pair_counts.shape[1]} genes)",
-                    flush=True,
+                    level=3,
                 )
                 sample_diagnostics = _compute_pseudobulk_sample_diagnostics(pair_counts, pair_meta)
                 pair_result = _fit_deseq2_pair(
@@ -1554,8 +1556,13 @@ def compute_pseudobulk_interaction_markers(
                 formatted["min_replicates_required"] = required_min_replicates
                 formatted.update(meta)
                 source_result[target_name] = _truncate_gene_result(formatted, top_genes)
+                log_detail(
+                    f"Stored top {min(top_genes, len(formatted.get('genes') or []))} marker genes "
+                    "plus diagnostics for this source-target interaction.",
+                    level=4,
+                )
             except Exception as exc:
-                print(f"      - {source_name} -> {target_name}: failed ({exc})", flush=True)
+                log_step(f"{source_name} -> {target_name}: failed ({exc})", level=3)
                 source_result[target_name] = _empty_interaction_result(
                     "de_failed",
                     n_contact=n_pos,
@@ -1569,6 +1576,14 @@ def compute_pseudobulk_interaction_markers(
         if source_result:
             results[source_name] = source_result
 
+    if results:
+        n_sources = len(results)
+        n_targets = sum(len(targets) for targets in results.values() if isinstance(targets, dict))
+        log_detail(
+            f"Stored interaction-marker payload: {n_sources} source categories, "
+            f"{n_targets} source-target tests.",
+            level=2,
+        )
     return results or None
 
 
@@ -1598,15 +1613,15 @@ def _compute_pseudobulk_group_de_shared(
     other retained category coefficients. It is not a pooled-cell rest.
     """
     if groupby not in adata.obs.columns:
-        print(f"  Warning: pseudobulk DE groupby '{groupby}' not found in obs.")
+        log_warning(f"pseudobulk DE annotation '{groupby}' not found in obs.", level=2)
         return None
     if replicate not in adata.obs.columns:
-        print(f"  Warning: pseudobulk DE replicate '{replicate}' not found in obs.")
+        log_warning(f"pseudobulk DE replicate '{replicate}' not found in obs.", level=2)
         return None
 
     col = adata.obs[groupby]
     if pd.api.types.is_numeric_dtype(col):
-        print(f"  Warning: pseudobulk DE '{groupby}' is numeric; skipping.")
+        log_warning(f"pseudobulk DE annotation '{groupby}' is numeric; skipping.", level=2)
         return None
     if not isinstance(col.dtype, CategoricalDtype):
         col = col.astype("category")
@@ -1620,10 +1635,10 @@ def _compute_pseudobulk_group_de_shared(
         selected_pairwise_categories = [category for category in categories if category in requested]
         missing = sorted(set(requested) - set(selected_pairwise_categories))
         if missing:
-            print(
-                "  Warning: requested Simple design pairwise categories not found in "
+            log_warning(
+                "requested Simple design pairwise categories not found in "
                 f"'{groupby}': {', '.join(missing)}.",
-                flush=True,
+                level=2,
             )
 
     expression_matrix, counts_layer_used, warning = _as_count_matrix(adata, counts_layer)
@@ -1646,10 +1661,10 @@ def _compute_pseudobulk_group_de_shared(
             if available == 1
             else f"{available} biological replicate(s) are available; need >= {required_min_replicates}"
         )
-        print(
-            f"  Warning: pseudobulk DE for '{groupby}' was skipped: {reason} "
+        log_warning(
+            f"pseudobulk DE for '{groupby}' was skipped: {reason} "
             f"(replicate annotation: '{replicate}').",
-            flush=True,
+            level=2,
         )
         return None
 
@@ -1683,10 +1698,10 @@ def _compute_pseudobulk_group_de_shared(
     aggregate_summary = _compute_category_gene_means_from_aggregate(
         aggregate, pb_meta, categories, adata.var_names,
     )
-    print(
-        f"    - aggregated {len(pb_meta)} replicate × annotation pseudobulk samples from "
-        f"{len(valid_indices)} retained cells",
-        flush=True,
+    log_detail(
+        f"Aggregated {len(pb_meta)} replicate x annotation pseudobulk samples from "
+        f"{len(valid_indices)} retained cells; output is the count matrix used for DESeq2.",
+        level=2,
     )
 
     sufficient_pb = pb_meta[pb_meta["n_cells"] >= int(min_cells)]
@@ -1698,23 +1713,23 @@ def _compute_pseudobulk_group_de_shared(
     ]
     omitted_categories = [category for category in categories if category not in retained_categories]
     if omitted_categories:
-        print(
-            "    - excluding categories with insufficient pseudobulk replicates from the shared fit: "
+        log_detail(
+            "Excluded categories with insufficient pseudobulk replicates from the shared fit: "
             + ", ".join(omitted_categories),
-            flush=True,
+            level=2,
         )
     if len(retained_categories) < 2:
-        print(
-            f"  Warning: pseudobulk DE for '{groupby}' was skipped: fewer than two categories have "
+        log_warning(
+            f"pseudobulk DE for '{groupby}' was skipped: fewer than two categories have "
             f">= {required_min_replicates} replicate pseudobulks with >= {int(min_cells)} cells.",
-            flush=True,
+            level=2,
         )
         return None
 
-    print(
-        f"    - shared-fit cohort: {len(retained_categories)} retained categories; "
+    log_detail(
+        f"Shared-fit cohort: {len(retained_categories)} retained categories; "
         f"requiring >= {required_min_replicates} replicate pseudobulks and >= {int(min_cells)} cells each",
-        flush=True,
+        level=2,
     )
 
     model_mask = (
@@ -1728,17 +1743,17 @@ def _compute_pseudobulk_group_de_shared(
     design_rank, design_columns = _shared_category_design_rank(model_meta)
     residual_df = int(len(model_meta) - design_rank)
     if design_rank < design_columns or residual_df <= 0:
-        print(
-            f"  Warning: shared pseudobulk DE for '{groupby}' was skipped: the "
+        log_warning(
+            f"shared pseudobulk DE for '{groupby}' was skipped: the "
             f"~ {replicate} + {groupby} design is rank-deficient or has no residual "
             f"degrees of freedom (rank {design_rank}/{design_columns}; residual df {residual_df}).",
-            flush=True,
+            level=2,
         )
         return None
-    print(
-        f"    - validating shared design ~ {replicate} + {groupby}: "
+    log_detail(
+        f"Validated shared DESeq2 design ~ {replicate} + {groupby}: "
         f"rank {design_rank}/{design_columns}; residual df {residual_df}",
-        flush=True,
+        level=2,
     )
     model_keys = set(
         zip(
@@ -1761,16 +1776,16 @@ def _compute_pseudobulk_group_de_shared(
         min_gene_counts,
     )
     if not fit_meta.attrs.get("gene_names"):
-        print(
-            f"  Warning: shared pseudobulk DE for '{groupby}' was skipped: no genes meet "
+        log_warning(
+            f"shared pseudobulk DE for '{groupby}' was skipped: no genes meet "
             f"min_gene_counts={max(0, int(min_gene_counts))}.",
-            flush=True,
+            level=2,
         )
         return None
-    print(
-        f"    - shared gene filter: min_gene_counts={max(0, int(min_gene_counts))}; "
+    log_detail(
+        f"Shared-fit gene filter: min_gene_counts={max(0, int(min_gene_counts))}; "
         f"retained {fit_counts.shape[1]} of {model_counts.shape[1]} genes before DESeq2 fitting",
-        flush=True,
+        level=2,
     )
     estimate_low, estimate_high = _estimate_shared_deseq2_fit_seconds(
         fit_counts.shape[0],
@@ -1778,11 +1793,11 @@ def _compute_pseudobulk_group_de_shared(
         design_columns,
         n_cpus,
     )
-    print(
-        "    - fitting shared all-category DESeq2 model (normalization and dispersion estimation); "
+    log_detail(
+        "Fitting shared all-category DESeq2 model (normalization and dispersion estimation); "
         f"rough {max(1, int(n_cpus))}-CPU estimate: {_format_duration(estimate_low)} to "
         f"{_format_duration(estimate_high)}.",
-        flush=True,
+        level=2,
     )
     fit_started = time.perf_counter()
     try:
@@ -1795,19 +1810,19 @@ def _compute_pseudobulk_group_de_shared(
             n_cpus=n_cpus,
         )
     except Exception as exc:
-        print(f"  Warning: shared pseudobulk DE fit for '{groupby}' failed ({exc}).", flush=True)
+        log_warning(f"shared pseudobulk DE fit for '{groupby}' failed ({exc}).", level=2)
         return None
 
     fit_elapsed = time.perf_counter() - fit_started
-    print(
-        f"    - shared all-category DESeq2 model fit completed in {_format_duration(fit_elapsed)}.",
-        flush=True,
+    log_detail(
+        f"Shared all-category DESeq2 model fit completed in {_format_duration(fit_elapsed)}.",
+        level=2,
     )
-    print(
-        f"    - shared all-category DESeq2 fit: {len(retained_categories)} categories, "
+    log_detail(
+        f"Shared DESeq2 fit output: {len(retained_categories)} categories, "
         f"{fit_counts.shape[0]} pseudobulk samples, {fit_counts.shape[1]} genes "
         f"(~ {replicate} + {groupby}; design rank {design_rank}/{design_columns})",
-        flush=True,
+        level=2,
     )
     model_info = {
         "model_formula": f"~ {replicate} + {groupby}",
@@ -1834,7 +1849,7 @@ def _compute_pseudobulk_group_de_shared(
         n_reference = int(np.count_nonzero(reference_mask))
         label = f"{source} vs {reference}" if reference != "__rest__" else f"{source} vs balanced rest"
         try:
-            print(f"      - [{progress}] {label}: testing shared DESeq2 contrast", flush=True)
+            log_step(f"[{progress}] {label}: testing shared DESeq2 contrast", level=3)
             fit_gene_names = [str(gene) for gene in fit_meta.attrs.get("gene_names", [])]
             min_pct_threshold = _normalize_pct_threshold(min_pct_expressed)
             test_gene_names = _expression_prefilter_gene_names(
@@ -1846,10 +1861,10 @@ def _compute_pseudobulk_group_de_shared(
                 min_pct_expressed,
             )
             if min_pct_threshold > 0:
-                print(
-                    f"      ↳ Minimum % cells retained {len(test_gene_names)} "
+                log_detail(
+                    f"Minimum % cells retained {len(test_gene_names)} "
                     f"of {len(fit_gene_names)} fitted genes for DeseqStats",
-                    flush=True,
+                    level=4,
                 )
             raw_result = _deseq2_shared_contrast(
                 dds,
@@ -1882,14 +1897,14 @@ def _compute_pseudobulk_group_de_shared(
                 max(0, len(fit_gene_names) - len(test_gene_names))
             )
             results.setdefault(source, {})[reference] = formatted
-            print(
-                f"      ↳ {_count_threshold_passing_genes(formatted)} "
+            log_detail(
+                f"{_count_threshold_passing_genes(formatted)} "
                 f"genes pass the DE thresholds (padj < {float(padj_cutoff):g} "
                 f"and |log2FC| >= {float(log2fc_cutoff):g})",
-                flush=True,
+                level=4,
             )
         except Exception as exc:
-            print(f"      - [{progress}] {label}: failed ({exc})", flush=True)
+            log_step(f"[{progress}] {label}: failed ({exc})", level=3)
             failed = _empty_result(
                 "de_failed",
                 n_source=n_source,
@@ -1913,27 +1928,28 @@ def _compute_pseudobulk_group_de_shared(
             for source_index, source in enumerate(selected_retained)
             for reference in selected_retained[source_index + 1:]
         ]
-        print(
-            f"    - preparing {len(unique_pairs)} pairwise PCA/distance diagnostic payload"
-            f"{'s' if len(unique_pairs) != 1 else ''} for the selected annotations",
-            flush=True,
+        log_detail(
+            f"Preparing {len(unique_pairs)} pairwise PCA/distance diagnostic payload"
+            f"{'s' if len(unique_pairs) != 1 else ''} for the selected annotations; "
+            "output feeds the Samples tab.",
+            level=2,
         )
         for diagnostic_index, (source, reference) in enumerate(unique_pairs, start=1):
             keep_positions = np.flatnonzero(
                 fit_meta["_pb_group"].isin([source, reference]).to_numpy()
             )
-            print(
-                f"      - diagnostic [{diagnostic_index}/{len(unique_pairs)}] {source} vs {reference}",
-                flush=True,
+            log_step(
+                f"Diagnostic [{diagnostic_index}/{len(unique_pairs)}] {source} vs {reference}",
+                level=3,
             )
             pair_diagnostics.setdefault(source, {})[reference] = _compute_pseudobulk_sample_diagnostics(
                 fit_counts[keep_positions],
                 fit_meta.iloc[keep_positions].copy(),
             )
-    print(
-        f"    - {len(selected_retained)} selected categories -> {directed_pairs} category-versus-category "
-        "contrasts from the shared fit",
-        flush=True,
+    log_detail(
+        f"{len(selected_retained)} selected categories -> {directed_pairs} category-versus-category "
+        "contrasts from the shared fit; output feeds Raw table, Genes, and Pathway Enrichment.",
+        level=2,
     )
     for source in selected_retained:
         for reference in selected_retained:
@@ -1947,11 +1963,11 @@ def _compute_pseudobulk_group_de_shared(
             source_mask = category_cell_mask(source)
             reference_mask = category_cell_mask(reference)
             if len(paired_reps) < required_min_replicates:
-                print(
-                    f"      - [{contrast_index}/{total_contrasts}] {source} vs {reference}: "
+                log_step(
+                    f"[{contrast_index}/{total_contrasts}] {source} vs {reference}: "
                     f"skipped, insufficient paired replicates "
                     f"({len(paired_reps)}; need >= {required_min_replicates})",
-                    flush=True,
+                    level=3,
                 )
                 empty = _empty_result(
                     "insufficient_replicates",
@@ -1976,9 +1992,10 @@ def _compute_pseudobulk_group_de_shared(
             )
 
     rest_reference = "__rest__"
-    print(
-        f"    - {len(retained_categories)} category-versus-balanced-rest contrasts from the shared fit",
-        flush=True,
+    log_detail(
+        f"{len(retained_categories)} category-versus-balanced-rest contrasts from the shared fit; "
+        "output feeds category-versus-rest marker summaries.",
+        level=2,
     )
     for source in retained_categories:
         contrast_index += 1
@@ -1994,11 +2011,11 @@ def _compute_pseudobulk_group_de_shared(
         source_mask = category_cell_mask(source)
         reference_mask = model_cell_mask & (group_values.to_numpy() != source)
         if len(paired_reps) < required_min_replicates:
-            print(
-                f"      - [{contrast_index}/{total_contrasts}] {source} vs balanced rest: "
+            log_step(
+                f"[{contrast_index}/{total_contrasts}] {source} vs balanced rest: "
                 f"skipped, insufficient paired replicates "
                 f"({len(paired_reps)}; need >= {required_min_replicates})",
-                flush=True,
+                level=3,
             )
             empty = _empty_result(
                 "insufficient_replicates",
@@ -2028,6 +2045,21 @@ def _compute_pseudobulk_group_de_shared(
 
     if not results:
         return None
+    stored_sources = [
+        key for key, value in results.items()
+        if not str(key).startswith("_") and isinstance(value, dict)
+    ]
+    stored_contrasts = sum(
+        1
+        for source in stored_sources
+        for reference in (results.get(source) or {})
+        if not str(reference).startswith("_")
+    )
+    log_detail(
+        f"Stored pseudobulk result payload: {len(stored_sources)} source categories, "
+        f"{stored_contrasts} contrasts, {'with' if pair_diagnostics else 'without'} pairwise diagnostics.",
+        level=2,
+    )
     results["_summary"] = {
         "category_gene_means": aggregate_summary,
         "replicate": str(replicate),

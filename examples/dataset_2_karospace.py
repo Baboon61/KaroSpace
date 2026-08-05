@@ -66,7 +66,7 @@ def main() -> None:
         H5AD_PATH,
         groupby="sample_repl",
         spatial_key="spatial",
-        metadata_columns=["sample_id", "sample_repl", "replicate", "batch"],
+        metadata_section=["sample_id", "sample_repl", "replicate", "batch"],
     )
     print(f"  Loaded {dataset.n_sections} sections with {dataset.n_cells:,} total cells")
 
@@ -77,7 +77,7 @@ def main() -> None:
         spot_size="auto",
         downsample=10_000_000,
         outline_by=None,
-        additional_annotations=ADDITIONAL_COLORS,
+        cells_annotations=ADDITIONAL_COLORS,
         genes=[],
         use_hvgs=False,
         gene_storage="sidecar",
