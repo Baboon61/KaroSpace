@@ -1847,7 +1847,7 @@ def _compute_pseudobulk_group_de_shared(
             )
             if min_pct_threshold > 0:
                 print(
-                    f"        ↳ Minimum % cells retained {len(test_gene_names)} "
+                    f"      ↳ Minimum % cells retained {len(test_gene_names)} "
                     f"of {len(fit_gene_names)} fitted genes for DeseqStats",
                     flush=True,
                 )
@@ -1883,7 +1883,7 @@ def _compute_pseudobulk_group_de_shared(
             )
             results.setdefault(source, {})[reference] = formatted
             print(
-                f"            ↳ {_count_threshold_passing_genes(formatted)} "
+                f"      ↳ {_count_threshold_passing_genes(formatted)} "
                 f"genes pass the DE thresholds (padj < {float(padj_cutoff):g} "
                 f"and |log2FC| >= {float(log2fc_cutoff):g})",
                 flush=True,

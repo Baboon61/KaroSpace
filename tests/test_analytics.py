@@ -15,6 +15,7 @@ from anndata import AnnData
 from karospace.data_loader import (
     _numeric_category_perm,
     _resolve_spatial_key,
+    inspect_input_file,
     load_spatial_data,
 )
 from karospace.exporter import (
@@ -202,6 +203,80 @@ def test_load_spatial_data_rejects_non_numeric_spatial_obs_column(tmp_path):
             groupby="sample",
             spatial_columns=("x_centroid", "y_centroid"),
         )
+
+
+def test_load_spatial_data_accepts_anndata_object():
+    obs = pd.DataFrame(
+        {
+            "sample": pd.Categorical(["s1", "s1", "s2"]),
+            "leiden": pd.Categorical(["A", "B", "A"]),
+        },
+        index=["c0", "c1", "c2"],
+    )
+    adata = AnnData(
+        X=np.ones((3, 2), dtype=float),
+        obs=obs,
+        var=pd.DataFrame(index=["G1", "G2"]),
+    )
+    adata.obsm["spatial"] = np.array([[0.0, 0.0], [1.0, 0.0], [5.0, 5.0]])
+
+    dataset = load_spatial_data(adata, groupby="sample")
+
+    assert dataset.adata is adata
+    assert dataset.groupby == "sample"
+    assert [section.section_id for section in dataset.sections] == ["s1", "s2"]
+
+
+def test_load_spatial_data_accepts_spatialdata_like_object_with_table_and_region_key():
+    obs = pd.DataFrame(
+        {
+            "region": pd.Categorical(["S1", "S1", "S2", "S2"]),
+            "cell_type": pd.Categorical(["A", "B", "A", "B"]),
+        },
+        index=["c0", "c1", "c2", "c3"],
+    )
+    adata = AnnData(
+        X=np.ones((4, 2), dtype=float),
+        obs=obs,
+        var=pd.DataFrame(index=["G1", "G2"]),
+    )
+    adata.obsm["spatial"] = np.array(
+        [[0.0, 0.0], [1.0, 0.0], [5.0, 5.0], [6.0, 5.0]],
+        dtype=float,
+    )
+    adata.uns["spatialdata_attrs"] = {"region": ["S1", "S2"], "region_key": "region"}
+
+    class FakeSpatialData:
+        def __init__(self, table):
+            self.tables = {"cells": table}
+
+    dataset = load_spatial_data(FakeSpatialData(adata), spatialdata_table="cells")
+
+    assert dataset.groupby == "region"
+    assert [section.section_id for section in dataset.sections] == ["S1", "S2"]
+    assert dataset.obs_columns == ["region", "cell_type"]
+
+
+def test_inspect_input_file_accepts_spatialdata_like_object():
+    obs = pd.DataFrame(
+        {"region": pd.Categorical(["S1"]), "cell_type": pd.Categorical(["A"])},
+        index=["c0"],
+    )
+    adata = AnnData(
+        X=np.ones((1, 1), dtype=float),
+        obs=obs,
+        var=pd.DataFrame(index=["G1"]),
+    )
+
+    class FakeSpatialData:
+        def __init__(self, table):
+            self.tables = {"cells": table}
+
+    report = inspect_input_file(FakeSpatialData(adata), spatialdata_table="cells")
+
+    assert report["spatialdata_table"] == "cells"
+    assert report["n_cells"] == 1
+    assert [entry["name"] for entry in report["metadata"]] == ["region", "cell_type"]
 
 
 # --------------------------------------------------------------------------- #

@@ -8312,8 +8312,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }},
         dispersion: {{
             title: 'Spatial dispersion',
-            body: 'Dispersion summarizes how spread out each category is in spatial coordinates using centroid distance and nearest-neighbor spacing.',
-            formula: 'mean radius = mean distance from category cells to their centroid'
+            body: 'Dispersion summarizes whether each category is spatially closer together or more spread out than expected from the observed all-cell layout. The nearest-neighbor index compares same-category nearest-neighbor distance with an expected same-category distance estimated from the all-cell k-nearest-neighbor distance curve in the same section and the category frequency.',
+            formula: 'NNI = observed mean nearest same-category distance / expected same-category distance from the all-cell kNN baseline; NNI < 0.9 clustered, NNI > 1.1 dispersed'
         }},
         module: {{
             title: 'Gene module score',
@@ -8440,12 +8440,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let geneDistributionSortDir = 'desc';
     let geneDistributionRestrictBy = '';
     let geneDistributionRestrictValue = '';
-    // Spatial dispersion (restricted-vs-dispersed) insights table state. Results
-    // are cached per color column (cell positions are static) and invalidated
-    // whenever currentColor changes.
+    // Spatial dispersion (restricted-vs-dispersed) insights table state. Values
+    // are precomputed during export from all cells, before HTML downsampling.
     let dispersionSortKey = 'nni';
     let dispersionSortDir = 'asc';
-    const _dispersionCache = new Map();
     let geneAuxManifest = null;
     let geneAuxManifestPromise = null;
     const geneAuxShardCache = new Map();
@@ -23521,7 +23519,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!col || !validColumns.includes(col)) return;
         currentColor = col;
         currentGene = null;
-        _dispersionCache.clear();
         invalidateGeneDensityCaches();
         celltypeTrendTarget = null;
         modalSelectedCategory = null;
@@ -30045,160 +30042,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     // ---- Spatial dispersion (restricted vs dispersed) per cell type ----
-    // Self-clustering metrics computed in the browser from cell positions and
-    // the existing spatial neighbor graph (no predefined regions needed):
-    //   SAI (self-aggregation, 0..1) = mean fraction of a cell's graph neighbors
-    //       that share its type. Higher = more clustered with its own kind.
-    //   NNI (Clark-Evans) = observed mean nearest-neighbour distance among a
-    //       type's cells / expected under complete spatial randomness. <1
-    //       clustered/restricted, ~1 random, >1 dispersed/regular.
-    // Per-section, then cell-weighted aggregation across sections.
-    function computeDispersionForSection(section, colorCol, config) {{
-        ensureSectionXY(section);
-        const bounds = ensureSectionBounds(section);
-        const n = Math.min(section.x.length, section.y.length);
-        if (!n || !bounds) return [];
-        const colorVals = getSectionColorValues(section, colorCol);
-        if (!colorVals) return [];
-        const categories = config.categories || [];
-        const K = categories.length;
-        if (!K) return [];
-
-        // Precompute each cell's category index ONCE — avoids repeated
-        // getCategoricalValueInfo calls inside the per-type inner loops.
-        const catIdxOf = new Int32Array(n).fill(-1);
-        const typeIndices = Array.from({{ length: K }}, () => []);
-        for (let i = 0; i < n; i++) {{
-            const info = getCategoricalValueInfo(config, colorVals[i]);
-            if (info && info.catIdx >= 0 && info.catIdx < K) {{
-                catIdxOf[i] = info.catIdx;
-                typeIndices[info.catIdx].push(i);
-            }}
-        }}
-
-        const adjAvail = !!DATA.has_neighbors;
-        const adj = adjAvail ? getSectionAdjacency(section) : null;
-        const si = ensureSectionSpatialIndex(section);
-        // Bounding-box area for the CSR expectation. This overestimates area for
-        // non-rectangular tissue (biasing NNI slightly up), but the bias is
-        // uniform across types in a section so relative ranking holds. Could be
-        // refined later with occupied-quadrat area via buildCellDensityGrid.
-        const area = Math.max((bounds.xmax - bounds.xmin) * (bounds.ymax - bounds.ymin), 1e-10);
-        const cellSizeApprox = si ? Math.max(1 / si.invCellWidth, 1 / si.invCellHeight) : 0;
-        const xs = section.x, ys = section.y;
-
-        // Nearest same-type neighbour distance via expanding-ring grid search.
-        const nearestSameTypeDist = (ci, t) => {{
-            const qx = xs[ci], qy = ys[ci];
-            const gc = clampNumber(Math.floor((qx - si.xmin) * si.invCellWidth), 0, si.cols - 1);
-            const gr = clampNumber(Math.floor((qy - si.ymin) * si.invCellHeight), 0, si.rows - 1);
-            let best = Infinity;
-            const maxRing = si.cols + si.rows;
-            for (let ring = 0; ring <= maxRing; ring++) {{
-                const rMin = gr - ring, rMax = gr + ring, cMin = gc - ring, cMax = gc + ring;
-                for (let br = Math.max(0, rMin); br <= Math.min(si.rows - 1, rMax); br++) {{
-                    const onRowEdge = (br === rMin || br === rMax);
-                    for (let bc = Math.max(0, cMin); bc <= Math.min(si.cols - 1, cMax); bc++) {{
-                        // Visit only the shell of this ring; interior already searched.
-                        if (ring > 0 && !onRowEdge && bc !== cMin && bc !== cMax) continue;
-                        const bucket = si.buckets.get(br * si.cols + bc);
-                        if (!bucket) continue;
-                        for (let bi = 0; bi < bucket.length; bi++) {{
-                            const cj = bucket[bi];
-                            if (cj === ci || catIdxOf[cj] !== t) continue;
-                            const dx = xs[cj] - qx, dy = ys[cj] - qy;
-                            const d2 = dx * dx + dy * dy;
-                            if (d2 < best) best = d2;
-                        }}
-                    }}
-                }}
-                // Stop once the best found beats the nearest possible cell one ring out.
-                if (ring > 0 && best < (ring * cellSizeApprox) * (ring * cellSizeApprox)) break;
-            }}
-            return best === Infinity ? null : Math.sqrt(best);
-        }};
-
-        const results = [];
-        for (let t = 0; t < K; t++) {{
-            const indices = typeIndices[t];
-            const nT = indices.length;
-            const catName = String(categories[t] != null ? categories[t] : t);
-
-            let sai = null;
-            if (adjAvail && nT >= 1) {{
-                let sumFrac = 0;
-                for (let ii = 0; ii < nT; ii++) {{
-                    const neighbors = adj[indices[ii]] || [];
-                    const deg = neighbors.length;
-                    if (!deg) continue;  // isolated cell contributes 0
-                    let same = 0;
-                    for (let ni = 0; ni < deg; ni++) if (catIdxOf[neighbors[ni]] === t) same++;
-                    sumFrac += same / deg;
-                }}
-                sai = sumFrac / nT;
-            }}
-
-            let nni = null;
-            if (nT >= 3 && si) {{
-                // For very large types, estimate NNI on a random subsample (unbiased).
-                let sampleIdx = indices;
-                if (nT > 4000) {{
-                    const prob = 3000 / nT;
-                    const sub = [];
-                    for (let ii = 0; ii < nT; ii++) if (Math.random() < prob) sub.push(indices[ii]);
-                    if (sub.length >= 3) sampleIdx = sub;
-                }}
-                let sumDist = 0, cnt = 0;
-                for (let ii = 0; ii < sampleIdx.length; ii++) {{
-                    const d = nearestSameTypeDist(sampleIdx[ii], t);
-                    if (d != null) {{ sumDist += d; cnt++; }}
-                }}
-                if (cnt > 0) {{
-                    const observedMean = sumDist / cnt;
-                    const expectedMean = 0.5 / Math.sqrt(nT / area);
-                    nni = expectedMean > 0 ? observedMean / expectedMean : null;
-                }}
-            }}
-
-            results.push({{ catIdx: t, catName, n: nT, sai, nni }});
-        }}
-        return results;
-    }}
-
-    // Cached, cross-section cell-weighted aggregation for the selected exploration annotation.
-    function computeDispersionInsights(colorCol) {{
-        if (_dispersionCache.has(colorCol)) return _dispersionCache.get(colorCol);
-        const config = DATA.colors_meta?.[colorCol] || null;
-        if (!config || config.is_continuous || !(config.categories && config.categories.length)) return null;
-        const sections = getFilteredSections();
-        if (!sections.length) return null;
-
-        const K = config.categories.length;
-        const agg = Array.from({{ length: K }}, (_, t) => ({{
-            catName: String(config.categories[t] != null ? config.categories[t] : t),
-            n: 0, saiSum: 0, saiW: 0, nniSum: 0, nniW: 0,
-        }}));
-
-        sections.forEach((section) => {{
-            const rows = computeDispersionForSection(section, colorCol, config);
-            for (let t = 0; t < rows.length && t < K; t++) {{
-                const r = rows[t];
-                if (!r) continue;
-                agg[t].n += r.n;
-                if (r.sai != null) {{ agg[t].saiSum += r.sai * r.n; agg[t].saiW += r.n; }}
-                if (r.nni != null) {{ agg[t].nniSum += r.nni * r.n; agg[t].nniW += r.n; }}
-            }}
-        }});
-
-        const result = agg.map((a) => ({{
-            catName: a.catName,
-            n: a.n,
-            sai: a.saiW > 0 ? a.saiSum / a.saiW : null,
-            nni: a.nniW > 0 ? a.nniSum / a.nniW : null,
-        }})).filter((r) => r.n > 0);
-
-        _dispersionCache.set(colorCol, result);
-        return result;
+    // These values are computed by the Python exporter from all cells before
+    // downsampling. The browser only renders the precomputed table.
+    function getPrecomputedDispersionRows(colorCol) {{
+        const payload = DATA.dispersion_stats || {{}};
+        const rows = payload[colorCol];
+        return Array.isArray(rows) ? rows : null;
     }}
 
     function renderDispersionInsights() {{
@@ -30216,103 +30065,93 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return;
         }}
 
-        container.innerHTML = '<progress style="width:100%; height:12px;"></progress>'
-            + '<div class="agg-group-meta">Computing spatial dispersion…</div>';
-        const colorAtRequest = colorCol;
-        // Defer so "Computing…" paints before the synchronous nearest-neighbour scan.
-        setTimeout(() => {{
-            // Bail if anything that invalidates this run changed while deferred:
-            // the selected exploration annotation switched, or the user left the tab.
-            if (getExplorationOnlyColorColumn() !== colorAtRequest
-                || insightsTopLevelTab !== 'neighbors' || insightsNeighborsTab !== 'dispersion') return;
-            const rows = computeDispersionInsights(colorAtRequest);
-            if (!rows || !rows.length) {{
-                container.innerHTML = '<div class="agg-group-meta">No position data available for the current sections.</div>';
-                return;
-            }}
+        const rows = getPrecomputedDispersionRows(colorCol);
+        if (!rows || !rows.length) {{
+            container.innerHTML = '<div class="neighbor-warning"><strong>Warning.</strong> No full-cell spatial dispersion data available for the selected annotation.</div>';
+            return;
+        }}
 
-            const dir = dispersionSortDir === 'asc' ? 1 : -1;
-            const sorted = rows.slice().sort((a, b) => {{
-                if (dispersionSortKey === 'cat') return String(a.catName).localeCompare(String(b.catName)) * dir;
-                const va = a[dispersionSortKey], vb = b[dispersionSortKey];
-                if (va == null && vb == null) return 0;
-                if (va == null) return 1;
-                if (vb == null) return -1;
-                if (va === vb) return 0;
-                return (va < vb ? -1 : 1) * dir;
+        const dir = dispersionSortDir === 'asc' ? 1 : -1;
+        const sorted = rows.slice().sort((a, b) => {{
+            if (dispersionSortKey === 'cat') return String(a.catName).localeCompare(String(b.catName)) * dir;
+            const va = a[dispersionSortKey], vb = b[dispersionSortKey];
+            if (va == null && vb == null) return 0;
+            if (va == null) return 1;
+            if (vb == null) return -1;
+            if (va === vb) return 0;
+            return (va < vb ? -1 : 1) * dir;
+        }});
+
+        const fmtN = (v) => (v == null) ? '—' : Number(v).toLocaleString();
+        const fmtPct = (v) => (v == null) ? '—' : (Number(v) * 100).toFixed(1) + '%';
+        const fmtNNI = (v) => (v == null) ? '—' : Number(v).toFixed(3);
+        const label = (nni) => {{
+            if (nni == null) return {{ text: '—', cls: '' }};
+            if (nni < 0.9) return {{ text: 'Clustered', cls: 'dispersion-label-clustered' }};
+            if (nni > 1.1) return {{ text: 'Dispersed', cls: 'dispersion-label-dispersed' }};
+            return {{ text: 'Random', cls: 'dispersion-label-random' }};
+        }};
+        const arrow = (k) => dispersionSortKey === k ? (dispersionSortDir === 'asc' ? ' ↑' : ' ↓') : '';
+        const hasSai = rows.some((r) => r && r.sai != null && Number.isFinite(Number(r.sai)));
+
+        const tbody = sorted.map((r) => {{
+            const lbl = label(r.nni);
+            const saiCell = hasSai ? `<td>${{fmtPct(r.sai)}}</td>` : '<td>—</td>';
+            return `<tr data-dispersion-cat="${{escapeHtml(r.catName)}}" title="Click to spotlight ${{escapeHtml(r.catName)}}">
+                <td>${{renderAggCategoryChip(colorCol, r.catName)}}</td>
+                <td>${{fmtN(r.n)}}</td>
+                ${{saiCell}}
+                <td>${{fmtNNI(r.nni)}}</td>
+                <td class="${{lbl.cls}}">${{lbl.text}}</td>
+            </tr>`;
+        }}).join('');
+
+        const saiHeader = hasSai
+            ? `<th data-dispersion-sort="sai" title="Mean fraction of each cell's spatial neighbours that share its type">Self-Agg%${{arrow('sai')}}</th>`
+            : '<th title="No spatial neighbour graph was available during export, so self-aggregation is unavailable">Self-Agg%</th>';
+
+        container.innerHTML = `
+            <div class="dispersion-summary">
+                Spatial pattern per cell type &mdash; ${{sorted.length}} types. Computed from all cells before HTML downsampling. NNI is normalized to the observed all-cell layout: &lt;0.9 clustered/restricted, ~1 random, &gt;1.1 dispersed.${{renderCalcInfoButton('dispersion')}}
+                ${{hasSai ? '' : '<span style="margin-left:6px;">(no neighbour graph: Self-Agg% unavailable)</span>'}}
+            </div>
+            <table class="gene-distribution-table">
+                <thead><tr>
+                    <th data-dispersion-sort="cat">Cell Type${{arrow('cat')}}</th>
+                    <th data-dispersion-sort="n">n${{arrow('n')}}</th>
+                    ${{saiHeader}}
+                    <th data-dispersion-sort="nni" title="Nearest-neighbour index normalized to the observed all-cell layout">NNI${{arrow('nni')}}</th>
+                    <th>Pattern</th>
+                </tr></thead>
+                <tbody>${{tbody}}</tbody>
+            </table>
+        `;
+
+        container.querySelectorAll('[data-dispersion-sort]').forEach((th) => {{
+            th.addEventListener('click', () => {{
+                const key = th.getAttribute('data-dispersion-sort');
+                if (!key) return;
+                if (dispersionSortKey === key) {{
+                    dispersionSortDir = dispersionSortDir === 'asc' ? 'desc' : 'asc';
+                }} else {{
+                    dispersionSortKey = key;
+                    dispersionSortDir = key === 'cat' ? 'asc' : 'desc';
+                }}
+                renderDispersionInsights();
             }});
+        }});
 
-            const fmtN = (v) => (v == null) ? '—' : Number(v).toLocaleString();
-            const fmtPct = (v) => (v == null) ? '—' : (v * 100).toFixed(1) + '%';
-            const fmtNNI = (v) => (v == null) ? '—' : Number(v).toFixed(3);
-            const label = (nni) => {{
-                if (nni == null) return {{ text: '—', cls: '' }};
-                if (nni < 0.9) return {{ text: 'Clustered', cls: 'dispersion-label-clustered' }};
-                if (nni > 1.1) return {{ text: 'Dispersed', cls: 'dispersion-label-dispersed' }};
-                return {{ text: 'Random', cls: 'dispersion-label-random' }};
-            }};
-            const arrow = (k) => dispersionSortKey === k ? (dispersionSortDir === 'asc' ? ' ↑' : ' ↓') : '';
-            const hasAdj = !!DATA.has_neighbors;
-
-            const tbody = sorted.map((r) => {{
-                const lbl = label(r.nni);
-                const saiCell = hasAdj ? `<td>${{fmtPct(r.sai)}}</td>` : '<td>—</td>';
-                return `<tr data-dispersion-cat="${{escapeHtml(r.catName)}}" title="Click to spotlight ${{escapeHtml(r.catName)}}">
-                    <td>${{renderAggCategoryChip(colorAtRequest, r.catName)}}</td>
-                    <td>${{fmtN(r.n)}}</td>
-                    ${{saiCell}}
-                    <td>${{fmtNNI(r.nni)}}</td>
-                    <td class="${{lbl.cls}}">${{lbl.text}}</td>
-                </tr>`;
-            }}).join('');
-
-            const saiHeader = hasAdj
-                ? `<th data-dispersion-sort="sai" title="Mean fraction of each cell's spatial neighbours that share its type">Self-Agg%${{arrow('sai')}}</th>`
-                : '<th title="No spatial neighbour graph in this dataset, so self-aggregation is unavailable">Self-Agg%</th>';
-
-            container.innerHTML = `
-                <div class="dispersion-summary">
-                    Spatial pattern per cell type &mdash; ${{sorted.length}} types. NNI &lt;0.9 clustered/restricted, ~1 random, &gt;1.1 dispersed.${{renderCalcInfoButton('dispersion')}}
-                    ${{hasAdj ? '' : '<span style="margin-left:6px;">(no neighbour graph: Self-Agg% unavailable)</span>'}}
-                </div>
-                <table class="gene-distribution-table">
-                    <thead><tr>
-                        <th data-dispersion-sort="cat">Cell Type${{arrow('cat')}}</th>
-                        <th data-dispersion-sort="n">n${{arrow('n')}}</th>
-                        ${{saiHeader}}
-                        <th data-dispersion-sort="nni" title="Clark-Evans nearest-neighbour index">NNI${{arrow('nni')}}</th>
-                        <th>Pattern</th>
-                    </tr></thead>
-                    <tbody>${{tbody}}</tbody>
-                </table>
-            `;
-
-            container.querySelectorAll('[data-dispersion-sort]').forEach((th) => {{
-                th.addEventListener('click', () => {{
-                    const key = th.getAttribute('data-dispersion-sort');
-                    if (!key) return;
-                    if (dispersionSortKey === key) {{
-                        dispersionSortDir = dispersionSortDir === 'asc' ? 'desc' : 'asc';
-                    }} else {{
-                        dispersionSortKey = key;
-                        dispersionSortDir = key === 'cat' ? 'asc' : 'desc';
-                    }}
-                    renderDispersionInsights();
-                }});
+        container.querySelectorAll('[data-dispersion-cat]').forEach((tr) => {{
+            tr.addEventListener('click', () => {{
+                const cat = tr.getAttribute('data-dispersion-cat');
+                if (!cat) return;
+                linkedSpotlightEnabled = true;
+                spotlightPinnedCategory = (spotlightPinnedCategory === cat) ? null : cat;
+                spotlightHoverCategory = null;
+                updateAllLegendSpotlightClasses();
+                rerenderForSpotlightChange();
             }});
-
-            container.querySelectorAll('[data-dispersion-cat]').forEach((tr) => {{
-                tr.addEventListener('click', () => {{
-                    const cat = tr.getAttribute('data-dispersion-cat');
-                    if (!cat) return;
-                    linkedSpotlightEnabled = true;
-                    spotlightPinnedCategory = (spotlightPinnedCategory === cat) ? null : cat;
-                    spotlightHoverCategory = null;
-                    updateAllLegendSpotlightClasses();
-                    rerenderForSpotlightChange();
-                }});
-            }});
-        }}, 0);
+        }});
     }}
 
     function renderNeighborStats() {{

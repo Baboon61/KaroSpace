@@ -54,7 +54,7 @@ def _run_export_cli(argv=None):
     io_args.add_argument(
         "input",
         type=str,
-        help="Path to input .h5ad file"
+        help="Path to input .h5ad file or SpatialData .zarr store"
     )
     io_args.add_argument(
         "-o", "--output",
@@ -124,6 +124,15 @@ def _run_export_cli(argv=None):
         help=(
             "Obs/metadata column to use as Y coordinates. Must be used with "
             "--spatial-x; creates adata.obsm[spatial_key] before export."
+        ),
+    )
+    dataset_args.add_argument(
+        "--spatialdata-table",
+        type=str,
+        default=None,
+        help=(
+            "AnnData table key to use when the input is a SpatialData object/store. "
+            "Required when multiple tables are present and no table named 'table' exists."
         ),
     )
     metadata_args.add_argument(
@@ -522,16 +531,21 @@ def _run_export_cli(argv=None):
         print(f"Error: Input file not found: {args.input}", file=sys.stderr)
         sys.exit(1)
 
-    if not input_path.suffix == ".h5ad":
-        print(f"Warning: Expected .h5ad file, got: {input_path.suffix}", file=sys.stderr)
+    if input_path.suffix.lower() not in {".h5ad", ".zarr"}:
+        print(
+            f"Warning: Expected .h5ad file or SpatialData .zarr store, got: {input_path.suffix}",
+            file=sys.stderr,
+        )
 
     # Import here to avoid slow startup for --help
     from .data_loader import inspect_input_file, load_spatial_data
     from .exporter import export_to_html
 
     if args.inspect_input:
-        report = inspect_input_file(args.input)
+        report = inspect_input_file(args.input, spatialdata_table=args.spatialdata_table)
         print(f"Input: {report['path']}")
+        if report.get("spatialdata_table"):
+            print(f"SpatialData table: {report['spatialdata_table']}")
         print(f"Cells: {report['n_cells']:,} | Genes: {report['n_genes']:,}")
         print("Available cell metadata (adata.obs):")
         for entry in report["metadata"]:
@@ -663,6 +677,8 @@ def _run_export_cli(argv=None):
         "groupby": args.groupby,
         "spatial_key": args.spatial_key,
     }
+    if args.spatialdata_table:
+        load_kwargs["spatialdata_table"] = args.spatialdata_table
     if spatial_columns is not None:
         load_kwargs["spatial_columns"] = spatial_columns
     if group_order is not None:

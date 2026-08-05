@@ -36,6 +36,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+spatialdata = [
+    "spatialdata>=0.2.0",
+]
 dev = [
     "pytest>=7.0.0",
     "black>=23.0.0",

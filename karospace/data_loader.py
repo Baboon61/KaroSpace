@@ -20,6 +20,7 @@ import pandas as pd
 import anndata as ad
 import scipy.sparse as sp
 from pandas.api.types import CategoricalDtype
+from scipy.spatial import cKDTree
 from scipy.sparse import issparse
 
 
@@ -513,15 +514,170 @@ def _read_h5ad_with_fallback(path: str) -> sc.AnnData:
         raise
 
 
-def inspect_input_file(path: str) -> Dict[str, Any]:
-    """Read an h5ad file and summarize its available cell metadata.
+def _looks_like_spatialdata(obj: Any) -> bool:
+    """Return whether ``obj`` behaves like a SpatialData container."""
+    return hasattr(obj, "tables") and not isinstance(obj, sc.AnnData)
+
+
+def _read_spatialdata_zarr(path: str) -> Any:
+    """Read a SpatialData Zarr store, keeping spatialdata as an optional dependency."""
+    try:
+        import spatialdata as sd
+    except ImportError as exc:
+        raise ImportError(
+            "Reading SpatialData input requires the optional 'spatialdata' package. "
+            "Install it with `pip install spatialdata` or `pip install karospace[spatialdata]`."
+        ) from exc
+
+    try:
+        return sd.read_zarr(path)
+    except AttributeError:
+        from spatialdata import read_zarr
+
+        return read_zarr(path)
+
+
+def _coerce_spatialdata_table(
+    sdata: Any,
+    spatialdata_table: Optional[str] = None,
+) -> Tuple[sc.AnnData, str]:
+    tables = getattr(sdata, "tables", None)
+    if tables is None or not hasattr(tables, "keys"):
+        raise ValueError("SpatialData input does not expose a tables mapping.")
+
+    table_keys = list(tables.keys())
+    if not table_keys:
+        raise ValueError("SpatialData input contains no AnnData tables.")
+
+    chosen_key: Any
+    if spatialdata_table:
+        matches = [key for key in table_keys if str(key) == str(spatialdata_table)]
+        if not matches:
+            available = ", ".join(map(str, table_keys))
+            raise ValueError(
+                f"SpatialData table '{spatialdata_table}' not found. Available tables: {available}"
+            )
+        chosen_key = matches[0]
+    elif len(table_keys) == 1:
+        chosen_key = table_keys[0]
+    elif "table" in table_keys:
+        chosen_key = "table"
+    else:
+        available = ", ".join(map(str, table_keys))
+        raise ValueError(
+            "SpatialData input contains multiple AnnData tables. "
+            f"Pass spatialdata_table=... or --spatialdata-table. Available tables: {available}"
+        )
+
+    table = tables[chosen_key]
+    if not isinstance(table, sc.AnnData):
+        if hasattr(table, "to_adata"):
+            table = table.to_adata()
+        else:
+            raise TypeError(
+                f"SpatialData table '{chosen_key}' is not an AnnData object and cannot be converted."
+            )
+    return table, str(chosen_key)
+
+
+def _coerce_input_to_anndata(
+    data: Any,
+    spatialdata_table: Optional[str] = None,
+) -> Tuple[sc.AnnData, str, Optional[str]]:
+    if isinstance(data, sc.AnnData):
+        return data, "AnnData object", None
+
+    if _looks_like_spatialdata(data):
+        adata, table_key = _coerce_spatialdata_table(data, spatialdata_table)
+        return adata, f"SpatialData object table '{table_key}'", table_key
+
+    if isinstance(data, (str, os.PathLike)):
+        path = str(data)
+        path_obj = os.fspath(data)
+        lower = path.lower()
+        if lower.endswith(".zarr") or os.path.isdir(path_obj):
+            sdata = _read_spatialdata_zarr(path)
+            adata, table_key = _coerce_spatialdata_table(sdata, spatialdata_table)
+            return adata, f"SpatialData store {path} table '{table_key}'", table_key
+        return _read_h5ad_with_fallback(path), path, None
+
+    raise TypeError(
+        "Input must be a path to an .h5ad file, a SpatialData .zarr store, "
+        "an AnnData object, or a SpatialData object."
+    )
+
+
+def _normalize_spatialdata_region_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, (str, bytes, np.str_)):
+        text = value.decode("utf-8") if isinstance(value, bytes) else str(value)
+        return [text]
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, (pd.Index, list, tuple, set)):
+        return [str(item) for item in value if item is not None]
+    return [str(value)]
+
+
+def _get_spatialdata_attrs(adata: sc.AnnData) -> Dict[str, Any]:
+    attrs = adata.uns.get("spatialdata_attrs", {})
+    if hasattr(attrs, "get"):
+        return attrs
+    try:
+        return dict(attrs)
+    except Exception:
+        return {}
+
+
+def _resolve_groupby_for_spatialdata(
+    adata: sc.AnnData,
+    groupby: str,
+    spatialdata_table_key: Optional[str],
+) -> str:
+    if spatialdata_table_key is None or groupby in adata.obs.columns:
+        return groupby
+
+    attrs = _get_spatialdata_attrs(adata)
+    region_key_raw = attrs.get("region_key")
+    region_key = str(region_key_raw).strip() if region_key_raw is not None else ""
+    if groupby == "sample_id" and region_key and region_key in adata.obs.columns:
+        print(
+            f"  Note: groupby 'sample_id' not found; using SpatialData region_key "
+            f"'{region_key}' for sections."
+        )
+        return region_key
+
+    if groupby == "sample_id":
+        regions = _normalize_spatialdata_region_list(attrs.get("region"))
+        fallback_col = "_karospace_spatialdata_region"
+        if len(regions) == 1:
+            value = regions[0]
+        else:
+            value = str(spatialdata_table_key)
+            if regions:
+                print(
+                    "  Warning: SpatialData table has multiple regions but no per-cell region_key; "
+                    f"exporting it as one section named '{value}'."
+                )
+        adata.obs[fallback_col] = pd.Categorical([value] * adata.n_obs)
+        print(
+            f"  Note: groupby 'sample_id' not found; using '{fallback_col}' for one SpatialData section."
+        )
+        return fallback_col
+
+    return groupby
+
+
+def inspect_input_file(data: Any, spatialdata_table: Optional[str] = None) -> Dict[str, Any]:
+    """Read an input object/file and summarize its available cell metadata.
 
     This intentionally performs no coordinate validation, section construction,
     downsampling, or analytical calculation. It is suitable for choosing CLI
     metadata, annotation, and pseudobulk design arguments before export.
     """
     max_examples = 10
-    adata = _read_h5ad_with_fallback(path)
+    adata, source_label, table_key = _coerce_input_to_anndata(data, spatialdata_table)
     metadata: List[Dict[str, Any]] = []
     for column in adata.obs.columns:
         series = adata.obs[column]
@@ -546,7 +702,8 @@ def inspect_input_file(path: str) -> Dict[str, Any]:
             }
         )
     return {
-        "path": str(path),
+        "path": str(source_label),
+        "spatialdata_table": table_key,
         "n_cells": int(adata.n_obs),
         "n_genes": int(adata.n_vars),
         "metadata": metadata,
@@ -1775,6 +1932,220 @@ class SpatialDataset:
 
             return entry, _build_context(counts, zscore, n_cells, mean_degree)
 
+        dispersion_baseline_cache: Dict[str, Optional[Dict[str, Any]]] = {}
+
+        def _section_dispersion_baseline(section_id: str, xy_valid: np.ndarray) -> Optional[Dict[str, Any]]:
+            cached = dispersion_baseline_cache.get(section_id)
+            if cached is not None or section_id in dispersion_baseline_cache:
+                return cached
+
+            n_xy = int(xy_valid.shape[0])
+            if n_xy < 2:
+                dispersion_baseline_cache[section_id] = None
+                return None
+
+            try:
+                tree = cKDTree(xy_valid)
+                max_k = min(256, n_xy - 1)
+                sample_size = min(5000, n_xy)
+                if n_xy > sample_size:
+                    seed = 42 + sum(bytearray(str(section_id).encode("utf-8")))
+                    rng = np.random.default_rng(seed)
+                    sample_idx = np.sort(rng.choice(n_xy, size=sample_size, replace=False))
+                    query_coords = xy_valid[sample_idx]
+                else:
+                    query_coords = xy_valid
+
+                distances, _indices = tree.query(query_coords, k=max_k + 1)
+                distances = np.asarray(distances, dtype=float)
+                if distances.ndim == 1:
+                    distances = distances.reshape(-1, 1)
+                neighbor_distances = distances[:, 1:]
+                neighbor_distances[~np.isfinite(neighbor_distances)] = np.nan
+                with np.errstate(invalid="ignore"):
+                    mean_by_rank = np.nanmean(neighbor_distances, axis=0)
+                mean_by_rank = mean_by_rank[np.isfinite(mean_by_rank)]
+                if mean_by_rank.size == 0:
+                    dispersion_baseline_cache[section_id] = None
+                    return None
+                baseline = {
+                    "n": n_xy,
+                    "mean_by_rank": mean_by_rank.astype(float, copy=False),
+                }
+                dispersion_baseline_cache[section_id] = baseline
+                return baseline
+            except Exception:
+                dispersion_baseline_cache[section_id] = None
+                return None
+
+        def _expected_same_type_nn_from_baseline(
+            baseline: Optional[Dict[str, Any]],
+            category_fraction: float,
+        ) -> Optional[float]:
+            if baseline is None or category_fraction <= 0:
+                return None
+            mean_by_rank = np.asarray(baseline.get("mean_by_rank"), dtype=float)
+            mean_by_rank = mean_by_rank[np.isfinite(mean_by_rank)]
+            if mean_by_rank.size == 0:
+                return None
+            p = float(np.clip(category_fraction, 1e-12, 1.0))
+            ranks = np.arange(mean_by_rank.size, dtype=float)
+            weights = p * np.power(1.0 - p, ranks)
+            expected = float(np.sum(weights * mean_by_rank))
+            tail = max(0.0, 1.0 - float(np.sum(weights)))
+            if tail > 0:
+                expected += tail * float(mean_by_rank[-1])
+            return expected if expected > 0 else None
+
+        def _compute_full_dispersion_for_labels(
+            *,
+            categories: List[str],
+            labels_full: np.ndarray,
+            graph_full: Optional[Any],
+        ) -> Optional[List[Dict[str, Any]]]:
+            if not categories:
+                return None
+            labels_full = np.asarray(labels_full, dtype=float)
+            if labels_full.shape[0] != self.adata.n_obs:
+                return None
+            valid = np.isfinite(labels_full) & (labels_full >= 0)
+            if not np.any(valid):
+                return None
+
+            labels_int = np.full(labels_full.shape[0], -1, dtype=np.int32)
+            labels_int[valid] = np.rint(labels_full[valid]).astype(np.int32)
+            labels_int[(labels_int < 0) | (labels_int >= len(categories))] = -1
+
+            section_indices_full = self.get_section_indices()
+            agg = [
+                {"catName": str(cat), "n": 0, "saiSum": 0.0, "saiW": 0, "nniSum": 0.0, "nniW": 0}
+                for cat in categories
+            ]
+            rng = np.random.default_rng(42)
+
+            for section in self.sections:
+                idx = np.asarray(section_indices_full.get(section.section_id, []), dtype=np.int64)
+                if idx.size == 0:
+                    continue
+                section_coords = coords_f4[idx]
+                finite_xy = np.isfinite(section_coords).all(axis=1)
+                if not np.any(finite_xy):
+                    continue
+                section_labels = labels_int[idx]
+                if not np.any(section_labels >= 0):
+                    continue
+
+                section_graph = None
+                degree = None
+                if graph_full is not None:
+                    try:
+                        section_graph = graph_full[idx][:, idx].tocsr()
+                        section_graph = section_graph.maximum(section_graph.T).tocsr()
+                        section_graph.setdiag(0)
+                        section_graph.eliminate_zeros()
+                        degree = np.diff(section_graph.indptr).astype(float)
+                    except Exception:
+                        section_graph = None
+                        degree = None
+
+                xy_valid = section_coords[finite_xy]
+                n_section_xy = int(xy_valid.shape[0])
+                section_baseline = _section_dispersion_baseline(section.section_id, xy_valid)
+
+                for cat_idx, cat_name in enumerate(categories):
+                    local_mask = section_labels == cat_idx
+                    n_cat = int(np.count_nonzero(local_mask))
+                    if n_cat <= 0:
+                        continue
+                    agg[cat_idx]["n"] += n_cat
+
+                    if section_graph is not None and degree is not None:
+                        type_vec = local_mask.astype(np.float32, copy=False)
+                        same_counts = np.asarray(section_graph.dot(type_vec)).ravel()
+                        type_degree = degree[local_mask]
+                        frac = np.zeros(n_cat, dtype=float)
+                        valid_degree = type_degree > 0
+                        if np.any(valid_degree):
+                            frac[valid_degree] = same_counts[local_mask][valid_degree] / type_degree[valid_degree]
+                        agg[cat_idx]["saiSum"] += float(np.sum(frac))
+                        agg[cat_idx]["saiW"] += n_cat
+
+                    xy_mask = local_mask & finite_xy
+                    n_xy = int(np.count_nonzero(xy_mask))
+                    if n_xy >= 3:
+                        cat_coords = section_coords[xy_mask]
+                        try:
+                            tree = cKDTree(cat_coords)
+                            if n_xy > 4000:
+                                sample_size = min(3000, n_xy)
+                                sample_idx = np.sort(rng.choice(n_xy, size=sample_size, replace=False))
+                                query_coords = cat_coords[sample_idx]
+                            else:
+                                query_coords = cat_coords
+                            distances, _indices = tree.query(query_coords, k=2)
+                            nearest = np.asarray(distances[:, 1], dtype=float)
+                            nearest = nearest[np.isfinite(nearest)]
+                            if nearest.size:
+                                observed_mean = float(np.mean(nearest))
+                                category_fraction = n_xy / n_section_xy if n_section_xy > 0 else 0.0
+                                expected_mean = _expected_same_type_nn_from_baseline(
+                                    section_baseline,
+                                    category_fraction,
+                                )
+                                if expected_mean is not None and expected_mean > 0:
+                                    nni = observed_mean / expected_mean
+                                    agg[cat_idx]["nniSum"] += float(nni) * n_xy
+                                    agg[cat_idx]["nniW"] += n_xy
+                        except Exception:
+                            pass
+
+            rows: List[Dict[str, Any]] = []
+            for row in agg:
+                n = int(row["n"])
+                if n <= 0:
+                    continue
+                sai = (float(row["saiSum"]) / float(row["saiW"])) if int(row["saiW"]) > 0 else None
+                nni = (float(row["nniSum"]) / float(row["nniW"])) if int(row["nniW"]) > 0 else None
+                rows.append(
+                    {
+                        "catName": str(row["catName"]),
+                        "n": n,
+                        "sai": sai,
+                        "nni": nni,
+                    }
+                )
+            return rows or None
+
+        def _compute_full_dispersion_stats(log_as_neighbor_child: bool = False) -> Dict[str, List[Dict[str, Any]]]:
+            dispersion: Dict[str, List[Dict[str, Any]]] = {}
+            candidates: Dict[str, Tuple[List[str], np.ndarray]] = {}
+            for col, cdata in color_data.items():
+                if cdata.get("is_continuous"):
+                    continue
+                cats = [str(cat) for cat in (cdata.get("categories") or [])]
+                if cats:
+                    candidates[col] = (cats, np.asarray(cdata.get("values"), dtype=float))
+
+            if not candidates:
+                return dispersion
+            message = (
+                f"Computing full-cell spatial dispersion for {len(candidates)} annotation"
+                f"{'s' if len(candidates) != 1 else ''}..."
+            )
+            if log_as_neighbor_child:
+                print(f"↳ {message}")
+            else:
+                print(message)
+            for color_col, (cats, labels) in candidates.items():
+                rows = _compute_full_dispersion_for_labels(
+                    categories=cats,
+                    labels_full=labels,
+                    graph_full=neighbor_graph,
+                )
+                if rows:
+                    dispersion[color_col] = rows
+            return dispersion
+
         replicate_override = str(pseudobulk_replicate_annotation or "").strip()
         pseudobulk_replicate_name = replicate_override or str(self.groupby)
         if pseudobulk_replicate_name not in self.adata.obs.columns:
@@ -1838,7 +2209,7 @@ class SpatialDataset:
                     else "all categories"
                 )
                 print(
-                    "    ↳ parameters: "
+                    "  ↳ parameters: "
                     f"model=shared_all_category(~ {pseudobulk_replicate_name} + {groupby_name}); "
                     "rest=balanced_equal_category_weight; "
                     f"counts_layer={pseudobulk_counts_layer or 'X'}; "
@@ -1901,13 +2272,11 @@ class SpatialDataset:
             for groupby_name in requested_neighbor_stats_groupby
             if groupby_name not in neighbor_stats
         ]
+        printed_neighbor_stats_header = False
         if neighbor_graph is not None and pending_neighbor_stats_groupby:
-            print(
-                f"Computing neighbor stats for {len(pending_neighbor_stats_groupby)} "
-                f"groupby column{'s' if len(pending_neighbor_stats_groupby) != 1 else ''}..."
-            )
             for groupby_name in pending_neighbor_stats_groupby:
-                print(f"  - neighbor stats: {groupby_name}")
+                print(f"- neighbor stats: {groupby_name}")
+                printed_neighbor_stats_header = True
                 entry, context = _prepare_neighbor_stats_groupby(groupby_name)
                 if entry is None or context is None:
                     continue
@@ -2022,6 +2391,10 @@ class SpatialDataset:
                 )
                 if group_interactions:
                     interaction_markers[groupby_name] = group_interactions
+
+        dispersion_stats = _compute_full_dispersion_stats(
+            log_as_neighbor_child=printed_neighbor_stats_header
+        )
 
         def _significant_de_genes(
             payload: Any,
@@ -2382,6 +2755,7 @@ class SpatialDataset:
             "neighbors_key": neighbor_graph_key,
             "neighbor_stats": neighbor_stats,
             "interaction_markers": interaction_markers,
+            "dispersion_stats": dispersion_stats,
         }
 
 
@@ -2451,7 +2825,7 @@ def _detect_modalities(adata: sc.AnnData) -> Dict[str, Modality]:
 
 
 def load_spatial_data(
-    path: str,
+    path: Any,
     groupby: str = "sample_id",
     spatial_key: str = "spatial",
     spatial_columns: Optional[Tuple[str, str]] = None,
@@ -2459,14 +2833,16 @@ def load_spatial_data(
     metadata_columns: Optional[List[str]] = None,
     metadata_value_order: Optional[Dict[str, List[str]]] = None,
     metadata_max_columns: Optional[int] = None,
+    spatialdata_table: Optional[str] = None,
 ) -> SpatialDataset:
     """
-    Load spatial transcriptomics data from h5ad file.
+    Load spatial transcriptomics data from an AnnData/H5AD or SpatialData input.
 
     Parameters
     ----------
-    path : str
-        Path to .h5ad file
+    path : str, AnnData, or SpatialData
+        Path to an .h5ad file, path to a SpatialData .zarr store, an AnnData
+        object, or a SpatialData object.
     groupby : str
         Column in obs to group sections by
     spatial_key : str
@@ -2485,15 +2861,21 @@ def load_spatial_data(
         by that metadata column (unknowns last, then section_id sort).
     metadata_max_columns : int, optional
         Limit the number of metadata columns used (order preserved)
+    spatialdata_table : str, optional
+        AnnData table key to use when the input is a SpatialData object/store.
+        Required when a SpatialData input contains multiple tables and no table
+        named "table" exists.
 
     Returns
     -------
     SpatialDataset
         Loaded dataset ready for visualization
     """
-    print(f"Loading {path}...")
-    adata = _read_h5ad_with_fallback(path)
+    adata, source_label, spatialdata_table_key = _coerce_input_to_anndata(path, spatialdata_table)
+    print(f"Loading {source_label}...")
     print(f"  Loaded {adata.n_obs:,} cells x {adata.n_vars:,} genes")
+
+    groupby = _resolve_groupby_for_spatialdata(adata, groupby, spatialdata_table_key)
 
     if spatial_columns is not None:
         spatial_key = _set_spatial_from_obs_columns(adata, spatial_columns, spatial_key)

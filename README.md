@@ -1,6 +1,6 @@
 # KaroSpace
 
-**KaroSpace** is an interactive HTML viewer for exploring spatial transcriptomics data. It generates standalone HTML files from h5ad files that can be shared and viewed in any web browser — no server or Python installation required.
+**KaroSpace** is an interactive HTML viewer for exploring spatial transcriptomics data. It generates standalone HTML files from AnnData/H5AD or SpatialData inputs that can be shared and viewed in any web browser — no server or Python installation required.
 
 Originally developed at Karolinska Institutet for visualizing Xenium spatial transcriptomics data across multiple tissue sections.
 
@@ -58,6 +58,12 @@ pip install -e .
 - pandas >= 1.3.0
 - scipy >= 1.7.0
 - gseapy >= 1.1.0
+
+SpatialData input is optional. Install the extra only when you want to load SpatialData `.zarr` stores directly:
+
+```bash
+pip install -e ".[spatialdata]"
+```
 
 ## Quick Start
 
@@ -154,10 +160,42 @@ export_to_html(
 )
 ```
 
+You can also pass an already-loaded `AnnData` object:
+
+```python
+dataset = load_spatial_data(
+    adata,
+    groupby="sample_id",
+)
+```
+
+For SpatialData, pass either the object or a `.zarr` store. If the SpatialData object has multiple AnnData tables, select the table explicitly:
+
+```python
+import spatialdata as sd
+from karospace import load_spatial_data, export_to_html
+
+sdata = sd.read_zarr("your_spatialdata.zarr")
+
+dataset = load_spatial_data(
+    sdata,
+    spatialdata_table="table",  # or "cells", depending on your object
+    groupby="sample_id",
+)
+
+export_to_html(dataset, "viewer.html", annotation="cell_type")
+```
+
 ### Command Line
 
 ```bash
 karospace your_data.h5ad -o viewer.html --annotation leiden
+```
+
+SpatialData `.zarr` stores are also supported:
+
+```bash
+karospace your_spatialdata.zarr -o viewer.html --annotation cell_type --spatialdata-table table
 ```
 
 #### CLI Options
@@ -166,7 +204,7 @@ karospace your_data.h5ad -o viewer.html --annotation leiden
 |--------|-------------|---------|
 | `-o, --output` | Output HTML file path | `karospace.html` |
 | `--annotation` | Initial cell-annotation column | `leiden` |
-| `--additional-annotations` | Comma-separated extra obs columns to embed as selectable annotations (needed to compare two annotations in the River plot) | empty |
+| `--additional-annotations` | Comma-separated extra obs columns to embed as selectable annotations | empty |
 | `--genes` | Comma-separated genes to preload; significant pseudobulk DE genes are embedded automatically up to the per-comparison cap | empty |
 | `--metadata-labels` | JSON object mapping metadata/obs column keys to display labels in the viewer UI | empty |
 | `--metadata-columns` | Comma-separated obs columns to use as section metadata and filter chips | loader defaults |
@@ -177,6 +215,7 @@ karospace your_data.h5ad -o viewer.html --annotation leiden
 | `--spatial-key` | Key in `adata.obsm` containing spatial coordinates, or target key created from `--spatial-x/--spatial-y` | `spatial` |
 | `--spatial-x` | Obs/metadata column to use as X coordinates; requires `--spatial-y` | empty |
 | `--spatial-y` | Obs/metadata column to use as Y coordinates; requires `--spatial-x` | empty |
+| `--spatialdata-table` | AnnData table key to use when the input is a SpatialData object/store; required when multiple tables are present and no table named `table` exists | empty |
 | `--min-panel-size` | Minimum panel width in pixels | `150` |
 | `--spot-size` | Cell/spot size (`auto` or positive number) | `auto` |
 | `--downsample` | Max cells per section | None |
@@ -227,9 +266,20 @@ karospace your_data.h5ad -o viewer.html --annotation leiden
 
 ## Data Requirements
 
+KaroSpace accepts:
+
+- An `.h5ad` file path
+- An `AnnData` object passed through the Python API
+- A SpatialData `.zarr` store path
+- A SpatialData object passed through the Python API
+
+Internally, SpatialData input is normalized to one AnnData table before export. The selected table must satisfy the same requirements as a regular AnnData input:
+
 - **`adata.obsm['spatial']`** — 2D coordinates for each cell (x, y)
 - **`adata.obs[groupby]`** — Column identifying which section each cell belongs to
 - **Categorical or numeric columns in `adata.obs`** — For assigning cell annotations and visualizing cells
+
+For SpatialData tables, use `spatialdata_table="..."` / `--spatialdata-table ...` when the object contains more than one table. If the default `groupby="sample_id"` is missing, KaroSpace uses the table's SpatialData `region_key` automatically when available. If no per-cell region key exists, the table is exported as one section.
 
 If coordinates are stored as separate obs columns instead of an `obsm` matrix,
 pass them on the CLI:

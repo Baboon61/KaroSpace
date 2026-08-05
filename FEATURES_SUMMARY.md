@@ -4,15 +4,17 @@ This document summarizes the current capabilities in this repository, focused on
 
 ## 1. Product Surfaces
 
-- Python API for loading `.h5ad` and exporting a standalone HTML viewer.
+- Python API for loading `.h5ad`, `AnnData`, or SpatialData input and exporting a standalone HTML viewer.
 - Command-line interface (`karospace`) for scriptable exports.
 - Desktop GUI (`karospace.gui`) for non-code export configuration.
 - Self-contained HTML output for sharing and interactive exploration in a browser.
 
 ## 2. Data and Export Inputs
 
-- Input: AnnData (`.h5ad`) with spatial coordinates in `adata.obsm`.
+- Input: AnnData (`.h5ad` path or in-memory object) with spatial coordinates in `adata.obsm`.
+- Optional SpatialData input: load a SpatialData `.zarr` store or in-memory SpatialData object, select one AnnData table with `spatialdata_table` / `--spatialdata-table`, then export through the same AnnData-based pipeline.
 - Section grouping by any obs column (`groupby`).
+- For SpatialData tables, the table's `region_key` is used automatically as the section grouping column when `sample_id` is absent and the region key is available.
 - Optional metadata columns for filter chips and panel metadata.
 - Optional metadata value ordering for deterministic section/filter order.
 - Optional UMAP support from `adata.obsm["X_umap"]`.
@@ -134,6 +136,8 @@ This document summarizes the current capabilities in this repository, focused on
   - `export_to_html(...)`
   - `integrate_polygon_annotations(...)`
 - CLI supports core export settings:
+  - H5AD and SpatialData `.zarr` inputs
+  - SpatialData table selection with `--spatialdata-table`
   - color, groupby, panel size, spot size, downsample
   - gene encoding options
   - sidecar gene storage options
