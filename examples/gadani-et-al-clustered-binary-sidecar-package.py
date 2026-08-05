@@ -55,7 +55,7 @@ print(f"Loaded {dataset.n_sections} sections with {dataset.n_cells:,} total cell
 print(f"Available color columns: {dataset.obs_columns[:10]}...")
 
 common_kwargs = dict(
-    annotation=PRIMARY_COLOR,
+    main_cells_annotation=PRIMARY_COLOR,
     title="Gadani et al clustered",
     min_panel_size=120,
     spot_size="auto",

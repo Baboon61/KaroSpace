@@ -46,7 +46,7 @@ OUTLINE_BY = ""
 export_to_html(
     dataset,
     output_path="Merfish_coronal.html",
-    annotation="gmm_CC_10",  # Initial color (categorical)
+    main_cells_annotation="gmm_CC_10",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density

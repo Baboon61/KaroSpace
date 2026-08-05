@@ -45,7 +45,7 @@ OUTLINE_BY = "condition"
 export_to_html(
     dataset,
     output_path="DBIT_RNA.html",
-    annotation='leiden_1',  # Initial color (categorical)
+    main_cells_annotation='leiden_1',  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density

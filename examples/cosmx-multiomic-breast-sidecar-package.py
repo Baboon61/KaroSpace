@@ -59,7 +59,7 @@ print(f"Detected modalities: {list(dataset.modalities.keys())}")
 
 # Common export settings favoring large-scale multiomic performance
 common_kwargs = dict(
-    annotation=PRIMARY_COLOR,
+    main_cells_annotation=PRIMARY_COLOR,
     title="CosMx Multiomic Breast Cancer",
     min_panel_size=150,
     spot_size="auto",

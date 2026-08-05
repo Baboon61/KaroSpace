@@ -46,7 +46,7 @@ OUTLINE_BY = "course"
 export_to_html(
     dataset,
     output_path="ST-BRICHOS.html",
-    annotation="re_annotation_regions",  # Initial color (categorical)
+    main_cells_annotation="re_annotation_regions",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density

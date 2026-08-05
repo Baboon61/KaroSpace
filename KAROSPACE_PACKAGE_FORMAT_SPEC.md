@@ -78,8 +78,8 @@ The v1 package root contains:
   index.html
   <gene manifest>.json
   <gene shard dir>/
-    000.json
-    001.json
+    000.bin
+    001.bin
     ...
 ```
 
@@ -91,9 +91,9 @@ Example:
   index.html
   BALO.genes.json
   BALO.genes/
-    000.json
-    001.json
-    002.json
+    000.bin
+    001.bin
+    002.bin
 ```
 
 ## 7. Core Invariant
@@ -139,8 +139,8 @@ Required top-level fields:
     "BALO.genes.json": {
       "media_type": "application/json"
     },
-    "BALO.genes/000.json": {
-      "media_type": "application/json"
+    "BALO.genes/000.bin": {
+      "media_type": "application/octet-stream"
     }
   }
 }
@@ -169,6 +169,11 @@ Required top-level fields:
 - `files`
   - Declares all packaged files needed by the loader
 
+The current exporter writes binary gene shards (`*.bin`) and keeps those files
+uncompressed in the ZIP archive so the loader can stream/index them efficiently.
+Older sidecar packages may contain JSON shards; loaders should continue to
+accept the manifest-declared shard format.
+
 ### 8.3 Optional Metadata
 
 Optional but recommended:
@@ -196,6 +201,16 @@ Optional but recommended:
 ### 9.3 Gene Shards
 
 - Must remain `karospace-gene-sidecar-shard-v2` or binary shards
+- Current binary shard files use the `.bin` extension and should be stored in
+  the ZIP with `ZIP_STORED` rather than deflated compression.
+
+## 9.4 Local Loader
+
+KaroSpace may write a sibling loader such as `viewer.loader.html` next to the
+package. This file is an opener for local use and is not part of the package
+archive. Users can open it in a browser and drop/select the `.karospace` file.
+The hosted loader at `karospace.se/open` serves the same role for shared
+packages.
 
 ## 10. Loader Contract
 

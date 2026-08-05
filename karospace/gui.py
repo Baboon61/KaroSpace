@@ -81,7 +81,7 @@ FIELD_HELP_TEXT = """Input / Output
 
 Core Options
 - Group by: Column in adata.obs that identifies sections (for example sample_id).
-- Initial annotation: Starting cell annotation variable (obs column or a pre-loaded gene).
+- Main cells annotation: Starting cell annotation variable (obs column or a pre-loaded gene).
 - Outline by: Optional obs/metadata column used to paint panel outlines. Leave blank to disable.
 - Theme: light or dark.
 - Title: Viewer page title shown in header/browser tab.
@@ -558,7 +558,7 @@ class KaroSpaceExportGUI:
         ttk.Label(core_group, text="Group by").grid(row=0, column=0, sticky="w", pady=4)
         self.groupby_combo = ttk.Combobox(core_group, textvariable=self.groupby, state="normal")
         self.groupby_combo.grid(row=0, column=1, sticky="ew", padx=(8, 16), pady=4)
-        ttk.Label(core_group, text="Initial annotation").grid(row=0, column=2, sticky="w", pady=4)
+        ttk.Label(core_group, text="Main cells annotation").grid(row=0, column=2, sticky="w", pady=4)
         self.color_combo = ttk.Combobox(core_group, textvariable=self.annotation, state="normal")
         self.color_combo.grid(row=0, column=3, sticky="ew", pady=4)
         ttk.Label(core_group, text="Outline by").grid(row=1, column=0, sticky="w", pady=4)
@@ -693,7 +693,7 @@ class KaroSpaceExportGUI:
         ttk.Entry(neighbor_group, textvariable=self.neighbor_stats_seed).grid(row=0, column=3, sticky="ew", pady=4)
         ttk.Checkbutton(
             neighbor_group,
-            text="Auto neighbor groupby (use initial annotation)",
+            text="Auto neighbor groupby (use main cells annotation)",
             variable=self.neighbor_stats_auto,
             command=self._on_neighbor_auto_toggle,
         ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(2, 8))
@@ -1194,7 +1194,7 @@ class KaroSpaceExportGUI:
         if not groupby:
             raise ValueError("groupby is required.")
         if not annotation:
-            raise ValueError("Initial annotation is required.")
+            raise ValueError("Main cells annotation is required.")
 
         metadata_section = _unique(_parse_tokens(self.metadata_section.get() or ""))
         metadata_max_columns_raw = self.metadata_max_columns.get().strip()
@@ -1269,7 +1269,7 @@ class KaroSpaceExportGUI:
 
         export_kwargs = {
             "output_path": str(output_path),
-            "annotation": annotation,
+            "main_cells_annotation": annotation,
             "title": self.title.get().strip() or "KaroSpace",
             "min_panel_size": min_panel_size,
             "spot_size": spot_size,
@@ -1314,7 +1314,10 @@ class KaroSpaceExportGUI:
 
         self._set_busy(True, "Exporting...")
         self._log(f"Loading dataset: {input_path}")
-        self._log(f"groupby={load_kwargs['groupby']}, annotation={export_kwargs['annotation']}")
+        self._log(
+            f"groupby={load_kwargs['groupby']}, "
+            f"main_cells_annotation={export_kwargs['main_cells_annotation']}"
+        )
         if export_kwargs.get("cells_annotations"):
             self._log(f"cells_annotations={len(export_kwargs['cells_annotations'])}")
         if export_kwargs.get("genes"):

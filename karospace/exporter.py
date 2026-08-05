@@ -3063,6 +3063,79 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .info-popover.active {{
             display: block;
         }}
+        .app-help-popover {{
+            width: min(520px, calc(100vw - 32px));
+            max-height: min(70vh, 620px);
+            overflow: auto;
+        }}
+        .button-help-list {{
+            display: grid;
+            gap: 7px;
+        }}
+        .button-help-item {{
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 10px;
+            align-items: start;
+            padding: 7px 0;
+            border-top: 1px solid var(--border-color);
+            color: var(--text-color);
+            font-size: 12px;
+            line-height: 1.35;
+        }}
+        .button-help-item:first-child {{
+            border-top: none;
+            padding-top: 0;
+        }}
+        .button-help-icons {{
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            min-width: 70px;
+            flex-wrap: wrap;
+        }}
+        .button-help-icon {{
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--accent-text);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            flex: 0 0 auto;
+        }}
+        .button-help-icon svg {{
+            width: 15px;
+            height: 15px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }}
+        .button-help-icon.button-help-emoji {{
+            font-size: 15px;
+            line-height: 1;
+        }}
+        .button-help-icon.button-help-calc {{
+            font-size: 11px;
+            font-weight: 700;
+        }}
+        .button-help-text {{
+            color: var(--text-color);
+        }}
+        .button-help-text strong {{
+            color: var(--text-color);
+            font-weight: 600;
+        }}
+        @media (max-width: 520px) {{
+            .button-help-item {{
+                grid-template-columns: 1fr;
+                gap: 2px;
+            }}
+        }}
         .shortcuts-overlay {{
             display: none;
             position: fixed;
@@ -6913,7 +6986,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div class="header-title">
             <div class="header-title-row">
                 <h1>{title}</h1>
-                <button class="info-trigger" id="info-trigger" type="button" title="Viewer info" data-help="Open viewer notes with dataset context, control tips, and usage guidance.">Info</button>
+                <button class="info-trigger" id="info-trigger" type="button" title="Viewer info" aria-expanded="false" aria-controls="info-popover" data-help="Open viewer notes with dataset context, control tips, and usage guidance.">Info</button>
+                <button class="icon-btn" id="app-help-trigger" type="button" title="Button guide" aria-label="Button guide" aria-expanded="false" aria-controls="app-help-popover" data-help="Open a guide to the unique buttons and icon controls in this viewer.">
+                    <svg class="lucide lucide-message-circle-question-mark" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path>
+                        <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path>
+                        <path d="M12 17h.01"></path>
+                    </svg>
+                </button>
             </div>
             {downsample_warning_html}
             <div class="info-popover" id="info-popover" aria-hidden="true">
@@ -6935,6 +7015,31 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <tr><td class="info-shortcuts-key"><kbd>+</kbd> <kbd>=</kbd></td><td>Zoom in inside the modal.</td></tr>
                             <tr><td class="info-shortcuts-key"><kbd>-</kbd></td><td>Zoom out inside the modal.</td></tr>
                         </table>
+                    </div>
+                </div>
+            </div>
+            <div class="info-popover app-help-popover" id="app-help-popover" aria-hidden="true">
+                <div class="info-content">
+                    <div class="info-block">
+                        <div class="info-title">Button Guide</div>
+                        <div class="button-help-list">
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Button guide"><span class="button-help-icon"><svg class="lucide lucide-message-circle-question-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"></path><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><path d="M12 17h.01"></path></svg></span></div><div class="button-help-text">Opens this guide for the application controls.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Theme"><span class="button-help-icon button-help-emoji">🌙</span></div><div class="button-help-text">Switches between light and dark display modes.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Screenshot"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"></path><circle cx="12" cy="13" r="3.5"></circle></svg></span></div><div class="button-help-text">Opens screenshot options and downloads the selected viewer area as a PNG.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Save and load"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"></path><path d="m17 8-5-5-5 5"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path></svg></span></div><div class="button-help-text">Saves the current viewer state to JSON or restores a previously saved state.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Export and download"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M12 18v-6"></path><path d="m9 15 3 3 3-3"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></span></div><div class="button-help-text">Downloads the available table, plot, palette, annotations, session, or data bundle for that panel.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Visual and gene settings"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><line x1="21" x2="14" y1="4" y2="4"></line><line x1="10" x2="3" y1="4" y2="4"></line><line x1="21" x2="12" y1="12" y2="12"></line><line x1="8" x2="3" y1="12" y2="12"></line><line x1="21" x2="16" y1="20" y2="20"></line><line x1="12" x2="3" y1="20" y2="20"></line><line x1="14" x2="14" y1="2" y2="6"></line><line x1="8" x2="8" y1="10" y2="14"></line><line x1="16" x2="16" y1="18" y2="22"></line></svg></span></div><div class="button-help-text">Opens visual parameters, UMAP appearance, or gene-expression display controls.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="UMAP cell tools"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-4 0"></path><path d="M14 10V4a2 2 0 0 0-4 0v6"></path><path d="M10 10.5V6a2 2 0 0 0-4 0v8"></path><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.9-6.5-2.8L2 16a2.3 2.3 0 0 1 3.2-3.3L7 14"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 22a5 5 0 0 1-2-4"></path><path d="M3.3 14A6.8 6.8 0 0 1 2 10c0-4.4 4.5-8 10-8s10 3.6 10 8-4.5 8-10 8a12 12 0 0 1-5-1"></path><path d="M5 18a2 2 0 1 0 4 0 2 2 0 0 0-4 0"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"></path><path d="M7 21h10"></path><path d="M12 3v18"></path><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"></path></svg></span></div><div class="button-help-text">Switches UMAP interaction between panning, lasso selection, and selected-cell comparison.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Query and search"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><line x1="22" x2="18" y1="12" y2="12"></line><line x1="6" x2="2" y1="12" y2="12"></line><line x1="12" x2="12" y1="6" y2="2"></line><line x1="12" x2="12" y1="22" y2="18"></line></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg></span></div><div class="button-help-text">Finds cells, genes, markers, or annotations depending on the active panel.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Swap"><span class="button-help-icon"><svg class="lucide lucide-arrow-left-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3 4 7l4 4"></path><path d="M4 7h16"></path><path d="m16 21 4-4-4-4"></path><path d="M20 17H4"></path></svg></span></div><div class="button-help-text">Swaps the A and B sides of a comparison or changes comparison direction.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Visibility and spotlight"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"></path><circle cx="12" cy="12" r="3"></circle></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"></path><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"></path><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"></path><path d="m2 2 20 20"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"></path><path d="M10 22h4"></path><path d="M12 2v2"></path><path d="m4.93 4.93 1.41 1.41"></path><path d="M2 12h2"></path><path d="m19.07 4.93-1.41 1.41"></path><path d="M20 12h2"></path><path d="M15 14a5 5 0 1 0-6 0l1 4h4z"></path></svg></span></div><div class="button-help-text">Shows, hides, or spotlights categories and overlay elements in legends and panels.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Clear and delete"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg></span></div><div class="button-help-text">Clears the current filter, selection, highlight, module, annotation, or panel-specific focus.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Zoom and rotate"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path><path d="M12 5v14"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"></path><path d="M21 3v6h-6"></path></svg></span></div><div class="button-help-text">Changes magnification, fits modal/network views, or rotates sections and overlays.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Neighbors and image overlay"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg></span></div><div class="button-help-text">Toggles spatial neighbor graph tools or opens image overlay controls such as H&amp;E/DAPI.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Annotations"><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg></span><span class="button-help-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M16 8.9V7H8l4 5-4 5h8v-1.9"></path></svg></span></div><div class="button-help-text">Creates, groups, imports, exports, loads, or deletes user-created spatial annotations and gene modules.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Plot and table modes"><span class="button-help-icon"><svg class="lucide lucide-chart-candlestick" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5v4"></path><rect x="7" y="9" width="4" height="6" rx="1"></rect><path d="M9 15v2"></path><path d="M17 3v2"></path><rect x="15" y="5" width="4" height="8" rx="1"></rect><path d="M17 13v3"></path><path d="M3 3v16a2 2 0 0 0 2 2h16"></path></svg></span><span class="button-help-icon"><svg class="lucide lucide-list-sort-descending" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 12H3"></path><path d="M3 5h18"></path><path d="M9 19H3"></path></svg></span></div><div class="button-help-text">Switches analysis sections between plot, graph, list, raw table, genes, samples, ORA, or GSEA views.</div></div>
+                            <div class="button-help-item"><div class="button-help-icons" aria-label="Calculation info"><span class="button-help-icon button-help-calc">!</span></div><div class="button-help-text">Explains how the displayed metric, plot, or analysis section was generated.</div></div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -31812,31 +31917,56 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         colorToggle.addEventListener('click', toggleInsightsPanel);
 
         const infoTrigger = document.getElementById('info-trigger');
-        if (infoTrigger) {{
-            const infoPopover = document.getElementById('info-popover');
+        const infoPopover = document.getElementById('info-popover');
+        const appHelpTrigger = document.getElementById('app-help-trigger');
+        const appHelpPopover = document.getElementById('app-help-popover');
+        const closeHeaderInfoPopover = () => {{
+            if (!infoPopover || !infoTrigger) return;
+            infoPopover.classList.remove('active');
+            infoPopover.setAttribute('aria-hidden', 'true');
+            infoTrigger.classList.remove('active');
+            infoTrigger.setAttribute('aria-expanded', 'false');
+        }};
+        const closeAppHelpPopover = () => {{
+            if (!appHelpPopover || !appHelpTrigger) return;
+            appHelpPopover.classList.remove('active');
+            appHelpPopover.setAttribute('aria-hidden', 'true');
+            appHelpTrigger.classList.remove('active');
+            appHelpTrigger.setAttribute('aria-expanded', 'false');
+        }};
+        if (infoTrigger && infoPopover) {{
             infoTrigger.addEventListener('click', (event) => {{
                 event.stopPropagation();
-                if (!infoPopover) return;
+                closeAppHelpPopover();
                 const isActive = infoPopover.classList.toggle('active');
                 infoTrigger.classList.toggle('active', isActive);
+                infoTrigger.setAttribute('aria-expanded', isActive ? 'true' : 'false');
                 infoPopover.setAttribute('aria-hidden', isActive ? 'false' : 'true');
             }});
-            document.addEventListener('click', (event) => {{
-                if (!infoPopover || !infoPopover.classList.contains('active')) return;
-                if (infoPopover.contains(event.target) || event.target === infoTrigger) return;
-                infoPopover.classList.remove('active');
-                infoTrigger.classList.remove('active');
-                infoPopover.setAttribute('aria-hidden', 'true');
-            }});
-            document.addEventListener('keydown', (event) => {{
-                if (!infoPopover || !infoPopover.classList.contains('active')) return;
-                if (event.key === 'Escape') {{
-                    infoPopover.classList.remove('active');
-                    infoTrigger.classList.remove('active');
-                    infoPopover.setAttribute('aria-hidden', 'true');
-                }}
+        }}
+        if (appHelpTrigger && appHelpPopover) {{
+            appHelpTrigger.addEventListener('click', (event) => {{
+                event.stopPropagation();
+                closeHeaderInfoPopover();
+                const isActive = appHelpPopover.classList.toggle('active');
+                appHelpTrigger.classList.toggle('active', isActive);
+                appHelpTrigger.setAttribute('aria-expanded', isActive ? 'true' : 'false');
+                appHelpPopover.setAttribute('aria-hidden', isActive ? 'false' : 'true');
             }});
         }}
+        document.addEventListener('click', (event) => {{
+            if (infoPopover?.classList.contains('active') && !infoPopover.contains(event.target) && event.target !== infoTrigger) {{
+                closeHeaderInfoPopover();
+            }}
+            if (appHelpPopover?.classList.contains('active') && !appHelpPopover.contains(event.target) && event.target !== appHelpTrigger) {{
+                closeAppHelpPopover();
+            }}
+        }});
+        document.addEventListener('keydown', (event) => {{
+            if (event.key !== 'Escape') return;
+            closeHeaderInfoPopover();
+            closeAppHelpPopover();
+        }});
 
     }}
 
@@ -32688,7 +32818,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 def export_to_html(
     dataset: SpatialDataset,
     output_path: str,
-    annotation: str = "leiden",
+    main_cells_annotation: str = "leiden",
     title: str = "Spatial Viewer",
     min_panel_size: int = 150,
     spot_size: Union[float, str, None] = "auto",
@@ -32707,7 +32837,7 @@ def export_to_html(
     pseudobulk: Optional[str] = "auto",
     pseudobulk_additional_annotations: Optional[List[str]] = None,
     pseudobulk_replicate_annotation: Optional[str] = None,
-    pseudobulk_simple_constrast_categories: Optional[List[str]] = None,
+    pseudobulk_simple_constrast_categories: Any = None,
     pseudobulk_counts_layer: Optional[str] = "counts",
     pseudobulk_min_cell_counts: int = 0,
     pseudobulk_min_gene_counts: int = 0,
@@ -32752,8 +32882,8 @@ def export_to_html(
     output_path : str
         Path for output HTML file, or a `.karospace` package when
         `gene_storage="sidecar"`.
-    annotation : str
-        Initial cell annotation column or gene name
+    main_cells_annotation : str
+        Main cell annotation column or gene name shown first in the viewer
     title : str
         Page title
     min_panel_size : int
@@ -32804,7 +32934,7 @@ def export_to_html(
         Number of top variable genes to score with Moran's I spatial autocorrelation
         (default 200). Requires a spatial weight matrix in adata.obsp. Set to 0 to disable.
     pseudobulk : str, optional
-        Category pseudobulk DE mode. Use "auto" to analyze the initial annotation and
+        Category pseudobulk DE mode. Use "auto" to analyze the main cells annotation and
         pseudobulk_additional_annotations, or None/"None" to disable.
     pseudobulk_additional_annotations : list, optional
         Additional annotation columns to analyze with category pseudobulk DE and
@@ -32812,10 +32942,13 @@ def export_to_html(
     pseudobulk_replicate_annotation : str, optional
         Obs annotation used as the biological replicate for pseudobulk analyses.
         Defaults to the dataset groupby annotation.
-    pseudobulk_simple_constrast_categories : list, optional
+    pseudobulk_simple_constrast_categories : list or dict, optional
         Categories to include in Simple design category-versus-category contrasts.
-        All retained categories remain in the shared DESeq2 fit, and each
-        retained category receives a balanced-rest contrast.
+        Use a flat list only when one annotation is analyzed. With
+        pseudobulk_additional_annotations, pass a dict keyed by annotation name
+        or a nested list matching [main_cells_annotation, *additional]. All
+        retained categories remain in the shared DESeq2 fit, and each retained
+        category receives a balanced-rest contrast.
     pseudobulk_counts_layer : str, optional
         Raw-count AnnData layer for pseudobulk aggregation. Defaults to "counts";
         falls back to adata.X with a warning if absent.
@@ -32879,7 +33012,7 @@ def export_to_html(
         Minimum target neighbors to classify source cells as contact+.
     interaction_markers : str, optional
         Contact-conditioned interaction marker mode. Use "auto" to analyze the
-        initial annotation and pseudobulk_additional_annotations, or None/"None" to disable.
+        main cells annotation and pseudobulk_additional_annotations, or None/"None" to disable.
     section_rotations : mapping, optional
         Optional mapping of section_id -> initial rotation angle in degrees.
         Angles are stored exactly (normalized modulo 360) for the interactive viewer.
@@ -32889,6 +33022,10 @@ def export_to_html(
     str
         Path to created HTML file
     """
+    annotation = str(main_cells_annotation or "").strip()
+    if not annotation:
+        raise ValueError("main_cells_annotation is required")
+
     requested_output_path = Path(output_path).expanduser()
     package_mode = requested_output_path.suffix.lower() == ".karospace"
     package_output_path_obj: Optional[Path] = None
@@ -33074,7 +33211,7 @@ def export_to_html(
 
     log_step("Building viewer data payload")
     log_detail(
-        f"Initial annotation={annotation}; embedded annotation columns="
+        f"Main cells annotation: {annotation}; embedded annotation columns="
         f"{', '.join([annotation, *(cells_annotations or [])]) or 'none'}."
     )
     log_detail(
@@ -33114,11 +33251,6 @@ def export_to_html(
         interaction_markers_min_neighbors=interaction_markers_min_neighbors,
         section_rotations=resolved_section_rotations,
         deconvolutions=deconvolutions,
-    )
-    log_detail(
-        f"Viewer data payload ready: {data.get('n_sections', 0)} sections, "
-        f"{int(data.get('total_cells') or 0):,} exported cells, "
-        f"{len(data.get('available_colors') or [])} color options."
     )
     data["scalebar_unit"] = str(scalebar_unit or "μm")
     embedded_genes = list(data.get("available_genes") or embedded_genes)
@@ -33231,61 +33363,65 @@ def export_to_html(
     data["default_modality"] = default_modality_name if modality_descriptors else None
 
     if int(spatial_variable_genes_n) > 0:
-        if "spatial_variable_genes" in companion_analytics:
-            log_step("Reusing KaroSpaceCompanion spatially variable genes")
-            log_detail("Stored companion Moran/spatial-variable-gene payload in the viewer.")
-            data["spatial_variable_genes"] = companion_analytics["spatial_variable_genes"]
-        else:
-            log_step("Computing spatially variable genes")
-            log_detail(
-                f"Running Moran's I for up to {int(spatial_variable_genes_n)} variable genes; "
-                "output feeds Insights > Genes."
-            )
-            data["spatial_variable_genes"] = _compute_morans_i(
-                dataset.adata, list(dataset.var_names), n_genes=int(spatial_variable_genes_n)
-            )
-            log_detail(f"Stored {len(data['spatial_variable_genes'])} spatially variable gene rows.")
+        log_step("Computing spatially variable genes")
+        log_detail(
+            f"Running Moran's I for up to {int(spatial_variable_genes_n)} variable genes "
+            f"on the full input cell set ({int(dataset.adata.n_obs):,} cells); "
+            "output feeds Insights > Genes."
+        )
+        data["spatial_variable_genes"] = _compute_morans_i(
+            dataset.adata, list(dataset.var_names), n_genes=int(spatial_variable_genes_n)
+        )
+        log_detail(f"Stored {len(data['spatial_variable_genes'])} spatially variable gene rows.")
     else:
         data["spatial_variable_genes"] = []
 
+    cluster_gene_means_for_correlations = None
     if int(cluster_means_n_genes) > 0:
-        if "cluster_gene_means" in companion_analytics:
-            log_step("Reusing KaroSpaceCompanion category gene means")
-            log_detail("Stored companion category mean payload in the viewer.")
-            data["cluster_gene_means"] = companion_analytics["cluster_gene_means"]
-        else:
-            log_step("Computing category gene means from pseudobulk DE genes")
-            log_detail(
-                f"Using up to {int(cluster_means_n_genes)} embedded DE genes; "
-                "output feeds Insights > Genes > Means."
-            )
-            data["cluster_gene_means"] = _cluster_gene_means_from_pseudobulk_de(
-                data.get("pseudobulk_de"),
-                embedded_genes,
-                int(cluster_means_n_genes),
-            )
-            mean_rows = sum(len(v or {}) for v in (data["cluster_gene_means"] or {}).values())
-            log_detail(f"Stored category mean payload for {mean_rows} category entries.")
+        log_step("Computing category gene means from pseudobulk DE genes")
+        log_detail(
+            f"Using up to {int(cluster_means_n_genes)} embedded DE genes from the current "
+            "pseudobulk analysis; output feeds Insights > Genes > Means."
+        )
+        data["cluster_gene_means"] = _cluster_gene_means_from_pseudobulk_de(
+            data.get("pseudobulk_de"),
+            embedded_genes,
+            int(cluster_means_n_genes),
+        )
+        cluster_gene_means_for_correlations = data["cluster_gene_means"]
+        mean_rows = sum(
+            len((col_data or {}).get("means") or {})
+            for col_data in ((data["cluster_gene_means"] or {}).get("columns") or {}).values()
+            if isinstance(col_data, dict)
+        )
+        log_detail(f"Stored category mean payload for {mean_rows} category entries.")
     else:
         data["cluster_gene_means"] = None
 
     if int(gene_correlation_top_n) > 0 and embedded_genes:
-        if "gene_correlations" in companion_analytics:
-            log_step("Reusing KaroSpaceCompanion gene correlations")
-            log_detail("Stored companion gene correlation payload in the viewer.")
-            data["gene_correlations"] = companion_analytics["gene_correlations"]
-        else:
-            log_step("Computing gene correlations from category means")
-            log_detail(
-                f"Keeping top {int(gene_correlation_top_n)} correlated genes per embedded gene; "
-                "output feeds Insights > Genes."
-            )
-            data["gene_correlations"] = _compute_gene_correlations_from_category_means(
-                data.get("cluster_gene_means"),
+        log_step("Computing gene correlations from category means")
+        required_gene_count = len([g for g in embedded_genes if str(g)])
+        available_mean_count = len((cluster_gene_means_for_correlations or {}).get("genes") or [])
+        if required_gene_count and available_mean_count < required_gene_count:
+            cluster_gene_means_for_correlations = _cluster_gene_means_from_pseudobulk_de(
+                data.get("pseudobulk_de"),
                 embedded_genes,
-                top_n=int(gene_correlation_top_n),
+                required_gene_count,
             )
-            log_detail(f"Stored correlations for {len(data['gene_correlations'])} genes.")
+            log_detail(
+                "Built an internal category mean payload from current pseudobulk DE summaries "
+                "for gene correlations."
+            )
+        log_detail(
+            f"Keeping top {int(gene_correlation_top_n)} correlated genes per embedded gene "
+            "using pseudobulk-derived category means; output feeds Insights > Genes."
+        )
+        data["gene_correlations"] = _compute_gene_correlations_from_category_means(
+            cluster_gene_means_for_correlations,
+            embedded_genes,
+            top_n=int(gene_correlation_top_n),
+        )
+        log_detail(f"Stored correlations for {len(data['gene_correlations'])} genes.")
     else:
         data["gene_correlations"] = {}
 

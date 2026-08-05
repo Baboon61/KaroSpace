@@ -71,7 +71,7 @@ def main() -> None:
     print(f"  section IDs: {[s.section_id for s in dataset.sections]}")
 
     common_kwargs = dict(
-        annotation=PRIMARY_COLOR,
+        main_cells_annotation=PRIMARY_COLOR,
         title="Xenium P1 Skin — Lesional + Non-lesional (annotated)",
         min_panel_size=140,
         spot_size="auto",

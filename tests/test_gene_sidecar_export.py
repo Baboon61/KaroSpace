@@ -197,7 +197,7 @@ def test_export_can_disable_pseudobulk_and_interaction_markers(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         pseudobulk=None,
         interaction_markers=None,
@@ -223,7 +223,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_encoding="sparse",
         gene_storage="sidecar",
@@ -630,7 +630,7 @@ def test_sidecar_export_with_no_embedded_genes_keeps_gene_catalog_and_warns(tmp_
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=[],
         gene_storage="sidecar",
     )
@@ -659,7 +659,7 @@ def test_sidecar_export_respects_custom_shard_size(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
         gene_sidecar_shard_size=1,
@@ -700,7 +700,7 @@ def test_sidecar_uint16_quantization_emits_compact_value_payloads(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=[],
         gene_storage="sidecar",
         gene_value_encoding="uint16",
@@ -722,7 +722,7 @@ def test_sidecar_uint8_quantization_emits_compact_value_payloads(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=[],
         gene_storage="sidecar",
         gene_value_encoding="uint8",
@@ -760,7 +760,7 @@ def test_binary_sidecar_export_writes_indexed_bin_shards(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
         gene_value_encoding="uint8",
@@ -792,7 +792,7 @@ def test_binary_karospace_package_stores_bin_shards_uncompressed(tmp_path):
     export_to_html(
         dataset,
         output_path=str(package_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
         gene_value_encoding="uint8",
@@ -822,7 +822,7 @@ def test_karospace_package_export_wraps_sidecar_assets(tmp_path):
     returned = export_to_html(
         dataset,
         output_path=str(package_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_encoding="sparse",
         gene_storage="sidecar",
@@ -874,7 +874,7 @@ def test_package_sidecar_viewer_wraps_existing_sidecar_bundle(tmp_path, capsys):
     export_to_html(
         dataset,
         output_path=str(html_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
     )
@@ -930,7 +930,7 @@ def test_package_sidecar_viewer_rejects_unsupported_gene_manifest(tmp_path):
     export_to_html(
         dataset,
         output_path=str(html_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_storage="sidecar",
     )
@@ -951,7 +951,7 @@ def test_karospace_package_requires_sidecar_mode(tmp_path):
         export_to_html(
             dataset,
             output_path=str(tmp_path / "viewer.karospace"),
-            annotation="leiden",
+            main_cells_annotation="leiden",
             genes=["G1"],
             gene_storage="embedded",
         )
@@ -1002,7 +1002,7 @@ def test_embedded_mode_stays_single_file(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_storage="embedded",
     )
@@ -1027,7 +1027,7 @@ def test_export_embeds_normalized_section_rotations(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         section_rotations={"S1": 44.5, "S2": -50.25},
     )
 
@@ -1073,7 +1073,7 @@ def test_export_embeds_pairwise_pseudobulk_de(monkeypatch, tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         pathway_gmt=str(pathway_gmt),
         pathway_organism="Human",
         pathway_min_overlap=1,
@@ -1142,7 +1142,7 @@ def test_pseudobulk_min_pct_expressed_does_not_truncate_de_table(monkeypatch, tm
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         pseudobulk_min_pct_expressed=0.5,
     )
 
@@ -1162,7 +1162,7 @@ def test_export_marks_pseudobulk_de_unavailable_for_small_clusters(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
     )
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
@@ -1179,7 +1179,7 @@ def test_export_rejects_unknown_section_rotation_ids(tmp_path):
         export_to_html(
             dataset,
             output_path=str(tmp_path / "viewer.html"),
-            annotation="leiden",
+            main_cells_annotation="leiden",
             section_rotations={"missing": 45},
         )
 
@@ -1270,6 +1270,8 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
             "None",
             "--pseudobulk-additional-annotations",
             "subclass,region",
+            "--pseudobulk-simple-constrast-categories",
+            '{"leiden":["A","B"],"subclass":["T cell"],"region":["cortex","white matter"]}',
             "--pseudobulk-counts-layer",
             "counts",
             "--pseudobulk-min-replicates",
@@ -1309,6 +1311,11 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
     assert "cluster_de_layer" not in captured["kwargs"]
     assert "cluster_de_min_cells" not in captured["kwargs"]
     assert captured["kwargs"]["pseudobulk_additional_annotations"] == ["subclass", "region"]
+    assert captured["kwargs"]["pseudobulk_simple_constrast_categories"] == {
+        "leiden": ["A", "B"],
+        "subclass": ["T cell"],
+        "region": ["cortex", "white matter"],
+    }
     assert captured["kwargs"]["pseudobulk"] is None
     assert captured["kwargs"]["interaction_markers"] is None
     assert "pseudobulk_groupby" not in captured["kwargs"]
@@ -1327,6 +1334,30 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
     assert captured["kwargs"]["pathway_top_n"] == 9
     assert captured["kwargs"]["pathway_min_overlap"] == 2
     assert captured["kwargs"]["pathway_gsea_permutations"] == 0
+
+
+def test_cli_rejects_flat_pseudobulk_categories_with_multiple_annotations(monkeypatch, tmp_path, capsys):
+    input_path = tmp_path / "input.h5ad"
+    input_path.write_text("placeholder", encoding="utf-8")
+    monkeypatch.setattr(
+        cli_module.sys,
+        "argv",
+        [
+            "karospace",
+            str(input_path),
+            "--pseudobulk-additional-annotations",
+            "subclass,region",
+            "--pseudobulk-simple-constrast-categories",
+            "A,B",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli_module.main()
+
+    assert excinfo.value.code == 2
+    captured = capsys.readouterr()
+    assert "ambiguous with multiple pseudobulk annotations" in captured.err
 
 
 def test_cli_rejects_invalid_section_rotations(monkeypatch, tmp_path, capsys):
@@ -1357,7 +1388,7 @@ def test_gene_correlations_embedded_in_export(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1", "G2", "G3"],
         gene_storage="embedded",
         gene_correlation_top_n=5,
@@ -1386,7 +1417,7 @@ def test_gene_correlations_disabled_when_top_n_zero(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1", "G2", "G3"],
         gene_correlation_top_n=0,
     )
@@ -1467,7 +1498,7 @@ def test_spatial_variable_genes_empty_without_spatial_graph(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         spatial_variable_genes_n=100,
     )
 
@@ -1526,7 +1557,7 @@ def test_spatial_variable_genes_computed_with_spatial_graph(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         spatial_variable_genes_n=10,
     )
 
@@ -1552,7 +1583,7 @@ def test_spatial_variable_genes_disabled_when_n_zero(tmp_path):
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         spatial_variable_genes_n=0,
     )
 
@@ -1671,9 +1702,9 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
             }
         }
     }
-    gene_correlations = {"G1": [{"gene": "G2", "r": 0.75}]}
-    spatial_variable_genes = [{"gene": "G1", "I": 0.42}]
-    cluster_gene_means = {
+    companion_gene_correlations = {"G1": [{"gene": "G2", "r": 0.75}]}
+    companion_spatial_variable_genes = [{"gene": "G1", "I": 0.42}]
+    companion_cluster_gene_means = {
         "genes": ["G1"],
         "columns": {
             "leiden": {
@@ -1683,27 +1714,48 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
             }
         },
     }
+    recomputed_gene_correlations = {"G1": [{"gene": "G3", "r": 0.66}]}
+    recomputed_spatial_variable_genes = [{"gene": "G2", "I": 0.31}]
+    recomputed_cluster_gene_means = {
+        "genes": ["G1"],
+        "columns": {
+            "leiden": {
+                "categories": ["A", "B"],
+                "means": {"A": [3.0], "B": [4.0]},
+                "background": [3.5],
+            }
+        },
+    }
     _attach_companion_analytics(
         dataset,
         pseudobulk_de=pseudobulk_de,
         neighbor_stats=neighbor_stats,
         interaction_markers=interaction_markers,
-        gene_correlations=gene_correlations,
-        spatial_variable_genes=spatial_variable_genes,
-        cluster_gene_means=cluster_gene_means,
+        gene_correlations=companion_gene_correlations,
+        spatial_variable_genes=companion_spatial_variable_genes,
+        cluster_gene_means=companion_cluster_gene_means,
     )
 
-    def _fail(*args, **kwargs):
-        raise AssertionError("unexpected recomputation")
+    morans_calls = []
 
-    monkeypatch.setattr("karospace.exporter._compute_gene_correlations_from_category_means", _fail)
-    monkeypatch.setattr("karospace.exporter._compute_morans_i", _fail)
-    monkeypatch.setattr("karospace.exporter._cluster_gene_means_from_pseudobulk_de", _fail)
+    def fake_morans_i(adata, genes, n_genes):
+        morans_calls.append((adata.n_obs, list(genes), n_genes))
+        return recomputed_spatial_variable_genes
+
+    monkeypatch.setattr(
+        "karospace.exporter._compute_gene_correlations_from_category_means",
+        lambda *args, **kwargs: recomputed_gene_correlations,
+    )
+    monkeypatch.setattr("karospace.exporter._compute_morans_i", fake_morans_i)
+    monkeypatch.setattr(
+        "karospace.exporter._cluster_gene_means_from_pseudobulk_de",
+        lambda *args, **kwargs: recomputed_cluster_gene_means,
+    )
 
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         neighbor_stats_groupby=["leiden"],
         gene_correlation_top_n=5,
@@ -1718,9 +1770,10 @@ def test_export_uses_companion_analytics_when_present(monkeypatch, tmp_path):
     assert "pseudobulk_samples" in pseudobulk_de["leiden"]["A"]["B"]
     assert embedded["neighbor_stats"] == neighbor_stats
     assert embedded["interaction_markers"] == interaction_markers
-    assert embedded["gene_correlations"] == gene_correlations
-    assert embedded["spatial_variable_genes"] == spatial_variable_genes
-    assert embedded["cluster_gene_means"] == cluster_gene_means
+    assert embedded["gene_correlations"] == recomputed_gene_correlations
+    assert embedded["spatial_variable_genes"] == recomputed_spatial_variable_genes
+    assert embedded["cluster_gene_means"] == recomputed_cluster_gene_means
+    assert morans_calls == [(dataset.adata.n_obs, list(dataset.var_names), 25)]
 
 
 def test_pseudobulk_embed_top_n_per_comparison_limits_auto_embedded_genes(tmp_path):
@@ -1751,7 +1804,7 @@ def test_pseudobulk_embed_top_n_per_comparison_limits_auto_embedded_genes(tmp_pa
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G3"],
         pseudobulk_embed_top_n_per_comparison=1,
         interaction_markers=None,
@@ -1790,7 +1843,7 @@ def test_export_falls_back_when_companion_analytics_absent(monkeypatch, tmp_path
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_correlation_top_n=5,
         spatial_variable_genes_n=0,
@@ -1799,6 +1852,48 @@ def test_export_falls_back_when_companion_analytics_absent(monkeypatch, tmp_path
 
     embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
     assert embedded["gene_correlations"] == expected_gene_correlations
+
+
+def test_export_computes_correlation_means_without_exporting_cluster_means(monkeypatch, tmp_path):
+    dataset = _build_dataset()
+    output_path = tmp_path / "viewer.html"
+    expected_gene_correlations = {"G1": [{"gene": "G2", "r": 0.44}], "G2": [{"gene": "G1", "r": 0.44}]}
+    cluster_mean_calls = []
+    cluster_gene_means = {
+        "genes": ["G1", "G2"],
+        "columns": {"leiden": {"means": {"A": [1.0, 2.0], "B": [2.0, 1.0]}}},
+    }
+
+    def fake_cluster_means(pseudobulk_de, genes, max_genes):
+        cluster_mean_calls.append((list(genes), max_genes))
+        return cluster_gene_means
+
+    monkeypatch.setattr(
+        "karospace.exporter._cluster_gene_means_from_pseudobulk_de",
+        fake_cluster_means,
+    )
+    monkeypatch.setattr(
+        "karospace.exporter._compute_gene_correlations_from_category_means",
+        lambda *args, **kwargs: expected_gene_correlations,
+    )
+
+    export_to_html(
+        dataset,
+        output_path=str(output_path),
+        main_cells_annotation="leiden",
+        genes=["G1", "G2"],
+        pseudobulk=None,
+        interaction_markers=None,
+        neighbor_stats_groupby=[],
+        gene_correlation_top_n=5,
+        spatial_variable_genes_n=0,
+        cluster_means_n_genes=0,
+    )
+
+    embedded = _extract_data_json(output_path.read_text(encoding="utf-8"))
+    assert embedded["cluster_gene_means"] is None
+    assert embedded["gene_correlations"] == expected_gene_correlations
+    assert cluster_mean_calls == [(["G1", "G2"], 2)]
 
 
 def test_export_recomputes_only_missing_companion_analytics(monkeypatch, tmp_path):
@@ -1821,7 +1916,7 @@ def test_export_recomputes_only_missing_companion_analytics(monkeypatch, tmp_pat
     export_to_html(
         dataset,
         output_path=str(output_path),
-        annotation="leiden",
+        main_cells_annotation="leiden",
         genes=["G1"],
         gene_correlation_top_n=5,
         spatial_variable_genes_n=0,

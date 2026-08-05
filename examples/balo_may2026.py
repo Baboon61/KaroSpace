@@ -70,7 +70,7 @@ print(f"Loaded {dataset.n_sections} sections, {dataset.n_cells:,} cells")
 print(f"Section IDs: {[s.section_id for s in dataset.sections]}")
 
 common_kwargs = dict(
-    annotation=PRIMARY_COLOR,
+    main_cells_annotation=PRIMARY_COLOR,
     title="Balo Lesion May 2026",
     min_panel_size=120,
     spot_size="auto",

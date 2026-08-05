@@ -47,7 +47,7 @@ OUTLINE_BY = "condition"
 export_to_html(
     dataset,
     output_path="pancreas.html",
-    annotation="leiden_2",  # Initial color (categorical)
+    main_cells_annotation="leiden_2",  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density

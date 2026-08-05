@@ -24,7 +24,8 @@ This document summarizes the current capabilities in this repository, focused on
 ## 3. HTML Export Characteristics
 
 - Single-file HTML output with embedded data payload.
-- Optional sidecar gene storage (`gene_storage="sidecar"`) with manifest + shard directory for lazy loading.
+- Optional sidecar gene storage (`gene_storage="sidecar"`) with manifest + binary shard directory for lazy loading over HTTP(S).
+- Optional `.karospace` package export wraps the sidecar viewer, manifest, and shards into one shareable browser-loaded package.
 - Per-section arrays are packed into base64 typed arrays by default for smaller/faster files.
 - Gene vectors support `dense`, `sparse`, or `auto` encoding.
 - Gene loading can be manual (`genes=[...]`) and significant pseudobulk DE genes are embedded automatically up to the per-comparison cap.
@@ -103,7 +104,7 @@ This document summarizes the current capabilities in this repository, focused on
   - Type DE genes per target.
 - Spatial dispersion:
   - Computed from all cells before HTML downsampling.
-  - Reports clustered/random/dispersed patterns per category for the initial annotation and requested `cells_annotations`.
+  - Reports clustered/random/dispersed patterns per category for the main cells annotation and requested `cells_annotations`.
 
 ### 8.3 Genes Tab
 
@@ -150,7 +151,7 @@ This document summarizes the current capabilities in this repository, focused on
   - `--cells-annotations`, `--metadata-section`, and `--metadata-section-extra`
   - color, groupby, panel size, spot size, downsample
   - gene encoding options
-  - sidecar gene storage options
+  - sidecar gene storage and `.karospace` package options
   - neighbor stats controls
   - pseudobulk DE controls
   - interaction pseudobulk controls

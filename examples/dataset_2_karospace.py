@@ -71,7 +71,7 @@ def main() -> None:
     print(f"  Loaded {dataset.n_sections} sections with {dataset.n_cells:,} total cells")
 
     common_kwargs = dict(
-        annotation=PRIMARY_COLOR,
+        main_cells_annotation=PRIMARY_COLOR,
         title="Dataset 2 — leiden / GMM-CellCharter / annotations",
         min_panel_size=120,
         spot_size="auto",

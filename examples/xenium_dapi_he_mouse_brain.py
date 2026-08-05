@@ -124,7 +124,7 @@ def main() -> None:
     )
 
     common_kwargs = dict(
-        annotation=PRIMARY_COLOR,
+        main_cells_annotation=PRIMARY_COLOR,
         title="Mouse Brain Xenium — DAPI + H&E",
         min_panel_size=140,
         spot_size="auto",

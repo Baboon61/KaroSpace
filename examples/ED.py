@@ -51,7 +51,7 @@ OUTLINE_BY = "condition_subtype"
 export_to_html(
     dataset,
     output_path="erectile-dys-Göritz-lab.html",
-    annotation='cytetype_annotation_leiden_3.5',  # Initial color (categorical)
+    main_cells_annotation='cytetype_annotation_leiden_3.5',  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density

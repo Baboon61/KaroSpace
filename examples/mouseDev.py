@@ -46,7 +46,7 @@ OUTLINE_BY = "course"
 export_to_html(
     dataset,
     output_path="mouseDev-Nature.html",
-    annotation= 'leiden_0.5',  # Initial color (categorical)
+    main_cells_annotation= 'leiden_0.5',  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density

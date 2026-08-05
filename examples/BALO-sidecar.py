@@ -50,7 +50,7 @@ ENABLE_ANALYTICS = True
 export_to_html(
     dataset,
     output_path="BALO.html",
-    annotation="leiden_2",
+    main_cells_annotation="leiden_2",
     title="KaroSpace",
     min_panel_size=120,
     spot_size="auto",

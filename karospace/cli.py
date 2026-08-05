@@ -70,11 +70,11 @@ def _run_export_cli(argv=None):
         ),
     )
     viewer_args.add_argument(
-        "--annotation",
+        "--main-cells-annotation",
         type=str,
         default="leiden",
-        dest="annotation",
-        help="Initial cell annotation column or gene (default: leiden)"
+        dest="main_cells_annotation",
+        help="Main cell annotation column or gene shown first in the viewer (default: leiden)"
     )
     viewer_args.add_argument(
         "--cells-annotations",
@@ -284,14 +284,14 @@ def _run_export_cli(argv=None):
         "--neighbor-stats-groupby",
         type=str,
         default="auto",
-        help="Comma-separated obs columns to compute neighbor composition stats for. Use 'auto' (default) to match the initial annotation; empty disables."
+        help="Comma-separated obs columns to compute neighbor composition stats for. Use 'auto' (default) to match --main-cells-annotation; empty disables."
     )
     pseudobulk_args.add_argument(
         "--pseudobulk",
         type=str,
         default="auto",
         help=(
-            "Category pseudobulk DE mode. Use 'auto' to analyze the initial --annotation "
+            "Category pseudobulk DE mode. Use 'auto' to analyze --main-cells-annotation "
             "and --pseudobulk-additional-annotations, or 'None' to disable. (default: auto)"
         )
     )
@@ -301,7 +301,7 @@ def _run_export_cli(argv=None):
         default="",
         help=(
             "Comma-separated additional annotation columns to analyze when pseudobulk or "
-            "interaction markers are enabled. The initial --annotation is included automatically."
+            "interaction markers are enabled. --main-cells-annotation is included automatically."
         )
     )
     pseudobulk_args.add_argument(
@@ -318,9 +318,15 @@ def _run_export_cli(argv=None):
         type=str,
         default="",
         help=(
-            "Comma-separated categories to include in Simple design category-versus-category contrasts. "
-            "All retained categories remain in the shared DESeq2 fit and balanced-rest contrasts "
-            "still run for every category. Empty includes all categories."
+            "Categories to include in Simple design category-versus-category contrasts. "
+            "Use comma-separated categories only with one pseudobulk annotation. With "
+            "--pseudobulk-additional-annotations, use a JSON object keyed by annotation "
+            "or a nested JSON list in order [main-cells-annotation, additional...], e.g. "
+            "'{\"Anno_L1\":[\"Astrocyte\",\"B cell\"],\"region\":[\"Cortex\"]}'. "
+            "In zsh/bash, wrap the whole JSON value in single quotes so inner double "
+            "quotes are preserved. "
+            "All retained categories remain in the shared DESeq2 fit and balanced-rest "
+            "contrasts still run for every category. Empty includes all categories."
         ),
     )
     pseudobulk_args.add_argument(
@@ -442,7 +448,7 @@ def _run_export_cli(argv=None):
         type=str,
         default="auto",
         help=(
-            "Contact-conditioned pseudobulk marker mode. Use 'auto' to analyze the initial --annotation "
+            "Contact-conditioned pseudobulk marker mode. Use 'auto' to analyze --main-cells-annotation "
             "and --pseudobulk-additional-annotations, or 'None' to disable. (default: auto)"
         )
     )
@@ -549,7 +555,11 @@ def _run_export_cli(argv=None):
         )
 
     # Import here to avoid slow startup for --help
-    from .data_loader import inspect_input_file, load_spatial_data
+    from .data_loader import (
+        inspect_input_file,
+        load_spatial_data,
+        normalize_pseudobulk_simple_constrast_categories,
+    )
     from .exporter import export_to_html
 
     if args.inspect_input:
@@ -626,13 +636,25 @@ def _run_export_cli(argv=None):
         sys.exit(2)
 
     if str(args.neighbor_stats_groupby).lower() == "auto":
-        neighbor_stats_groupby = [args.annotation]
+        neighbor_stats_groupby = [args.main_cells_annotation]
     else:
         neighbor_stats_groupby = _parse_csv(args.neighbor_stats_groupby)
     pseudobulk_mode = _parse_auto_or_none(args.pseudobulk, "--pseudobulk")
     interaction_markers_mode = _parse_auto_or_none(args.interaction_markers, "--interaction-markers")
     pseudobulk_additional_annotations = _parse_csv(args.pseudobulk_additional_annotations)
-    pseudobulk_simple_constrast_categories = _parse_csv(args.pseudobulk_simple_constrast_categories)
+    pseudobulk_annotation_columns = [
+        args.main_cells_annotation,
+        *(pseudobulk_additional_annotations or []),
+    ]
+    try:
+        pseudobulk_simple_constrast_categories = normalize_pseudobulk_simple_constrast_categories(
+            args.pseudobulk_simple_constrast_categories,
+            pseudobulk_annotation_columns,
+            option_name="--pseudobulk-simple-constrast-categories",
+        )
+    except ValueError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(2)
     pathway_gmt = _parse_csv(args.pathway_gmt) or None
     pathway_organism = str(args.pathway_organism or "Human").strip() or "Human"
     cells_annotations = _parse_csv(args.cells_annotations)
@@ -712,7 +734,7 @@ def _run_export_cli(argv=None):
     output_path = export_to_html(
         dataset,
         output_path=args.output,
-        annotation=args.annotation,
+        main_cells_annotation=args.main_cells_annotation,
         cells_annotations=cells_annotations,
         genes=genes,
         title=args.title,

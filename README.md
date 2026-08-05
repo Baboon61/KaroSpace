@@ -121,7 +121,7 @@ dataset = load_spatial_data(
 export_to_html(
     dataset,
     output_path="viewer.html",
-    annotation="cell_type",           # Initial cell-annotation column
+    main_cells_annotation="cell_type",    # Main cell-annotation column shown first
     title="KaroSpace",
     min_panel_size=150,          # Min panel width (responsive autoscaling)
     spot_size="auto",            # Adaptive by section density (or set a fixed number)
@@ -187,19 +187,19 @@ dataset = load_spatial_data(
     groupby="sample_id",
 )
 
-export_to_html(dataset, "viewer.html", annotation="cell_type")
+export_to_html(dataset, "viewer.html", main_cells_annotation="cell_type")
 ```
 
 ### Command Line
 
 ```bash
-karospace your_data.h5ad -o viewer.html --annotation leiden
+karospace your_data.h5ad -o viewer.html --main-cells-annotation leiden
 ```
 
 SpatialData `.zarr` stores are also supported:
 
 ```bash
-karospace your_spatialdata.zarr -o viewer.html --annotation cell_type --spatialdata-table table
+karospace your_spatialdata.zarr -o viewer.html --main-cells-annotation cell_type --spatialdata-table table
 ```
 
 #### CLI Options
@@ -207,7 +207,7 @@ karospace your_spatialdata.zarr -o viewer.html --annotation cell_type --spatiald
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-o, --output` | Output HTML file path | `karospace.html` |
-| `--annotation` | Initial cell-annotation column | `leiden` |
+| `--main-cells-annotation` | Main cell-annotation column shown first in the viewer | `leiden` |
 | `--cells-annotations` | Comma-separated extra cell obs annotation columns to embed as selectable cell annotations | empty |
 | `--genes` | Comma-separated genes to preload; significant pseudobulk DE genes are embedded automatically up to the per-comparison cap | empty |
 | `--metadata-labels` | JSON object mapping metadata/obs column keys to display labels in the viewer UI | empty |
@@ -244,9 +244,9 @@ karospace your_spatialdata.zarr -o viewer.html --annotation cell_type --spatiald
 | `--interaction-markers-min-cells` | Minimum cells per replicate contact+ and contact- pseudobulk sample | `30` |
 | `--interaction-markers-min-neighbors` | Minimum target neighbors to classify contact+ source cells | `1` |
 | `--pseudobulk` | Category pseudobulk DE mode (`auto`, `None`) | `auto` |
-| `--pseudobulk-additional-annotations` | Additional annotation columns to analyze when pseudobulk or interaction markers are enabled. The initial `--annotation` is included automatically | empty |
+| `--pseudobulk-additional-annotations` | Additional annotation columns to analyze when pseudobulk or interaction markers are enabled. `--main-cells-annotation` is included automatically | empty |
 | `--pseudobulk-counts-layer` | Raw-count AnnData layer for pseudobulk aggregation; use `None` for `adata.X` | `counts` |
-| `--pseudobulk-simple-constrast-categories` | Categories to report in category-versus-category contrasts; all retained categories stay in the shared fit and receive balanced-rest contrasts | empty |
+| `--pseudobulk-simple-constrast-categories` | Categories to report in category-versus-category contrasts. Use `A,B` only with one pseudobulk annotation. With `--pseudobulk-additional-annotations`, use annotation-specific JSON wrapped in single quotes, such as `'{"Anno_L1":["Astrocyte","B cell"],"region":["Cortex"]}'`, or a nested list matching `[main-cells-annotation, additional...]` | empty |
 | `--pseudobulk-min-replicates` | Minimum paired replicates required for each reported contrast | `2` |
 | `--pseudobulk-min-pct-expressed` | Minimum fraction of cells expressing a gene required in at least one compared group before `DeseqStats`; values >1 are interpreted as percentages | `0` |
 | `--pseudobulk-p-adjust-method` | Multiple-testing correction method (`fdr_bh`, `bonferroni`, `holm`, `none`) | `fdr_bh` |
@@ -325,11 +325,32 @@ If `adata.uns["{col}_colors"]` exists (scanpy convention — list of hex aligned
 
 If `adata.obsp` contains a neighbor graph (`spatial_connectivities`, `connectivities`, `neighbors`, or `neighbor_graph`), KaroSpace exposes graph overlay and neighbor-hover controls.
 
-`Insights → Neighbors → Enrichment` and `Interactions` use neighbor composition statistics for the selected Exploration annotation. If no graph or no stats exist for that annotation, the viewer shows a yellow warning and lists the annotations that do have neighbor stats. `Insights → Neighbors → Dispersion` is computed from all cells before HTML downsampling for the initial annotation and any requested `cells_annotations`, then summarizes whether each category is clustered, random, or dispersed relative to the observed all-cell layout.
+`Insights → Neighbors → Enrichment` and `Interactions` use neighbor composition statistics for the selected Exploration annotation. If no graph or no stats exist for that annotation, the viewer shows a yellow warning and lists the annotations that do have neighbor stats. `Insights → Neighbors → Dispersion` is computed from all cells before HTML downsampling for the main cells annotation and any requested `cells_annotations`, then summarizes whether each category is clustered, random, or dispersed relative to the observed all-cell layout.
 
 Contact-conditioned interaction markers are computed automatically for the initial `color` column and for `pseudobulk_additional_annotations` unless `interaction_markers=None` / `--interaction-markers None` is used. KaroSpace classifies source cells as contact+ or contact- within each `groupby` replicate, aggregates raw counts by replicate/contact status, and fits pseudobulk DESeq2 with a paired replicate design.
 
 Pseudobulk category DE is precomputed automatically for the initial `color` column unless `pseudobulk=None` / `--pseudobulk None` is used, and shown in `Insights → Compare → Per sample → Simple design`. KaroSpace aggregates raw counts by replicate and annotation, fits one shared `~ replicate + annotation` DESeq2 model per annotation column, then extracts category-versus-category contrasts. It also extracts a balanced-rest contrast for every category: the category minus the equally weighted mean of all other retained annotation categories. Genes that do not reach `pseudobulk_min_pct_expressed` / `--pseudobulk-min-pct-expressed` in at least one compared group are removed before `DeseqStats`, so they do not enter the contrast-level multiple-testing correction. Pairwise PCA/distance diagnostics are generated automatically for selected category pairs.
+
+When selecting specific pairwise categories from the command line, wrap JSON values in single quotes in zsh/bash/macOS/Linux shells. The single quotes protect the JSON double quotes from the shell:
+
+```bash
+--pseudobulk-simple-constrast-categories '{"Anno_L1_curated":["Astrocyte","Schwann cell","B cell","OPC"]}'
+```
+
+With multiple pseudobulk annotation columns, use one JSON key per annotation:
+
+```bash
+--main-cells-annotation Anno_L1_curated \
+--pseudobulk-additional-annotations region \
+--pseudobulk-simple-constrast-categories '{"Anno_L1_curated":["Astrocyte","B cell"],"region":["Cortex"]}'
+```
+
+Do not use unescaped double quotes around JSON, because the shell will split the value before KaroSpace receives it:
+
+```bash
+# Wrong in zsh/bash:
+--pseudobulk-simple-constrast-categories "{"Anno_L1_curated":["Astrocyte"]}"
+```
 
 The Simple design DE panel includes raw tables, marker lists, MA/volcano plots, PCA, distance matrix diagnostics, and pathway enrichment. ORA uses significant DE genes favoring the selected annotation. GSEA uses the full retained ranked gene list after model-level and expression-percent filtering. Pathways come from `--pathway-gmt` when supplied, otherwise KaroSpace uses Reactome through GSEApy for `--pathway-organism`. Significant genes passing `padj < pseudobulk_padj_cutoff` and `abs(log2FC) >= pseudobulk_log2fc_cutoff` are embedded automatically up to `pseudobulk_embed_top_n_per_comparison` / `--pseudobulk-embed-top-n-per-comparison` per comparison, exposed in `Insights → Genes → DE Genes`, and reused for category means/correlations. Full DE tables still list non-embedded genes, but their expression links are disabled. Use `pseudobulk_additional_annotations=[...]` or `--pseudobulk-additional-annotations ...` to compute category DE and interaction pseudobulk DE for extra annotation columns.
 
@@ -367,27 +388,139 @@ See [`examples/`](examples/) for complete dataset-specific export scripts.
 
 ## Deployment and Sharing
 
-- **Single-file HTML** — Default `gene_storage="embedded"` writes one standalone file; works offline
-- **Sidecar mode** — `gene_storage="sidecar"` writes HTML + `<name>.genes.json` + `<name>.genes/` shards; requires HTTP(S) serving
-- **`.karospace` packages** — Self-contained ZIP bundles combining the viewer HTML and all sidecar assets; open via the hosted loader or a local `loader.html`. All processing happens in the browser — data never leaves the user's machine
-- **Static hosting** — Both embedded and sidecar modes work on GitHub Pages, S3, or any lab intranet
-- **Sharing** — Send the HTML directly (embedded), or share HTML + manifest + shard directory via a hosted location (sidecar)
+KaroSpace has three practical export modes:
+
+| Mode | Output | Best for | How to open |
+| --- | --- | --- | --- |
+| Embedded HTML | `viewer.html` | Small to medium gene payloads, easiest sharing | Double-click or open the file in a browser |
+| Sidecar viewer | `viewer.html` + `viewer.genes.json` + `viewer.genes/` | Large gene payloads with lazy gene loading | Serve the directory over HTTP(S), then open the HTML URL |
+| `.karospace` package | `viewer.karospace` + optional `viewer.loader.html` | One-file sharing of a sidecar viewer | Drop the package into the hosted loader or the generated local loader |
+
+Sidecar mode keeps the initial HTML smaller by moving non-embedded gene vectors into a manifest and binary shard files. The viewer fetches those shards only when a gene is needed. This is useful when many genes, modalities, or sidecar-only DE genes would make a single HTML file too large.
+
+### Create a sidecar viewer
+
+CLI:
+
+```bash
+karospace your_data.h5ad \
+  -o viewer.html \
+  --main-cells-annotation cell_type \
+  --genes Cd4,Cd8a,Gfap \
+  --gene-storage sidecar \
+  --gene-aux-path viewer.genes.json \
+  --gene-sidecar-shard-size 256 \
+  --gene-value-encoding uint16
+```
+
+Python API:
+
+```python
+from karospace import load_spatial_data, export_to_html
+
+dataset = load_spatial_data("your_data.h5ad", groupby="sample_id")
+
+export_to_html(
+    dataset,
+    output_path="viewer.html",
+    main_cells_annotation="cell_type",
+    genes=["Cd4", "Cd8a", "Gfap"],
+    gene_storage="sidecar",
+    gene_aux_path="viewer.genes.json",
+    gene_sidecar_shard_size=256,
+    gene_value_encoding="uint16",
+)
+```
+
+This writes:
+
+```text
+viewer.html
+viewer.genes.json
+viewer.genes/
+  000.bin
+  001.bin
+  ...
+```
+
+Keep all three together. The HTML contains the viewer and embedded summary data; `viewer.genes.json` is the sidecar manifest; `viewer.genes/` contains the binary gene shards.
+
+### Open a sidecar viewer
+
+Do not open sidecar HTML directly with `file://`; browsers block local shard loading. Serve the output directory instead:
+
+```bash
+python -m http.server --directory /path/to/output-dir 8000
+```
+
+Then open:
+
+```text
+http://localhost:8000/viewer.html
+```
+
+For deployment, upload the HTML, manifest, and shard directory with the same relative paths to GitHub Pages, S3, an institutional web server, or a lab intranet. If `viewer.html` references `viewer.genes.json`, then `viewer.genes.json` must be next to the HTML and its `viewer.genes/` shard directory must also be next to the HTML unless you intentionally used matching custom paths.
+
+### Create a `.karospace` package directly
+
+Use `.karospace` output when you want sidecar loading but prefer one shareable file:
+
+```bash
+karospace your_data.h5ad \
+  -o viewer.karospace \
+  --main-cells-annotation cell_type \
+  --gene-storage sidecar \
+  --gene-aux-path viewer.genes.json
+```
+
+Python API:
+
+```python
+export_to_html(
+    dataset,
+    output_path="viewer.karospace",
+    main_cells_annotation="cell_type",
+    gene_storage="sidecar",
+    gene_aux_path="viewer.genes.json",
+)
+```
+
+Direct package export writes:
+
+```text
+viewer.karospace
+viewer.loader.html
+```
+
+The `.karospace` file is a ZIP-based package containing `index.html`, `karospace-package.json`, the sidecar manifest, and the binary shard directory. The sibling `viewer.loader.html` is a local opener; it is not part of the package itself.
+
+Open the package by visiting the hosted loader at [karospace.se/open](https://karospace.se/open) or by opening `viewer.loader.html` and dropping/selecting `viewer.karospace`. Package loading happens in the browser; the package is read locally by the browser and is not uploaded by the local loader.
 
 ### Package an existing sidecar into `.karospace`
 
-```bash
-# Short form (auto-detects sidecar paths from the HTML)
-karospace package-sidecar BALO.html --output BALO.karospace
+If you already have an unpacked sidecar viewer, package it without recomputing analytics:
 
-# Explicit form
-karospace package-sidecar BALO.html \
-  --output BALO.karospace \
-  --gene-aux-path BALO.genes.json \
-  --gene-shard-dir BALO.genes \
-  --loader-output BALO.loader.html
+```bash
+# Short form: auto-detect sidecar paths from the HTML.
+karospace package-sidecar viewer.html --output viewer.karospace
+
+# Explicit form: use this when the manifest or shard directory is not next to the HTML.
+karospace package-sidecar viewer.html \
+  --output viewer.karospace \
+  --gene-aux-path viewer.genes.json \
+  --gene-shard-dir viewer.genes \
+  --loader-output viewer.loader.html
 ```
 
-This wraps existing sidecar assets into a `.karospace` archive without recomputing analytics or rewriting the viewer HTML.
+This wraps the existing sidecar assets into a `.karospace` archive without recomputing analytics or rewriting the viewer data.
+
+### Sidecar troubleshooting
+
+- **The viewer opens but genes do not load**: check that the HTML is served over HTTP(S), not opened with `file://`.
+- **404 for `viewer.genes.json` or `.bin` shards**: keep `viewer.html`, `viewer.genes.json`, and `viewer.genes/` in the same relative layout used at export time.
+- **Custom `--gene-aux-path`**: for normal sidecar HTML it may be a path; for direct `.karospace` export it must be a filename inside the package.
+- **Large packages**: increase `--gene-sidecar-shard-size` for fewer shard files, decrease it for smaller individual requests. `uint16` is the default value encoding; `uint8` is smaller but less precise.
+- **Need one file for sharing**: export `viewer.karospace` directly or run `karospace package-sidecar` on an existing sidecar viewer.
 
 ### Integrate polygon annotations back into AnnData
 

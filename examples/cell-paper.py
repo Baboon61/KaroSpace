@@ -46,7 +46,7 @@ OUTLINE_BY = "course"
 export_to_html(
     dataset,
     output_path="CELL-PAPER.html",
-    annotation='Annotation 3 (medium with DA)',  # Initial color (categorical)
+    main_cells_annotation='Annotation 3 (medium with DA)',  # Initial color (categorical)
     title="KaroSpace",
     min_panel_size=120,  # minimum panel width in pixels, grid auto-adjusts
     spot_size="auto",  # adaptive default based on section density

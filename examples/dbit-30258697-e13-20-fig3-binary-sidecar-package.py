@@ -50,7 +50,7 @@ print(f"Loaded {dataset.n_sections} sections with {dataset.n_cells:,} total cell
 print(f"Available color columns: {dataset.obs_columns[:10]}...")
 
 common_kwargs = dict(
-    annotation=PRIMARY_COLOR,
+    main_cells_annotation=PRIMARY_COLOR,
     title="DBiT 30258697 E13 20 Fig3",
     min_panel_size=120,
     spot_size="auto",

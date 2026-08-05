@@ -572,6 +572,8 @@ def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
         [
             "karospace",
             str(input_path),
+            "--main-cells-annotation",
+            "leiden",
             "--group-order",
             "M2,M1",
             "--metadata-value-order",
@@ -617,6 +619,8 @@ def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
     assert captured["load"]["metadata_value_order"] == {"strain": ["WT", "KO"]}
     assert captured["load"]["metadata_max_columns"] == 2
     export_kwargs = captured["export_kwargs"]
+    assert export_kwargs["main_cells_annotation"] == "leiden"
+    assert "annotation" not in export_kwargs
     assert export_kwargs["outline_by"] == "strain"
     assert export_kwargs["genes"] == ["G1", "G2"]
     assert export_kwargs["cells_annotations"] == ["cell_type", "subcluster"]

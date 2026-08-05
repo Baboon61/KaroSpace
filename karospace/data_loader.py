@@ -13,7 +13,7 @@ import tempfile
 from copy import deepcopy
 from dataclasses import dataclass, field
 from itertools import combinations, product
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -37,6 +37,105 @@ COMPANION_ANALYTICS_JSON_FIELDS = {
     "spatial_variable_genes_json": "spatial_variable_genes",
     "cluster_gene_means_json": "cluster_gene_means",
 }
+
+
+def _clean_pseudobulk_category_list(value: Any, option_name: str) -> Optional[List[str]]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        categories = [item.strip() for item in value.split(",") if item.strip()]
+        return categories or None
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        categories = [str(item).strip() for item in value if str(item).strip()]
+        return categories or None
+    raise ValueError(f"{option_name} values must be category strings or lists of category strings")
+
+
+def normalize_pseudobulk_simple_constrast_categories(
+    value: Any,
+    annotation_columns: Sequence[str],
+    *,
+    option_name: str = "pseudobulk_simple_constrast_categories",
+) -> Optional[Dict[str, Optional[List[str]]]]:
+    """Normalize optional Simple design category filters by annotation column.
+
+    A flat category list is only meaningful when a single annotation is analyzed.
+    With multiple pseudobulk annotation columns, callers must provide either a
+    mapping keyed by annotation name or a nested list whose order matches
+    ``annotation_columns``.
+    """
+    columns = [str(column).strip() for column in annotation_columns if str(column).strip()]
+    if not columns or value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return None
+        if text[0] in "[{":
+            try:
+                value = json.loads(text)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"{option_name} must be valid JSON ({exc})") from exc
+        else:
+            if len(columns) > 1:
+                raise ValueError(
+                    f"{option_name} is ambiguous with multiple pseudobulk annotations. "
+                    "Use a JSON object keyed by annotation name or a nested JSON list in "
+                    "the order: " + ", ".join(columns) + "."
+                )
+            return {columns[0]: _clean_pseudobulk_category_list(text, option_name)}
+    if isinstance(value, Mapping):
+        unknown = sorted(str(key) for key in value.keys() if str(key) not in set(columns))
+        if unknown:
+            raise ValueError(
+                f"{option_name} contains annotation column(s) not requested for pseudobulk DE: "
+                + ", ".join(unknown)
+            )
+        return {
+            column: _clean_pseudobulk_category_list(value.get(column), option_name)
+            for column in columns
+        }
+    if isinstance(value, np.ndarray):
+        value = value.tolist()
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        nested = any(
+            isinstance(item, (Mapping, list, tuple, set, np.ndarray))
+            and not isinstance(item, (str, bytes, bytearray))
+            for item in value
+        )
+        if not nested:
+            if len(columns) > 1:
+                raise ValueError(
+                    f"{option_name} is ambiguous with multiple pseudobulk annotations. "
+                    "Use a JSON object keyed by annotation name or a nested JSON list in "
+                    "the order: " + ", ".join(columns) + "."
+                )
+            return {columns[0]: _clean_pseudobulk_category_list(value, option_name)}
+        if len(value) != len(columns):
+            raise ValueError(
+                f"{option_name} nested list must contain one category list per pseudobulk "
+                f"annotation ({len(columns)} expected: {', '.join(columns)})."
+            )
+        normalized: Dict[str, Optional[List[str]]] = {}
+        for column, item in zip(columns, value):
+            if isinstance(item, Mapping):
+                if "categories" in item:
+                    item = item.get("categories")
+                elif column in item:
+                    item = item.get(column)
+                else:
+                    raise ValueError(
+                        f"{option_name} nested mapping for '{column}' must contain "
+                        "'categories' or the annotation name."
+                    )
+            normalized[column] = _clean_pseudobulk_category_list(item, option_name)
+        return normalized
+    raise ValueError(
+        f"{option_name} must be a category list, a JSON object keyed by annotation, "
+        "or a nested list matching the pseudobulk annotation order."
+    )
 
 
 # Common conventions for spatial coordinates in adata.obsm, tried in order when
@@ -1499,7 +1598,7 @@ class SpatialDataset:
         gene_sparse_pack_min_nnz: int = 256,
         pseudobulk_de_groupby: Optional[List[str]] = None,
         pseudobulk_replicate_annotation: Optional[str] = None,
-        pseudobulk_simple_constrast_categories: Optional[List[str]] = None,
+        pseudobulk_simple_constrast_categories: Any = None,
         pseudobulk_counts_layer: Optional[str] = "counts",
         pseudobulk_min_cell_counts: int = 0,
         pseudobulk_min_gene_counts: int = 0,
@@ -1555,10 +1654,13 @@ class SpatialDataset:
         pseudobulk_replicate_annotation : str, optional
             Obs annotation used as the biological replicate for pseudobulk analyses.
             Defaults to the dataset groupby annotation.
-        pseudobulk_simple_constrast_categories : list, optional
+        pseudobulk_simple_constrast_categories : list or dict, optional
             Categories to include in Simple design category-versus-category
-            contrasts. All retained categories remain in the shared fit and
-            receive a balanced-rest contrast.
+            contrasts. Use a flat list only when one annotation is analyzed.
+            With multiple pseudobulk annotation columns, pass a dict keyed by
+            annotation name or a nested list matching the annotation order. All
+            retained categories remain in the shared fit and receive a
+            balanced-rest contrast.
         pseudobulk_counts_layer : str, optional
             AnnData layer containing raw counts for pseudobulk aggregation.
             Defaults to "counts" when present, otherwise adata.X.
@@ -2178,6 +2280,10 @@ class SpatialDataset:
         marker_genes = {}
         pseudobulk_de = {}
         requested_pseudobulk_de_groupby = list(pseudobulk_de_groupby or [])
+        pseudobulk_simple_categories_by_groupby = normalize_pseudobulk_simple_constrast_categories(
+            pseudobulk_simple_constrast_categories,
+            requested_pseudobulk_de_groupby,
+        )
         pending_pseudobulk_de_groupby = list(requested_pseudobulk_de_groupby)
         companion_pseudobulk_de = (
             companion_analytics.get("pseudobulk_de")
@@ -2227,13 +2333,18 @@ class SpatialDataset:
             from .pseudobulk import compute_pseudobulk_group_de
 
             for groupby_name in pending_pseudobulk_de_groupby:
+                groupby_pairwise_categories = (
+                    (pseudobulk_simple_categories_by_groupby or {}).get(groupby_name)
+                    if pseudobulk_simple_categories_by_groupby
+                    else None
+                )
                 log_step(
-                    f"Pseudobulk DE: annotation={groupby_name}; replicate={pseudobulk_replicate_name}",
+                    f"Pseudobulk DE: annotation column {groupby_name}; replicate={pseudobulk_replicate_name}",
                     level=1,
                 )
                 pairwise_categories_label = (
-                    ", ".join(str(value) for value in pseudobulk_simple_constrast_categories)
-                    if pseudobulk_simple_constrast_categories
+                    ", ".join(str(value) for value in groupby_pairwise_categories)
+                    if groupby_pairwise_categories
                     else "all categories"
                 )
                 log_detail(
@@ -2259,7 +2370,7 @@ class SpatialDataset:
                     self.adata,
                     groupby_name,
                     replicate=pseudobulk_replicate_name,
-                    pairwise_categories=pseudobulk_simple_constrast_categories,
+                    pairwise_categories=groupby_pairwise_categories,
                     counts_layer=pseudobulk_counts_layer,
                     min_cell_counts=pseudobulk_min_cell_counts_n,
                     min_gene_counts=pseudobulk_min_gene_counts_n,
@@ -2304,7 +2415,7 @@ class SpatialDataset:
         printed_neighbor_stats_header = False
         if neighbor_graph is not None and pending_neighbor_stats_groupby:
             for groupby_name in pending_neighbor_stats_groupby:
-                log_step(f"Neighbor stats: annotation={groupby_name}")
+                log_step(f"Neighbor stats: annotation column {groupby_name}")
                 log_detail(
                     "Computing observed neighbor composition; output feeds Neighbors > Enrichment "
                     "and Neighbors > Interactions.",
@@ -2367,7 +2478,7 @@ class SpatialDataset:
 
             for groupby_name in pending_interaction_markers_groupby:
                 log_step(
-                    f"Interaction markers: annotation={groupby_name}; replicate={interaction_replicate_name}",
+                    f"Interaction markers: annotation column {groupby_name}; replicate={interaction_replicate_name}",
                     level=1,
                 )
                 if groupby_name not in neighbor_stats_context:
@@ -2584,6 +2695,7 @@ class SpatialDataset:
             )
         )
         if de_gene_candidates:
+            log_step("Preparing expression viewer gene payload")
             log_detail(
                 f"Embedding {len(export_genes)} requested/significant DE gene"
                 f"{'s' if len(export_genes) != 1 else ''} in the HTML expression viewer "

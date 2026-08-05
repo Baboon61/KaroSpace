@@ -143,7 +143,7 @@ def main() -> None:
         section_images = None
 
     common_kwargs = dict(
-        annotation=PRIMARY_COLOR,
+        main_cells_annotation=PRIMARY_COLOR,
         title="Breast Cancer Xenium (2 samples, annotated) — DAPI + H&E",
         min_panel_size=140,
         spot_size="auto",
