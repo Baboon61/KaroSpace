@@ -104,6 +104,122 @@ def _positive_fraction(matrix, mask: np.ndarray, gene_indices: Sequence[int]) ->
     return [float(v) / denom for v in counts]
 
 
+def _expression_prefilter_gene_names(
+    expression_matrix,
+    source_mask: np.ndarray,
+    reference_mask: np.ndarray,
+    var_names: Sequence[str],
+    candidate_gene_names: Sequence[str],
+    min_pct_expressed: float,
+) -> List[str]:
+    """Return candidate genes expressed in at least one side of a contrast."""
+    min_pct = _normalize_pct_threshold(min_pct_expressed)
+    candidate_names = [str(gene) for gene in candidate_gene_names]
+    if min_pct <= 0 or not candidate_names:
+        return candidate_names
+
+    gene_to_idx = {str(gene): idx for idx, gene in enumerate(var_names)}
+    valid_names: List[str] = []
+    valid_indices: List[int] = []
+    for gene in candidate_names:
+        idx = gene_to_idx.get(gene)
+        if idx is None:
+            continue
+        valid_names.append(gene)
+        valid_indices.append(idx)
+    if not valid_names:
+        return []
+
+    pct_source = _positive_fraction(expression_matrix, source_mask, valid_indices)
+    pct_reference = _positive_fraction(expression_matrix, reference_mask, valid_indices)
+    keep: List[str] = []
+    for gene, source_value, reference_value in zip(valid_names, pct_source, pct_reference):
+        source_pct = float(source_value) if source_value is not None and np.isfinite(source_value) else 0.0
+        reference_pct = (
+            float(reference_value)
+            if reference_value is not None and np.isfinite(reference_value)
+            else 0.0
+        )
+        if source_pct >= min_pct or reference_pct >= min_pct:
+            keep.append(gene)
+    return keep
+
+
+def _subset_deseq2_dataset(dds: Any, gene_names: Optional[Sequence[str]]) -> Optional[Any]:
+    """Subset a fitted PyDESeq2 dataset to contrast-testable genes."""
+    if gene_names is None:
+        return dds
+    requested = [str(gene) for gene in gene_names]
+    if not requested:
+        return None
+    try:
+        dds_genes = [str(gene) for gene in dds.var_names]
+    except Exception:
+        return dds
+    available = set(dds_genes)
+    retained = [gene for gene in requested if gene in available]
+    if not retained:
+        return None
+    try:
+        subset = dds[:, retained].copy()
+    except Exception:
+        keep = np.asarray([gene in set(retained) for gene in dds_genes], dtype=bool)
+        subset = dds[:, keep].copy()
+
+    # AnnData slicing may return a plain AnnData object instead of preserving the
+    # DeseqDataSet subclass. DeseqStats needs the fitted dataset methods and
+    # runtime attributes, so restore them on the gene subset.
+    try:
+        if subset.__class__ is not dds.__class__:
+            subset.__class__ = dds.__class__
+    except Exception:
+        pass
+
+    for attr in (
+        "refit_cooks",
+        "low_memory",
+        "formulaic_contrasts",
+        "inference",
+        "quiet",
+        "fit_type",
+        "min_replicates",
+        "min_disp",
+        "max_disp",
+        "beta_tol",
+        "min_mu",
+        "max_iter",
+        "n_cpus",
+        "design_factors",
+        "ref_level",
+        "control_genes",
+    ):
+        if hasattr(dds, attr):
+            try:
+                setattr(subset, attr, getattr(dds, attr))
+            except Exception:
+                continue
+
+    try:
+        if "non_zero" in subset.var:
+            non_zero = subset.var["non_zero"].to_numpy(dtype=bool)
+        else:
+            non_zero = np.ones(int(subset.n_vars), dtype=bool)
+        subset.non_zero_idx = np.arange(int(subset.n_vars))[non_zero]
+        subset.non_zero_genes = subset.var_names[non_zero]
+    except Exception:
+        pass
+
+    try:
+        original_new_zeroes = getattr(dds, "new_all_zeroes_genes", pd.Index([]))
+        subset_var_names = {str(gene) for gene in subset.var_names}
+        subset.new_all_zeroes_genes = pd.Index(
+            [str(gene) for gene in original_new_zeroes if str(gene) in subset_var_names]
+        )
+    except Exception:
+        subset.new_all_zeroes_genes = pd.Index([])
+    return subset
+
+
 def _adjust_pvalues(pvalues: np.ndarray, method: str = "fdr_bh") -> np.ndarray:
     p = np.asarray(pvalues, dtype=float)
     adjusted = np.full(p.shape, np.nan, dtype=float)
@@ -531,7 +647,12 @@ def _fit_deseq2_shared_categories(
     return dds, fit_counts, fit_meta
 
 
-def _deseq2_shared_contrast(dds: Any, contrast: np.ndarray, n_cpus: int = 1) -> pd.DataFrame:
+def _deseq2_shared_contrast(
+    dds: Any,
+    contrast: np.ndarray,
+    n_cpus: int = 1,
+    gene_names: Optional[Sequence[str]] = None,
+) -> pd.DataFrame:
     """Evaluate one numeric contrast from an already fitted DESeq2 dataset."""
     try:
         from pydeseq2.ds import DeseqStats
@@ -541,11 +662,14 @@ def _deseq2_shared_contrast(dds: Any, contrast: np.ndarray, n_cpus: int = 1) -> 
             "pydeseq2 support or run `pip install pydeseq2`."
         ) from exc
     vector = np.asarray(contrast, dtype=float)
+    stats_dds = _subset_deseq2_dataset(dds, gene_names)
+    if stats_dds is None:
+        return pd.DataFrame(columns=["log2FoldChange", "pvalue", "padj", "stat", "baseMean"])
     with _suppress_numpy_slogdet_warnings():
         try:
-            stats = DeseqStats(dds, contrast=vector, quiet=True, n_cpus=max(1, int(n_cpus)))
+            stats = DeseqStats(stats_dds, contrast=vector, quiet=True, n_cpus=max(1, int(n_cpus)))
         except TypeError:
-            stats = DeseqStats(dds, contrast=vector, n_cpus=max(1, int(n_cpus)))
+            stats = DeseqStats(stats_dds, contrast=vector, n_cpus=max(1, int(n_cpus)))
         stats.summary()
     return stats.results_df.copy()
 
@@ -1061,29 +1185,15 @@ def _count_threshold_passing_genes(result: Dict[str, Any]) -> int:
         return 0
     log2fc = result.get("log2foldchanges") or result.get("logfoldchanges") or []
     padj = result.get("pvals_adj") or []
-    pct_source = result.get("pct_source") or []
-    pct_reference = result.get("pct_reference") or []
     try:
         padj_cutoff = float(result.get("padj_cutoff", 0.05))
         log2fc_cutoff = float(result.get("log2fc_cutoff", 0.5))
-        min_pct_expressed = _normalize_pct_threshold(result.get("min_pct_expressed", 0.0))
     except (TypeError, ValueError):
         return 0
     count = 0
-    for idx, (value, adjusted) in enumerate(zip(log2fc, padj)):
+    for value, adjusted in zip(log2fc, padj):
         try:
-            source_pct = float(pct_source[idx]) if idx < len(pct_source) else 0.0
-            reference_pct = float(pct_reference[idx]) if idx < len(pct_reference) else 0.0
-            pct_pass = (
-                min_pct_expressed <= 0
-                or source_pct >= min_pct_expressed
-                or reference_pct >= min_pct_expressed
-            )
-            if (
-                pct_pass
-                and float(adjusted) < padj_cutoff
-                and abs(float(value)) >= log2fc_cutoff
-            ):
+            if float(adjusted) < padj_cutoff and abs(float(value)) >= log2fc_cutoff:
                 count += 1
         except (TypeError, ValueError):
             continue
@@ -1725,7 +1835,28 @@ def _compute_pseudobulk_group_de_shared(
         label = f"{source} vs {reference}" if reference != "__rest__" else f"{source} vs balanced rest"
         try:
             print(f"      - [{progress}] {label}: testing shared DESeq2 contrast", flush=True)
-            raw_result = _deseq2_shared_contrast(dds, contrast, n_cpus=n_cpus)
+            fit_gene_names = [str(gene) for gene in fit_meta.attrs.get("gene_names", [])]
+            min_pct_threshold = _normalize_pct_threshold(min_pct_expressed)
+            test_gene_names = _expression_prefilter_gene_names(
+                expression_matrix,
+                source_mask,
+                reference_mask,
+                adata.var_names,
+                fit_gene_names,
+                min_pct_expressed,
+            )
+            if min_pct_threshold > 0:
+                print(
+                    f"        ↳ Minimum % cells retained {len(test_gene_names)} "
+                    f"of {len(fit_gene_names)} fitted genes for DeseqStats",
+                    flush=True,
+                )
+            raw_result = _deseq2_shared_contrast(
+                dds,
+                contrast,
+                n_cpus=n_cpus,
+                gene_names=test_gene_names,
+            )
             formatted = _format_result(
                 raw_result,
                 source_mask=source_mask,
@@ -1745,14 +1876,20 @@ def _compute_pseudobulk_group_de_shared(
             )
             formatted.update(model_info)
             formatted["contrast_type"] = contrast_type
+            formatted["min_pct_prefilter_gene_count"] = int(len(fit_gene_names))
+            formatted["min_pct_retained_gene_count"] = int(len(test_gene_names))
+            formatted["min_pct_removed_gene_count"] = int(
+                max(0, len(fit_gene_names) - len(test_gene_names))
+            )
             results.setdefault(source, {})[reference] = formatted
             print(
-                f"        ↳ {_count_threshold_passing_genes(formatted)} "
-                "genes pass the DE thresholds",
+                f"            ↳ {_count_threshold_passing_genes(formatted)} "
+                f"genes pass the DE thresholds (padj < {float(padj_cutoff):g} "
+                f"and |log2FC| >= {float(log2fc_cutoff):g})",
                 flush=True,
             )
         except Exception as exc:
-            print(f"      - {label}: failed ({exc})", flush=True)
+            print(f"      - [{progress}] {label}: failed ({exc})", flush=True)
             failed = _empty_result(
                 "de_failed",
                 n_source=n_source,

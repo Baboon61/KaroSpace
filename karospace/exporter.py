@@ -1319,8 +1319,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 4px 8px;
             border: 1px solid var(--border-color);
             border-radius: 999px;
-            background: var(--panel-bg);
-            color: var(--loading-text);
+            background: var(--input-bg);
+            color: var(--accent-text);
             font-size: 10px;
             letter-spacing: 0.03em;
             text-transform: uppercase;
@@ -1328,8 +1328,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             transition: background 0.2s, border-color 0.2s, color 0.2s;
         }}
         .info-trigger:hover {{
-            background: var(--hover-bg);
+            background: var(--icon-hover-bg);
             border-color: var(--accent-border);
+            color: var(--accent-text);
+        }}
+        .info-trigger.active {{
+            background: var(--accent-fill);
+            border-color: var(--accent-border);
+            color: var(--accent-on-fill);
+        }}
+        .info-trigger.active:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
         }}
         .controls {{ display: flex; align-items: center; justify-content: flex-end; gap: 6px 8px; flex-wrap: wrap; margin-left: auto; max-width: 560px; }}
         .sr-only {{
@@ -2037,6 +2048,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             position: relative;
             --umap-reserve-left: 0px;
             --umap-reserve-right: 0px;
+            --umap-fixed-top: calc(var(--sticky-stack-height) + 8px);
+            --umap-fixed-right: 8px;
+            --umap-fixed-bottom: auto;
+            --umap-fixed-left: auto;
         }}
         .grid-stage {{
             flex: 1;
@@ -3129,6 +3144,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .color-aggregation.neighbor-stats-scrollable > .agg-group {{
             flex-shrink: 0;
         }}
+        .neighbor-warning {{
+            padding: 9px 10px;
+            border: 1px solid color-mix(in srgb, var(--warning-border) 62%, var(--border-color));
+            border-radius: 6px;
+            background: var(--warning-bg);
+            color: var(--warning-text);
+            font-size: 11px;
+            line-height: 1.45;
+        }}
+        .neighbor-warning strong {{ color: var(--warning-text); }}
         .color-item {{
             padding: 5px 8px;
             border: 1px solid var(--border-color);
@@ -3548,20 +3573,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--muted-color);
         }}
         .neighbor-view-controls {{
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
-            flex-wrap: wrap;
-        }}
-        .neighbor-view-buttons {{
-            display: flex;
-            gap: 6px;
-            flex-wrap: wrap;
-        }}
-        .neighbor-view-buttons .legend-btn {{
-            flex: 0 0 auto;
-            min-width: 70px;
+            display: block;
+            margin: 6px 0 8px;
         }}
         .neighbor-control-panel {{
             border: 1px solid var(--border-color);
@@ -3908,6 +3921,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             margin-top: 5px;
             font-size: 9px;
         }}
+        .comparison-info-warning {{
+            margin-top: 5px;
+            padding: 5px 6px;
+            border: 1px solid color-mix(in srgb, var(--warning-border) 62%, var(--border-color));
+            border-radius: 4px;
+            background: var(--warning-bg);
+            color: var(--warning-text);
+            font-size: 9px;
+            line-height: 1.35;
+        }}
         .comparison-info-settings code {{
             font-size: inherit;
             font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
@@ -3924,19 +3947,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .pseudobulk-comparison-warning strong {{ color: var(--warning-text); }}
         .agg-group-title.comparison-chip-title {{ justify-content: flex-start; }}
-        .cluster-de-result, .cluster-PA-result {{
+        .cluster-de-result {{
             border: 1px solid var(--border-color);
             border-radius: 8px;
             background: var(--input-bg);
             overflow: auto;
             max-height: 720px;
         }}
+        .cluster-PA-result {{
+            background: transparent;
+            overflow: visible;
+            max-height: none;
+        }}
         .cluster-de-plot-grid {{
             display: grid;
             grid-template-columns: 1fr;
             gap: 8px;
             padding: 8px;
-            border-bottom: 1px solid var(--border-color);
         }}
         .cluster-de-plot-grid-title {{
             font-size: 11px;
@@ -3951,7 +3978,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             background: var(--panel-bg);
             overflow: visible;
         }}
-        .cluster-de-plot-title {{
+        .cluster-de-figure-title {{
             display: flex;
             align-items: center;
             gap: 5px;
@@ -3961,28 +3988,103 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-color);
         }}
         .cluster-de-plot-export {{ margin-left: auto; }}
+        .cluster-de-panel-mode-switch,
+        .neighbor-view-buttons,
+        .pathway-panel-mode-switch {{
+            display: flex;
+            width: 100%;
+            gap: 0;
+            margin: 0 0 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 999px;
+            overflow: hidden;
+            background: var(--input-bg);
+        }}
+        .cluster-de-panel-mode-switch .legend-btn,
+        .neighbor-view-buttons .legend-btn,
+        .pathway-panel-mode-switch .legend-btn {{
+            flex: 1 1 0;
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            justify-content: center;
+        }}
+        .cluster-de-panel-mode-switch .legend-btn + .legend-btn,
+        .neighbor-view-buttons .legend-btn + .legend-btn,
+        .pathway-panel-mode-switch .legend-btn + .legend-btn {{
+            border-left: 1px solid var(--border-color);
+        }}
+        .cluster-de-panel-mode-switch .legend-btn.active,
+        .neighbor-view-buttons .legend-btn.active,
+        .pathway-panel-mode-switch .legend-btn.active {{
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+        }}
+        .cluster-de-mode-panel[hidden],
+        .pathway-mode-panel[hidden] {{
+            display: none;
+        }}
+        .cluster-de-table-actions,
+        .cluster-de-plot-actions,
+        .pathway-panel-actions {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 4px 8px 8px;
+        }}
+        .cluster-de-plot-actions,
+        .pathway-panel-actions {{
+            justify-content: flex-end;
+        }}
+        .cluster-de-plot-actions {{
+            position: absolute;
+            right: 8px;
+            bottom: 8px;
+            padding: 0;
+            z-index: 2;
+        }}
+        .cluster-de-plot-panel .volcano-summary {{
+            padding-right: 42px;
+        }}
+        .cluster-de-more-link,
+        .pathway-download-link {{
+            border: 0;
+            background: transparent;
+            color: var(--accent-text);
+            padding: 2px 0;
+            font: inherit;
+            font-size: 10px;
+            font-weight: 400;
+            cursor: pointer;
+        }}
+        .cluster-de-more-link:hover,
+        .pathway-download-link:hover {{
+            text-decoration: underline;
+        }}
+        .cluster-de-more-link:disabled {{
+            color: var(--muted-color);
+            cursor: default;
+            text-decoration: none;
+        }}
         .cluster-de-plot-meta {{
             padding: 0 8px 4px;
             font-size: 9px;
             color: var(--muted-color);
         }}
-        .pathway-analysis-controls, .pathway-gsea-control {{
+        .pathway-gsea-control {{
             display: flex;
             align-items: center;
             gap: 6px;
             padding: 0 8px 6px;
             min-width: 0;
         }}
-        .pathway-analysis-controls {{
-            padding-top: 8px;
-            border-bottom: 1px solid var(--border-color);
-        }}
-        .pathway-analysis-controls label, .pathway-gsea-control label {{
+        .pathway-gsea-control label {{
             font-size: 9px;
             color: var(--muted-color);
             flex: 0 0 auto;
         }}
-        .pathway-analysis-controls select, .pathway-gsea-control select {{
+        .pathway-analysis-select, .pathway-gsea-control select {{
             flex: 1 1 auto;
             min-width: 0;
             max-width: 100%;
@@ -3992,6 +4094,40 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-color);
             font-size: 10px;
             padding: 3px 6px;
+        }}
+        .pathway-analysis-select {{
+            width: min(260px, 100%);
+            margin: 0 0 6px;
+        }}
+        .pathway-gsea-control select {{
+            flex: 0 1 240px;
+            width: min(240px, 100%);
+        }}
+        .pathway-gsea-control .cluster-de-plot-export {{
+            flex: 0 0 auto;
+            margin-left: auto;
+        }}
+        .pathway-pvalue-chip {{
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 44px;
+            padding: 1px 6px;
+            border-radius: 999px;
+            font-size: 9px;
+            font-variant-numeric: tabular-nums;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }}
+        .pathway-pvalue-chip.is-nonsig {{
+            background: color-mix(in srgb, #4f82d9 20%, var(--input-bg));
+            border-color: color-mix(in srgb, #4f82d9 58%, var(--border-color));
+            color: var(--text-color);
+        }}
+        .pathway-pvalue-chip.is-sig {{
+            background: color-mix(in srgb, #d94f4f 20%, var(--input-bg));
+            border-color: color-mix(in srgb, #d94f4f 58%, var(--border-color));
+            color: var(--text-color);
         }}
         .pathway-analysis-empty {{
             padding: 8px;
@@ -4038,6 +4174,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             opacity: 0.75;
         }}
         .cluster-de-gene-btn:disabled:hover {{ text-decoration: none; }}
+        .cluster-de-table tbody tr.is-extra-row[hidden] {{ display: none; }}
+        .gene-token-grid .gene-token-button:disabled,
+        .gene-token-grid button:disabled {{
+            color: var(--muted-color);
+            opacity: 0.62;
+        }}
         .volcano-container {{
             position: relative;
             padding: 8px 8px 4px;
@@ -4097,6 +4239,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .volcano-svg {{ display: block; overflow: visible; }}
         .cluster-de-qc-svg {{ display: block; overflow: visible; }}
+        .pathway-enrichment-svg {{
+            width: 100%;
+            max-width: 100%;
+            height: auto;
+        }}
         .volcano-dot {{ cursor: pointer; }}
         .volcano-dot:hover {{ stroke: var(--text-color); stroke-width: 1.5px; }}
         .volcano-tooltip {{
@@ -6302,7 +6449,31 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .umap-panel.dock-top-left {{ top: 8px; left: 8px; right: auto; bottom: auto; }}
         .umap-panel.dock-bottom-right {{ bottom: 8px; right: 8px; left: auto; top: auto; }}
         .umap-panel.dock-bottom-left {{ bottom: 8px; left: 8px; right: auto; top: auto; }}
-        .umap-panel.visible {{ display: flex; }}
+        .umap-panel.visible {{ display: flex; position: fixed; z-index: 60; }}
+        .umap-panel.visible.dock-top-right {{
+            top: var(--umap-fixed-top);
+            right: var(--umap-fixed-right);
+            left: auto;
+            bottom: auto;
+        }}
+        .umap-panel.visible.dock-top-left {{
+            top: var(--umap-fixed-top);
+            left: var(--umap-fixed-left);
+            right: auto;
+            bottom: auto;
+        }}
+        .umap-panel.visible.dock-bottom-right {{
+            bottom: var(--umap-fixed-bottom);
+            right: var(--umap-fixed-right);
+            left: auto;
+            top: auto;
+        }}
+        .umap-panel.visible.dock-bottom-left {{
+            bottom: var(--umap-fixed-bottom);
+            left: var(--umap-fixed-left);
+            right: auto;
+            top: auto;
+        }}
         .umap-header {{
             padding: 8px;
             background: var(--header-bg);
@@ -8061,8 +8232,53 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }},
         de_genes: {{
             title: 'Pseudobulk DE genes',
-            body: 'Differential expression uses one shared DESeq2 pseudobulk model by replicate and annotation. Category-versus-category contrasts compare two annotations. Balanced-rest contrasts compare one annotation with the equally weighted mean of every other retained annotation. The table values report log2 fold-change, p-values, adjusted p-values, DESeq2 score and rank, base_mean, and percent expressed. Percent expressed is the percentage of cells with expression above zero in the source or reference group.',
-            formula: 'model = ~ replicate + annotation; pairwise contrast = annotation A - annotation B; balanced-rest contrast = annotation A - mean(other annotation coefficients); padj = multiple-testing adjusted p-value with the selected method'
+            body: 'Differential expression uses one shared fit model across replicate and annotation, while statistical tests are calculated category-versus-category. Genes not expressed in a minimal percentage of cells in at least one category are removed prior statistical testings. Model and statistical tests are calculated using DESeq2 and multiple testing correction is applied using your method of choice. The table values report log2 fold-change, p-values, adjusted p-values, DESeq2 score and rank, base_mean, and percent expressed. Gene markers are ordered by adjusted pvalue then log2FC.',
+            formula: 'fit model: ~ replicate + annotation; pre-test gene filter: max(% expressed in A, % expressed in B) >= min_pct; statistical test: DESeq2 category A vs category B; padj: p-value adjusted with the selected correction method; marker order: padj ascending, then log2FC'
+        }},
+        pseudobulk_simple_de_section: {{
+            title: 'Pseudobulk differential analysis',
+            body: 'This section is based on the selected Simple design category-vs-category pseudobulk DESeq2 contrast. Cells are grouped by biological replicate and annotation, raw counts are summed into pseudobulk samples, and a shared DESeq2 model is fit for the annotation. The selected Annotation A and Annotation B are then extracted as a pairwise contrast. Genes shown as DE pass the minimum percent-expressed prefilter before DeseqStats, then pass the adjusted p-value and absolute log2FC thresholds.',
+            formula: 'model = ~ replicate + annotation; retained genes: max(% expressing cells in A, B) >= min_pct before DeseqStats; DE genes: padj < padj_cutoff and |log2FC| >= log2fc_cutoff'
+        }},
+        pseudobulk_simple_de_table: {{
+            title: 'Differential expression table',
+            body: 'The table lists genes from the selected Annotation A versus Annotation B contrast that pass the current DE thresholds. Rows are sorted by adjusted p-value, then p-value and log2FC. Gene buttons are disabled when that gene expression vector was not embedded in the HTML viewer.',
+            formula: 'displayed rows: padj < padj_cutoff and |log2FC| >= log2fc_cutoff; row direction/color follows sign(log2FC)'
+        }},
+        pseudobulk_ma_plot: {{
+            title: 'MA plot',
+            body: 'The MA plot uses every gene returned for the fitted pairwise contrast. The x-axis is DESeq2 baseMean and the y-axis is log2FC for Annotation A versus Annotation B. Red points have adjusted p-value below 0.1; grey points do not.',
+            formula: 'x = baseMean; y = log2FC(A/B); red if padj < 0.1, grey if padj >= 0.1'
+        }},
+        pseudobulk_volcano_plot: {{
+            title: 'Volcano plot',
+            body: 'The volcano plot uses every gene returned for the fitted pairwise contrast. The x-axis is log2FC and the y-axis is -log10 adjusted p-value. Grey points fail either the adjusted p-value or log2FC threshold. Colored points pass both thresholds; positive log2FC is colored as Annotation A and negative log2FC as Annotation B.',
+            formula: 'x = log2FC(A/B); y = -log10(padj); colored if padj < padj_cutoff and |log2FC| >= log2fc_cutoff'
+        }},
+        pseudobulk_pca_plot: {{
+            title: 'Pseudobulk PCA',
+            body: 'The PCA is a sample-level diagnostic. Each point is a pseudobulk sample built from one replicate and one annotation category. Coordinates are computed from log1p CPM values for variable genes retained for the pseudobulk diagnostic. Point color follows the selected annotation category.',
+            formula: 'pseudobulk sample = summed raw counts per replicate-category; PCA input = log1p(CPM) on diagnostic variable genes'
+        }},
+        pseudobulk_distance_matrix: {{
+            title: 'Pseudobulk distance matrix',
+            body: 'The distance matrix is a sample-level diagnostic using the same pseudobulk samples as the PCA. Values are Euclidean distances between samples computed on log1p CPM expression values. Row and column side colors indicate the annotation category of each pseudobulk sample.',
+            formula: 'distance(i, j) = Euclidean(log1p(CPM_i), log1p(CPM_j))'
+        }},
+        pathway_enrichment_section: {{
+            title: 'Pathway enrichment',
+            body: 'This section is built from the pseudobulk category-vs-category result. ORA uses only significant DE genes favoring the selected annotation. GSEA uses the full ranked gene list retained after model-level filtering. Pathways come from the configured GMT file or the default Reactome source.',
+            formula: 'ORA query genes: padj < padj_cutoff and |log2FC| >= log2fc_cutoff, split by direction; GSEA ranking: signed DE statistic over all retained genes'
+        }},
+        pathway_ora_plot: {{
+            title: 'ORA pathway dot plot',
+            body: 'The ORA dot plot shows pathways over-represented among significant DE genes favoring the selected annotation. The x-axis is GeneRatio, the dot size is the number of overlapping DE genes, fill color is -log10 adjusted pathway p-value, and the dot border marks pathways with adjusted p-value strictly below 0.05.',
+            formula: 'GeneRatio = overlapping DE genes / DE query genes; fill = -log10(pathway padj); red border if pathway padj < 0.05, black border if pathway padj >= 0.05'
+        }},
+        pathway_gsea_plot: {{
+            title: 'GSEA enrichment profile',
+            body: 'The GSEA plot shows one selected pathway along the full ranked gene list. The running enrichment curve rises when pathway genes are encountered and falls otherwise. Black ticks mark pathway gene positions. The color strip shows which end of the ranking favors Annotation A or B, and the lower grey bars show the signed ranking metric. For Annotation B views, the display is oriented so the selected annotation is shown as the enriched side.',
+            formula: 'ranking = signed DE statistic for all retained genes; ES = running enrichment score; NES = ES normalized for pathway size'
         }},
         de_heatmap: {{
             title: 'DE heatmap',
@@ -8172,6 +8388,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let clusterDeGroupby = null;
     let clusterDeSourceCategory = null;
     let clusterDeReferenceCategory = null;
+    let clusterDeResultMode = 'raw';
+    let clusterDETableExpanded = false;
+    let pathwayEnrichmentMode = 'ora';
+    let pathwayViewMode = 'plot';
+    let pathwayAnnotationSide = 'source';
+    const clusterDEMarkerExpanded = {{}};
     let groupDeSourceSpecValue = '';
     let groupDeSourceValue = null;
     let groupDeReferenceValue = null;
@@ -8778,7 +9000,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         const resizer = document.getElementById('legend-resizer');
         if (resizer) resizer.classList.toggle('hidden', legend.classList.contains('collapsed'));
-        requestAnimationFrame(renderAllSections);
+        requestAnimationFrame(() => {{
+            scheduleUMAPPanelPositionUpdate();
+            renderAllSections();
+        }});
     }}
 
     const LEGEND_MIN_WIDTH = 120;
@@ -8794,13 +9019,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const delta = startX - event.clientX;
             const next = Math.max(LEGEND_MIN_WIDTH, Math.min(LEGEND_MAX_WIDTH, startWidth + delta));
             legend.style.width = `${{next}}px`;
+            updateUMAPPanelPosition();
         }};
         const onUp = () => {{
             document.removeEventListener('mousemove', onMove);
             document.removeEventListener('mouseup', onUp);
             resizer.classList.remove('dragging');
             document.body.classList.remove('legend-resizing');
-            requestAnimationFrame(renderAllSections);
+            requestAnimationFrame(() => {{
+                scheduleUMAPPanelPositionUpdate();
+                renderAllSections();
+            }});
         }};
         resizer.addEventListener('mousedown', (event) => {{
             if (legend.classList.contains('collapsed')) return;
@@ -8814,7 +9043,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         resizer.addEventListener('dblclick', () => {{
             legend.style.width = '';
-            requestAnimationFrame(renderAllSections);
+            requestAnimationFrame(() => {{
+                scheduleUMAPPanelPositionUpdate();
+                renderAllSections();
+            }});
         }});
     }}
 
@@ -8827,7 +9059,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!colorPanel.classList.contains('collapsed')) {{
             renderActiveInsightsPanel();
         }}
-        requestAnimationFrame(renderAllSections);
+        requestAnimationFrame(() => {{
+            scheduleUMAPPanelPositionUpdate();
+            renderAllSections();
+        }});
     }}
 
     function openInsightsMode(mode) {{
@@ -8836,6 +9071,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         colorPanel?.classList.remove('collapsed');
         colorToggle?.classList.add('active');
         setInsightsMode(mode);
+        scheduleUMAPPanelPositionUpdate();
     }}
 
     function navigateModalSection(step) {{
@@ -19280,6 +19516,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         contentColumn.style.setProperty('--umap-reserve-right', `${{reserveRight}}px`);
     }}
 
+    function updateUMAPPanelPosition() {{
+        const contentColumn = document.getElementById('content-column');
+        const panel = document.getElementById('umap-panel');
+        if (!contentColumn || !panel) return;
+        const rect = contentColumn.getBoundingClientRect();
+        const stickyStack = parseFloat(getComputedStyle(document.body).getPropertyValue('--sticky-stack-height')) || 0;
+        const viewportGap = 8;
+        const leftOffset = Math.max(viewportGap, Math.round(rect.left + viewportGap));
+        const rightOffset = Math.max(viewportGap, Math.round(window.innerWidth - rect.right + viewportGap));
+        panel.style.setProperty('--umap-fixed-top', `${{Math.round(stickyStack + viewportGap)}}px`);
+        panel.style.setProperty('--umap-fixed-bottom', `${{viewportGap}}px`);
+        panel.style.setProperty('--umap-fixed-left', `${{leftOffset}}px`);
+        panel.style.setProperty('--umap-fixed-right', `${{rightOffset}}px`);
+    }}
+
+    function scheduleUMAPPanelPositionUpdate() {{
+        updateUMAPPanelPosition();
+        requestAnimationFrame(updateUMAPPanelPosition);
+        window.setTimeout(updateUMAPPanelPosition, 340);
+    }}
+
     function updateStickyOffsets() {{
         const header = document.querySelector('.header');
         const visualBar = document.getElementById('visual-params-bar');
@@ -19292,6 +19549,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         document.body.style.setProperty('--sticky-visual-height', `${{visualH}}px`);
         document.body.style.setProperty('--sticky-filter-height', `${{filterH}}px`);
         document.body.style.setProperty('--sticky-stack-height', `${{headerH + visualH + filterH}}px`);
+        updateUMAPPanelPosition();
     }}
 
     function loadUMAPPanelState() {{
@@ -19335,6 +19593,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         panel.style.width = `${{umapPanelSize}}px`;
         updateUMAPSelectionSummaryPanelSize();
         updateUMAPGridReserve();
+        updateUMAPPanelPosition();
         const dockBtn = document.getElementById('umap-dock-btn');
         if (dockBtn) dockBtn.textContent = getUMAPDockLabel(umapPanelDock);
         saveUMAPPanelState();
@@ -19369,8 +19628,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         panel.classList.toggle('visible', umapVisible);
         btn.classList.toggle('active', umapVisible);
         updateUMAPGridReserve();
+        updateUMAPPanelPosition();
         // Re-render after layout change to fix grid sizing
         requestAnimationFrame(() => {{
+            updateUMAPPanelPosition();
             renderAllSections();
             if (umapVisible) renderUMAP();
             refreshModalAfterLayoutChange();
@@ -22852,15 +23113,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="color-tab-content" id="color-tab-neighbors-content">
+                    <div id="neighbors-stats-warning" style="display:none"></div>
                     <div class="color-tab-content active" id="neighbors-tab-enrichment-content">
-                        <div>
-                            <label>Search Cell Type</label>
-                            <input class="color-search" id="neighbor-search" type="text" placeholder="Search Cell Type...">
-                        </div>
                         <div class="neighbor-view-controls">
-                            <div>
-                                <label>View</label>
-                            </div>
                             <div class="neighbor-view-buttons">
                                 <button class="legend-btn active" data-neighbor-view="table" type="button">Table</button>
                                 <button class="legend-btn" data-neighbor-view="bubble" type="button">Network</button>
@@ -22869,10 +23124,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                         <div style="display: flex; justify-content: flex-end; gap: 6px;">
                             <button class="legend-btn" id="neighbor-focus-reset" type="button" style="display:none">Reset highlight</button>
-                            <button class="legend-btn" id="neighbor-stats-toggle" type="button">Collapse Neighbor Stats</button>
                         </div>
                         <div class="color-aggregation" id="neighbor-stats">
-                            <div class="agg-group-meta">Select a categorical annotation to view neighbor stats.</div>
+                            <div class="neighbor-view-note">Select a categorical annotation to view neighbor stats.</div>
                         </div>
                     </div>
                     <div class="color-tab-content" id="neighbors-tab-interactions-content">
@@ -22950,9 +23204,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 selectionWelchRunning = false;
                 selectionWelchButtonHidden = false;
                 selectionComparisonLegendExpanded = false;
+                hoveredNeighborFocus = null;
+                selectedNeighborFocus = null;
+                neighborNetworkFocusCategories = null;
+                updateNeighborFocusResetButton();
                 renderGenesDetailsWarnings();
                 renderColorAggregation();
                 renderCellTypeTrend();
+                renderNeighborStats();
                 renderActiveInsightsPanel();
             }});
         }}
@@ -23059,10 +23318,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderCellTypeTrend();
         }});
 
-        const neighborSearch = document.getElementById('neighbor-search');
-        neighborSearch.addEventListener('input', () => {{
-            renderNeighborStats();
-        }});
         panel.querySelectorAll('[data-neighbor-view]').forEach((btn) => {{
             btn.classList.toggle('active', btn.getAttribute('data-neighbor-view') === neighborStatsView);
             btn.addEventListener('click', () => {{
@@ -23084,19 +23339,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderNeighborStats();
             }});
         }}
-        const neighborStatsToggle = document.getElementById('neighbor-stats-toggle');
-        const neighborStatsContainer = document.getElementById('neighbor-stats');
-        neighborStatsToggle.addEventListener('click', () => {{
-            const isCollapsed = neighborStatsContainer.classList.toggle('collapsed');
-            neighborStatsToggle.textContent = isCollapsed ? 'Show neighbor stats' : 'Collapse neighbor stats';
-        }});
         const interactionSource = document.getElementById('interaction-source');
-        interactionSource.addEventListener('change', () => {{
+        interactionSource?.addEventListener('change', () => {{
             interactionSourceCategory = interactionSource.value || null;
             renderInteractionBrowser();
         }});
         const interactionSearch = document.getElementById('interaction-search');
-        interactionSearch.addEventListener('input', () => {{
+        interactionSearch?.addEventListener('input', () => {{
             renderInteractionBrowser();
         }});
 
@@ -25194,17 +25443,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 .filter((index) => Number(log2fc[index]) < 0)
                 .map((index) => genes[index])
         );
-        const renderMarkerGroup = (entries, enrichedCategory) => `
+        const renderMarkerGroup = (entries, enrichedCategory, side) => {{
+            const key = [colorCol, sourceCategory, referenceCategory, side].map(value => String(value ?? '')).join('\\u001f');
+            const expanded = !!clusterDEMarkerExpanded[key];
+            const visibleEntries = expanded ? entries : entries.slice(0, 30);
+            const remaining = Math.max(0, entries.length - visibleEntries.length);
+            const link = entries.length > 30
+                ? `<button type="button" class="cluster-de-more-link" data-cluster-de-marker-more="${{escapeHtml(key)}}">${{expanded ? 'Hide extra genes' : `Show more (${{remaining.toLocaleString()}})`}}</button>`
+                : '';
+            return `
             <div class="agg-group">
                 <div class="agg-group-title">
                     <span class="agg-group-title-main">${{renderAggCategoryChip(colorCol, enrichedCategory)}}</span>
                     <span class="agg-group-title-actions"><span class="agg-chip agg-count-chip">${{entries.length.toLocaleString()}} genes</span></span>
                 </div>
-                ${{renderComparisonGeneTokenGrid(entries, 'No genes pass the current adjusted p-value and log\u2082FC thresholds in this direction.', 'Load pseudobulk marker into the viewer')}}
+                ${{renderComparisonGeneTokenGrid(visibleEntries, 'No genes pass the current adjusted p-value and log\u2082FC thresholds in this direction.', 'Load pseudobulk marker into the viewer')}}
+                ${{link ? `<div class="cluster-de-table-actions">${{link}}</div>` : ''}}
             </div>
         `;
-        return renderMarkerGroup(sourceMarkerEntries, sourceCategory)
-            + renderMarkerGroup(referenceMarkerEntries, referenceCategory);
+        }};
+        return renderMarkerGroup(sourceMarkerEntries, sourceCategory, 'source')
+            + renderMarkerGroup(referenceMarkerEntries, referenceCategory, 'reference');
     }}
 
     function renderInteractionComparisonCard(colorCol, sourceCategory, targetCategory) {{
@@ -25289,8 +25548,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const fc = Number(log2fc[idx]);
         const padj = Number(pvalsAdj[idx]);
         if (!Number.isFinite(fc) || !Number.isFinite(padj)) return false;
-        if (!doesClusterDEIndexPassPct(result, idx)) return false;
-        if (padj > padjCutoff) return false;
+        if (padj >= padjCutoff) return false;
         if (direction === 'positive') return fc >= log2fcCutoff;
         if (direction === 'negative') return fc <= -log2fcCutoff;
         return Math.abs(fc) >= log2fcCutoff;
@@ -25339,7 +25597,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             + '</span>';
     }}
 
-    function wrapClusterDEPlot(title, meta, svgText, showCalcInfo = true, exportKey = '') {{
+    function wrapClusterDEPlot(title, meta, svgText, showCalcInfo = true, exportKey = '', calcInfoKey = 'de_genes') {{
         if (!svgText) return '';
         const exportLabel = exportKey === 'dotplot' ? 'dot plot' : title;
         const exportButton = exportKey
@@ -25347,9 +25605,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             : '';
         return `
             <div class="cluster-de-plot-panel"${{exportKey ? ` data-cluster-de-plot="${{escapeHtml(exportKey)}}"` : ''}}>
-                <div class="cluster-de-plot-title"><span>${{escapeHtml(title)}}</span>${{showCalcInfo ? renderCalcInfoButton('de_genes') : ''}}${{exportButton}}</div>
+                <div class="cluster-de-figure-title"><span>${{escapeHtml(title)}}</span>${{showCalcInfo ? renderCalcInfoButton(calcInfoKey) : ''}}</div>
                 ${{meta ? `<div class="cluster-de-plot-meta">${{escapeHtml(meta)}}</div>` : ''}}
                 ${{svgText}}
+                ${{exportButton ? `<div class="cluster-de-plot-actions">${{exportButton}}</div>` : ''}}
                 <div class="volcano-tooltip"></div>
             </div>
         `;
@@ -25357,17 +25616,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function wrapClusterDEVolcanoPlot(volcanoHtml) {{
         if (!volcanoHtml) return '';
+        const exportButton = `<button class="icon-btn cluster-de-plot-export" type="button" data-cluster-de-download-plot="volcano" title="Download volcano as SVG" aria-label="Download volcano as SVG">${{LEGEND_EXPORT_ICON}}</button>`;
         return `
             <div class="cluster-de-plot-panel cluster-de-volcano-panel" data-cluster-de-plot="volcano">
-                <div class="cluster-de-plot-title"><span>Volcano</span>${{renderCalcInfoButton('de_genes')}}</div>
+                <div class="cluster-de-figure-title"><span>Volcano</span>${{renderCalcInfoButton('pseudobulk_volcano_plot')}}</div>
                 <div class="cluster-de-volcano-container">${{volcanoHtml}}</div>
+                <div class="cluster-de-plot-actions">${{exportButton}}</div>
             </div>
         `;
     }}
 
-    function buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff = 0.05, log2fcCutoff = 0.5) {{
+    function buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, pctSource = [], pctReference = [], minPctCutoff = 0, padjCutoff = 0.05, log2fcCutoff = 0.5, colorCol = null, sourceCategory = null, referenceCategory = null) {{
         if (!genes.length) return '';
-        const rawPThreshold = 0.05;
+        const maPadjThreshold = 0.1;
         const W = 390, H = 180, ml = 38, mr = 10, mt = 8, mb = 24;
         const iw = W - ml - mr, ih = H - mt - mb;
         const xValues = genes.map((_, i) => {{
@@ -25395,31 +25656,39 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             parts.push('<text class="volcano-axis-label" x="' + (ml-5) + '" y="' + ys(t).toFixed(1) + '" text-anchor="end" dy="0.35em">' + t + '</text>');
         }});
         parts.push('<text class="volcano-axis-label" x="' + (ml+iw/2).toFixed(1) + '" y="' + (H-2) + '" text-anchor="middle">baseMean</text>');
-        parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">logFC</text>');
-        const counts = {{ green: 0, grey: 0 }};
+        parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">log\u2082FC</text>');
+        const counts = {{ red: 0, grey: 0 }};
+        const dots = [];
         genes.forEach((gene, i) => {{
             const fc = yValues[i];
             const rawP = Number(pvals[i]);
             const padj = Number(pvalsAdj[i]);
-            const isRawSignificant = Number.isFinite(rawP) && rawP < rawPThreshold;
-            const dotClass = isRawSignificant ? 'green' : 'grey';
+            const sourcePct = Number(pctSource[i]);
+            const referencePct = Number(pctReference[i]);
+            const passesPadj = Number.isFinite(padj) && padj < maPadjThreshold;
+            const dotClass = !passesPadj ? 'grey' : 'red';
             counts[dotClass] += 1;
             const rawPDisplay = Number.isFinite(rawP) ? formatScaleNumber(rawP) : 'n/a';
             const padjDisplay = formatAdjustedPValue(padj);
             const baseDisplay = formatScaleNumber(xValues[i]);
-            const color = isRawSignificant ? '#2f9e67' : 'var(--border-color)';
+            const color = dotClass === 'red' ? '#d94f4f' : 'var(--border-color)';
             const embedded = isEmbeddedViewerGene(gene);
-            const extraLine = embedded ? '' : '" data-tooltip-line5="Expression vector not embedded"';
-            parts.push('<circle class="volcano-dot" cx="' + xs(xValues[i]).toFixed(1) + '" cy="' + ys(fc).toFixed(1) + '" r="2.8" fill="' + color + '" fill-opacity="0.78" data-volcano-gene="' + escapeHtml(gene) + '" data-gene-embedded="' + (embedded ? 'true' : 'false') + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-p="' + rawPDisplay + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="baseMean: ' + escapeHtml(baseDisplay) + '" data-tooltip-line2="logFC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line3="pvalue: ' + escapeHtml(rawPDisplay) + '" data-tooltip-line4="adj. p: ' + escapeHtml(padjDisplay) + extraLine + '"/>');
+            const pctLine = 'pct expr: ' + escapeHtml(formatClusterDEPct(Number.isFinite(sourcePct) ? sourcePct : NaN)) + ' / ' + escapeHtml(formatClusterDEPct(Number.isFinite(referencePct) ? referencePct : NaN));
+            const extraLine = embedded ? '' : '" data-tooltip-line6="Expression vector not embedded"';
+            dots.push({{ dotClass, html: '<circle class="volcano-dot" cx="' + xs(xValues[i]).toFixed(1) + '" cy="' + ys(fc).toFixed(1) + '" r="2.8" fill="' + color + '" fill-opacity="0.78" data-volcano-gene="' + escapeHtml(gene) + '" data-gene-embedded="' + (embedded ? 'true' : 'false') + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-p="' + rawPDisplay + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="baseMean: ' + escapeHtml(baseDisplay) + '" data-tooltip-line2="logFC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line3="pvalue: ' + escapeHtml(rawPDisplay) + '" data-tooltip-line4="adj. p: ' + escapeHtml(padjDisplay) + '" data-tooltip-line5="' + pctLine + extraLine + '"/>' }});
+        }});
+        ['grey', 'red'].forEach((layer) => {{
+            dots.filter(dot => dot.dotClass === layer).forEach(dot => parts.push(dot.html));
         }});
         parts.push('</svg>');
+        const greyLabel = 'adj. p >= 0.1';
         const summary = [
             '<div class="volcano-summary" aria-label="MA plot dot counts">',
-            buildClusterDESummaryItem('p < 0.05', '#2f9e67', counts.green),
-            buildClusterDESummaryItem('p >= 0.05', 'var(--border-color)', counts.grey),
+            buildClusterDESummaryItem(greyLabel, 'var(--border-color)', counts.grey),
+            buildClusterDESummaryItem('adj. p < 0.1', '#d94f4f', counts.red),
             '</div>',
         ].join('');
-        return wrapClusterDEPlot('MA Plot', 'Mean expression vs log fold-change', parts.join('') + summary, false, 'ma-plot');
+        return wrapClusterDEPlot('MA Plot', 'Mean expression vs log\u2082FC; adjusted p-value controls coloring', parts.join('') + summary, true, 'ma-plot', 'pseudobulk_ma_plot');
     }}
 
     function buildPseudobulkPCAPlot(sampleInfo, colorCol) {{
@@ -25470,7 +25739,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         parts.push('<text class="volcano-axis-label" x="8" y="' + (mt+ih/2).toFixed(1) + '" text-anchor="middle" transform="rotate(-90,8,' + (mt+ih/2).toFixed(1) + ')">' + escapeHtml(yLabel) + '</text>');
         const legend = uniqueGroups.slice(0, 6).map((group) => buildClusterDESummaryItem(group, groupColor(group))).join('');
         parts.push('</svg>');
-        return wrapClusterDEPlot('PCA', `Pseudobulk samples, ${{Number(sampleInfo.pca_features || 0).toLocaleString()}} variable genes`, parts.join('') + '<div class="volcano-summary">' + legend + '</div>', false, 'dotplot');
+        return wrapClusterDEPlot('PCA', `Pseudobulk samples, ${{Number(sampleInfo.pca_features || 0).toLocaleString()}} variable genes`, parts.join('') + '<div class="volcano-summary">' + legend + '</div>', true, 'dotplot', 'pseudobulk_pca_plot');
     }}
 
     function buildPseudobulkDistanceHeatmap(sampleInfo, colorCol) {{
@@ -25521,13 +25790,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }});
         }}
         parts.push('</svg>');
-        const legend = uniqueGroups.slice(0, 12).map((group) => buildClusterDESummaryItem(group, groupColor(group))).join('');
         return wrapClusterDEPlot(
             'Distance Matrix',
             'Hierarchical clustering of pseudobulk samples, Euclidean distance on log1p CPM',
-            parts.join('') + '<div class="volcano-summary">' + legend + '</div>',
-            false,
-            'distance-matrix'
+            parts.join(''),
+            true,
+            'distance-matrix',
+            'pseudobulk_distance_matrix'
         );
     }}
 
@@ -25535,7 +25804,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!genes.length) return '';
         const padjThreshold = Math.min(Math.max(normalizePositiveThreshold(padjCutoff, 0.05), 0), 1);
         const fcThr = normalizePositiveThreshold(log2fcCutoff, 0.5);
-        const pctThr = normalizePositiveThreshold(minPctCutoff, 0);
         const sourceColor = colorCol && sourceCategory !== null ? getCategoryColorForValue(colorCol, sourceCategory) : '#d94f4f';
         const referenceColor = colorCol && referenceCategory !== null ? getCategoryColorForValue(colorCol, referenceCategory) : '#4f82d9';
         const sourceLabel = sourceCategory !== null ? String(sourceCategory) : 'Source';
@@ -25559,6 +25827,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sigNLP = -Math.log10(Math.max(padjThreshold, Number.MIN_VALUE));
         const parts = [];
         const counts = {{ source: 0, reference: 0, grey: 0 }};
+        const dots = [];
         parts.push('<svg class="volcano-svg" viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '">');
         parts.push('<line x1="' + ml + '" y1="' + mt + '" x2="' + ml + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
         parts.push('<line x1="' + ml + '" y1="' + (mt+ih) + '" x2="' + (ml+iw) + '" y2="' + (mt+ih) + '" stroke="var(--border-color)"/>');
@@ -25584,11 +25853,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const pvalAdj = Number(pvalsAdj[i]);
             const sourcePct = Number(pctSource[i]);
             const referencePct = Number(pctReference[i]);
-            const passesPct = pctThr <= 0
-                || (Number.isFinite(sourcePct) && sourcePct >= pctThr)
-                || (Number.isFinite(referencePct) && referencePct >= pctThr);
-            const sig = Number.isFinite(pvalAdj) && pvalAdj <= padjThreshold && Math.abs(fc) >= fcThr && passesPct;
-            const dotClass = sig ? (fc > 0 ? 'source' : 'reference') : 'grey';
+            const passesStats = Number.isFinite(pvalAdj) && pvalAdj < padjThreshold && Math.abs(fc) >= fcThr;
+            const dotClass = !passesStats ? 'grey' : (fc > 0 ? 'source' : 'reference');
             counts[dotClass] += 1;
             const col = dotClass === 'source' ? sourceColor : (dotClass === 'reference' ? referenceColor : 'var(--border-color)');
             const safePAdj = Number.isFinite(pvalAdj) ? pvalAdj : 1;
@@ -25596,17 +25862,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const embedded = isEmbeddedViewerGene(gene);
             const pctLine = 'pct expr: ' + escapeHtml(formatClusterDEPct(Number.isFinite(sourcePct) ? sourcePct : NaN)) + ' / ' + escapeHtml(formatClusterDEPct(Number.isFinite(referencePct) ? referencePct : NaN));
             const extraLine = embedded ? '' : '" data-tooltip-line4="Expression vector not embedded"';
-            parts.push('<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(nlpi).toFixed(1) + '" r="3" fill="' + col + '" fill-opacity="0.82" data-volcano-class="' + dotClass + '" data-volcano-gene="' + escapeHtml(gene) + '" data-gene-embedded="' + (embedded ? 'true' : 'false') + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="log\u2082FC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line2="adj. p: ' + escapeHtml(padjDisplay) + '" data-tooltip-line3="' + pctLine + extraLine + '"/>');
+            dots.push({{ dotClass, html: '<circle class="volcano-dot" cx="' + xs(fc).toFixed(1) + '" cy="' + ys(nlpi).toFixed(1) + '" r="3" fill="' + col + '" fill-opacity="0.82" data-volcano-class="' + dotClass + '" data-volcano-gene="' + escapeHtml(gene) + '" data-gene-embedded="' + (embedded ? 'true' : 'false') + '" data-volcano-fc="' + fc.toFixed(3) + '" data-volcano-padj="' + padjDisplay + '" data-tooltip-title="' + escapeHtml(gene) + '" data-tooltip-line1="log\u2082FC: ' + escapeHtml(fc.toFixed(3)) + '" data-tooltip-line2="adj. p: ' + escapeHtml(padjDisplay) + '" data-tooltip-line3="' + pctLine + extraLine + '"/>' }});
+        }});
+        ['grey', 'reference', 'source'].forEach((layer) => {{
+            dots.filter(dot => dot.dotClass === layer).forEach(dot => parts.push(dot.html));
         }});
         parts.push('</svg>');
-        const greyLabel = 'adj. p > ' + formatAdjustedPValue(padjThreshold)
-            + ' or |log2FC| < ' + formatScaleNumber(fcThr)
-            + (pctThr > 0 ? ' or max % expr < ' + formatClusterDEPct(pctThr) : '');
+        const greyLabel = 'adj. p >= ' + formatAdjustedPValue(padjThreshold)
+            + ' or |log2FC| < ' + formatScaleNumber(fcThr);
         const summary = [
             '<div class="volcano-summary" aria-label="Volcano dot counts">',
+            buildClusterDESummaryItem(greyLabel, 'var(--border-color)', counts.grey),
             buildClusterDESummaryItem(referenceLabel, referenceColor, counts.reference),
             buildClusterDESummaryItem(sourceLabel, sourceColor, counts.source),
-            buildClusterDESummaryItem(greyLabel, 'var(--border-color)', counts.grey),
             '</div>',
         ].join('');
         return '<div class="volcano-container">' + parts.join('') + summary + '<div class="volcano-tooltip"></div></div>';
@@ -25766,14 +26034,34 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function bindClusterDEPlotInteractions(container, rerenderFn) {{
         container.querySelectorAll('[data-pathway-annotation-select]').forEach((select) => {{
             select.addEventListener('change', () => {{
-                const result = select.closest('[data-pathway-analysis-result]');
+                const result = select.closest('[data-pathway-analysis-result]')
+                    || select.closest('#cluster-de-results')?.querySelector('[data-pathway-analysis-result]')
+                    || container.querySelector('[data-pathway-analysis-result]');
                 const selected = String(select.value || 'source');
+                pathwayAnnotationSide = selected === 'reference' ? 'reference' : 'source';
                 result?.querySelectorAll?.('[data-pathway-annotation-panel]').forEach((panel) => {{
                     panel.hidden = panel.getAttribute('data-pathway-annotation-panel') !== selected;
                 }});
                 result?.querySelectorAll?.('.volcano-tooltip').forEach((tooltip) => {{
                     tooltip.style.display = 'none';
                 }});
+            }});
+        }});
+        container.querySelectorAll('[data-pathway-mode]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                pathwayEnrichmentMode = button.getAttribute('data-pathway-mode') || 'ora';
+                rerenderFn();
+            }});
+        }});
+        container.querySelectorAll('[data-pathway-view-mode]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                pathwayViewMode = button.getAttribute('data-pathway-view-mode') || 'plot';
+                rerenderFn();
+            }});
+        }});
+        container.querySelectorAll('[data-pathway-download-table]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                downloadCurrentPathwayTable(button.getAttribute('data-pathway-download-table') || 'ora');
             }});
         }});
         container.querySelectorAll('[data-pathway-gsea-select]').forEach((select) => {{
@@ -25816,8 +26104,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function getClusterDEColoredIndices(result) {{
         if (!result || result.available === false) return [];
         const genes = Array.isArray(result.genes) ? result.genes : [];
+        const pvalsAdj = Array.isArray(result.pvals_adj) ? result.pvals_adj : [];
+        const pvals = Array.isArray(result.pvals) ? result.pvals : [];
+        const log2fc = Array.isArray(result.log2foldchanges)
+            ? result.log2foldchanges
+            : (Array.isArray(result.logfoldchanges) ? result.logfoldchanges : []);
         return genes.map((gene, idx) => idx)
-            .filter((idx) => doesClusterDEIndexPassThresholds(result, idx));
+            .filter((idx) => doesClusterDEIndexPassThresholds(result, idx))
+            .sort((a, b) => {{
+                const ap = Number(pvalsAdj[a]), bp = Number(pvalsAdj[b]);
+                if (Number.isFinite(ap) && Number.isFinite(bp) && ap !== bp) return ap - bp;
+                if (Number.isFinite(ap) !== Number.isFinite(bp)) return Number.isFinite(ap) ? -1 : 1;
+                const ar = Number(pvals[a]), br = Number(pvals[b]);
+                if (Number.isFinite(ar) && Number.isFinite(br) && ar !== br) return ar - br;
+                const afc = Math.abs(Number(log2fc[a]) || 0), bfc = Math.abs(Number(log2fc[b]) || 0);
+                if (afc !== bfc) return bfc - afc;
+                return String(genes[a] || '').localeCompare(String(genes[b] || ''));
+            }});
     }}
 
     function getClusterDETableEntries(result, coloredOnly = false) {{
@@ -25909,6 +26212,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
+    function downloadCurrentPathwayTable(method) {{
+        const result = getPairwiseClusterDEResult(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory);
+        if (!result?.pathway_enrichment) {{
+            alert('No pathway enrichment result is available for this comparison.');
+            return;
+        }}
+        const side = pathwayAnnotationSide === 'reference' ? 'reference' : 'source';
+        const direction = method === 'gsea'
+            ? (side === 'reference' ? 'negative' : 'positive')
+            : (side === 'reference' ? 'down' : 'up');
+        const rows = sortPathwayRows(
+            getPathwayEnrichmentRows(result, method, direction)
+                .map(row => ({{ ...row, pathwayDirection: direction }})),
+            method
+        );
+        if (!rows.length) {{
+            alert('No pathway rows are available for this selection.');
+            return;
+        }}
+        const sideLabel = side === 'reference' ? 'annotation-b' : 'annotation-a';
+        downloadTextFile(
+            buildPathwayRowsCsv(rows, method),
+            `${{getClusterDEFilenameStem()}}-${{sanitizeFilenamePart(method)}}-${{sideLabel}}.csv`,
+            'text/csv;charset=utf-8'
+        );
+    }}
+
     function getClusterDESvgText(svg) {{
         if (!svg) {{
             return null;
@@ -25924,15 +26254,19 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function downloadClusterDEPlotSvg(container, exportKey) {{
-        const panel = container?.querySelector?.(`[data-cluster-de-plot="${{String(exportKey || '')}}"]`);
+        const key = String(exportKey || '');
+        const panel = container?.matches?.(`[data-cluster-de-plot="${{key}}"]`)
+            ? container
+            : container?.querySelector?.(`[data-cluster-de-plot="${{key}}"]`);
         const selectedSvg = panel?.querySelector?.('[data-gsea-pathway-panel]:not([hidden]) .cluster-de-qc-svg')
-            || panel?.querySelector?.('.cluster-de-qc-svg');
+            || panel?.querySelector?.('.cluster-de-qc-svg')
+            || panel?.querySelector?.('.volcano-svg');
         const text = getClusterDESvgText(selectedSvg);
         if (!text) {{
             alert('This plot is not available for download.');
             return;
         }}
-        downloadTextFile(text, `${{getClusterDEFilenameStem()}}-${{sanitizeFilenamePart(exportKey || 'plot')}}.svg`, 'image/svg+xml;charset=utf-8');
+        downloadTextFile(text, `${{getClusterDEFilenameStem()}}-${{sanitizeFilenamePart(key || 'plot')}}.svg`, 'image/svg+xml;charset=utf-8');
     }}
 
     function downloadCurrentClusterDEVolcanoSvg(container) {{
@@ -26016,9 +26350,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const t = Math.min(1, Math.max(0, (score - minScore) / denom));
         const stops = [
             [219, 234, 254],
-            [96, 165, 250],
-            [37, 99, 235],
-            [127, 29, 29],
+            [147, 197, 253],
+            [59, 130, 246],
+            [29, 78, 216],
         ];
         const scaled = t * (stops.length - 1);
         const idx = Math.min(stops.length - 2, Math.max(0, Math.floor(scaled)));
@@ -26031,13 +26365,110 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return `rgb(${{r}},${{g}},${{blue}})`;
     }}
 
+    function pathwayAdjustedPBorderColor(row) {{
+        const padj = Number(row?.padj);
+        return Number.isFinite(padj) && padj < 0.05 ? '#d94f4f' : '#111111';
+    }}
+
+    function sortPathwayRows(rows, method) {{
+        const values = Array.isArray(rows) ? rows.slice() : [];
+        return values.sort((a, b) => {{
+            if (method === 'ora') {{
+                const ar = pathwayOraGeneRatio(a), br = pathwayOraGeneRatio(b);
+                if (Number.isFinite(ar) && Number.isFinite(br) && ar !== br) return br - ar;
+            }}
+            const ap = Number(a?.padj), bp = Number(b?.padj);
+            if (Number.isFinite(ap) && Number.isFinite(bp) && ap !== bp) return ap - bp;
+            if (method === 'gsea') {{
+                const an = Math.abs(Number(a?.nes || 0)), bn = Math.abs(Number(b?.nes || 0));
+                if (an !== bn) return bn - an;
+            }}
+            return String(a?.term || '').localeCompare(String(b?.term || ''));
+        }});
+    }}
+
+    function buildPathwayRawTable(rows, method) {{
+        const cleanRows = Array.isArray(rows) ? rows : [];
+        if (!cleanRows.length) return '<div class="pathway-analysis-empty">No pathway rows are available for this selection.</div>';
+        const pvalueChip = (value, label = null) => {{
+            const numeric = Number(value);
+            const isSig = Number.isFinite(numeric) && (method === 'ora' ? numeric < 0.05 : numeric <= 0.05);
+            const chipClass = isSig ? 'is-sig' : 'is-nonsig';
+            const text = label !== null ? label : formatPathwayPValue(value);
+            return `<span class="pathway-pvalue-chip ${{chipClass}}">${{escapeHtml(String(text))}}</span>`;
+        }};
+        const header = method === 'gsea'
+            ? '<tr><th>Pathway</th><th>NES</th><th>ES</th><th>adj. p</th><th>Hits</th></tr>'
+            : '<tr><th>Pathway</th><th>GeneRatio</th><th>Genes</th><th>adj. p</th><th>-log\u2081\u2080 adj. p</th></tr>';
+        const body = cleanRows.map((row) => {{
+            const term = String(row?.term || '');
+            if (method === 'gsea') {{
+                const hits = Array.isArray(row?.hit_indices) ? row.hit_indices.length : Number(row?.hits || row?.overlap || 0);
+                return `<tr><td>${{escapeHtml(term)}}</td><td>${{formatScaleNumber(Math.abs(Number(row?.nes)))}}</td><td>${{formatScaleNumber(Math.abs(Number(row?.es)))}}</td><td>${{pvalueChip(row?.padj)}}</td><td>${{Number.isFinite(Number(hits)) ? Number(hits).toLocaleString() : 'n/a'}}</td></tr>`;
+            }}
+            const ratio = pathwayOraGeneRatio(row);
+            const overlap = Number(row?.overlap || 0);
+            const querySize = Number(row?.query_size || 0);
+            return `<tr><td>${{escapeHtml(term)}}</td><td>${{formatScaleNumber(ratio)}}</td><td>${{overlap.toLocaleString()}} / ${{querySize.toLocaleString()}}</td><td>${{pvalueChip(row?.padj)}}</td><td>${{pvalueChip(row?.padj, formatScaleNumber(pathwayAdjustedPScore(row)))}}</td></tr>`;
+        }}).join('');
+        return `<table class="cluster-de-table"><thead>${{header}}</thead><tbody>${{body}}</tbody></table>`;
+    }}
+
+    function buildPathwayRowsCsv(rows, method) {{
+        const headers = method === 'gsea'
+            ? ['term', 'nes_abs', 'es_abs', 'padj', 'hits', 'leading_edge']
+            : ['term', 'gene_ratio', 'overlap', 'query_size', 'pathway_size', 'padj', 'minus_log10_padj', 'genes'];
+        const lines = [headers.map(csvEscape).join(',')];
+        (Array.isArray(rows) ? rows : []).forEach((row) => {{
+            if (method === 'gsea') {{
+                const hits = Array.isArray(row?.hit_indices) ? row.hit_indices.length : Number(row?.hits || row?.overlap || 0);
+                const leading = Array.isArray(row?.leading_edge) ? row.leading_edge.join(';') : '';
+                lines.push([
+                    row?.term || '',
+                    csvFormatNumber(Math.abs(Number(row?.nes))),
+                    csvFormatNumber(Math.abs(Number(row?.es))),
+                    csvFormatNumber(Number(row?.padj)),
+                    Number.isFinite(Number(hits)) ? Number(hits) : '',
+                    leading,
+                ].map(csvEscape).join(','));
+            }} else {{
+                const genes = Array.isArray(row?.genes) ? row.genes.join(';') : '';
+                lines.push([
+                    row?.term || '',
+                    csvFormatNumber(pathwayOraGeneRatio(row)),
+                    csvFormatNumber(Number(row?.overlap)),
+                    csvFormatNumber(Number(row?.query_size)),
+                    csvFormatNumber(Number(row?.pathway_size)),
+                    csvFormatNumber(Number(row?.padj)),
+                    csvFormatNumber(pathwayAdjustedPScore(row)),
+                    genes,
+                ].map(csvEscape).join(','));
+            }}
+        }});
+        return lines.join('\\n') + '\\n';
+    }}
+
+    function renderPathwayViewToggle(method) {{
+        const plotActive = pathwayViewMode !== 'table';
+        return `
+            <div class="gene-subtab-view-toggle" role="group" aria-label="${{escapeHtml(method.toUpperCase())}} pathway view">
+                <button type="button" class="legend-btn icon-only${{plotActive ? ' active' : ''}}" data-pathway-view-mode="plot" title="Show plot" aria-label="Show plot" aria-pressed="${{plotActive}}">
+                    <svg class="lucide lucide-chart-candlestick" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5v4"></path><rect x="7" y="9" width="4" height="6" rx="1"></rect><path d="M9 15v2"></path><path d="M17 3v2"></path><rect x="15" y="5" width="4" height="8" rx="1"></rect><path d="M17 13v3"></path><path d="M3 3v16a2 2 0 0 0 2 2h16"></path></svg>
+                </button>
+                <button type="button" class="legend-btn icon-only${{!plotActive ? ' active' : ''}}" data-pathway-view-mode="table" title="Show raw table" aria-label="Show raw table" aria-pressed="${{!plotActive}}">
+                    <svg class="lucide lucide-list-sort-descending" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 12H3"></path><path d="M3 5h18"></path><path d="M9 19H3"></path></svg>
+                </button>
+            </div>
+        `;
+    }}
+
     function buildPathwayORADotPlot(rows, sourceCategory, referenceCategory, sourceColor, referenceColor) {{
         const cleanRows = (Array.isArray(rows) ? rows : [])
             .filter(row => row && String(row.term || '').trim())
             .slice(0, 16);
         if (!cleanRows.length) return '';
 
-        const W = 420, rowH = 23, ml = 156, mr = 72, mt = 18, mb = 40;
+        const W = 440, rowH = 23, ml = 194, mr = 112, mt = 18, mb = 58;
         const H = Math.max(174, mt + mb + cleanRows.length * rowH);
         const iw = W - ml - mr;
         const ratios = cleanRows.map(pathwayOraGeneRatio);
@@ -26045,16 +26476,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const scores = cleanRows.map(pathwayAdjustedPScore).filter(Number.isFinite);
         const minOverlap = Math.min.apply(null, overlaps.concat([1]));
         const maxOverlap = Math.max.apply(null, overlaps.concat([1]));
-        const minScore = Math.min.apply(null, scores.concat([0]));
-        const maxScore = Math.max.apply(null, scores.concat([1]));
+        const minScore = scores.length ? Math.min.apply(null, scores) : 0;
+        const maxScore = scores.length ? Math.max.apply(null, scores) : 1;
         const overlapDenom = Math.max(maxOverlap - minOverlap, 1);
-        const xs = value => ml + (Math.max(0, value) / Math.max(maxScore, 1e-6)) * iw;
+        const maxRatio = Math.max.apply(null, ratios.concat([0.01]));
+        const xs = value => ml + (Math.max(0, value) / Math.max(maxRatio, 1e-6)) * iw;
         const radiusForOverlap = overlap => 4 + Math.sqrt(Math.max(0, Number(overlap || 0) - minOverlap) / overlapDenom) * 7;
 
         const parts = [];
         parts.push(`<svg class="cluster-de-qc-svg pathway-enrichment-svg" viewBox="0 0 ${{W}} ${{H}}" width="${{W}}" height="${{H}}">`);
         parts.push(`<line x1="${{ml}}" y1="${{H - mb}}" x2="${{W - mr}}" y2="${{H - mb}}" stroke="var(--border-color)"/>`);
-        [0, maxScore / 2, maxScore].forEach((tick) => {{
+        [0, maxRatio / 2, maxRatio].forEach((tick) => {{
             const x = xs(tick);
             parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{H - mb - 4}}" x2="${{x.toFixed(1)}}" y2="${{H - mb + 4}}" stroke="var(--border-color)"/>`);
             parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 16}}" text-anchor="middle">${{formatScaleNumber(tick)}}</text>`);
@@ -26064,7 +26496,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const y = mt + idx * rowH + rowH / 2;
             const ratio = pathwayOraGeneRatio(row);
             const padjScore = pathwayAdjustedPScore(row);
-            const x = xs(padjScore);
+            const x = xs(ratio);
             const overlap = Number(row.overlap || 0);
             const querySize = Number(row.query_size || 0);
             const pathwaySize = Number(row.pathway_size || 0);
@@ -26074,60 +26506,65 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const directionLabel = row.pathwayDirection === 'up'
                 ? `Favors ${{sourceCategory}}`
                 : `Favors ${{referenceCategory}}`;
-            const stroke = row.pathwayDirection === 'up' ? sourceColor : referenceColor;
             const fill = pathwayAdjustedPColor(row, minScore, maxScore);
             const line1 = `-log10 adj. p: ${{formatScaleNumber(padjScore)}} | adj. p: ${{formatPathwayPValue(row.padj)}}`;
             const line2 = `GeneRatio: ${{overlap.toLocaleString()}} / ${{querySize.toLocaleString()}} (${{formatScaleNumber(ratio)}}) | pathway size: ${{pathwaySize.toLocaleString()}}`;
             const line3 = genes.length ? `${{directionLabel}} | ${{genes.slice(0, 10).join(', ')}}${{genes.length > 10 ? ', …' : ''}}` : directionLabel;
-            parts.push(`<text class="volcano-axis-label" x="${{ml - 6}}" y="${{y.toFixed(1)}}" text-anchor="end" dy="0.35em" font-size="7">${{escapeHtml(shortenPathwayTerm(term))}}</text>`);
-            parts.push(`<circle cx="${{x.toFixed(1)}}" cy="${{y.toFixed(1)}}" r="${{r.toFixed(1)}}" fill="${{fill}}" fill-opacity="0.86" stroke="${{stroke}}" stroke-width="1.5" data-tooltip-title="${{escapeHtml(term)}}" data-tooltip-line1="${{escapeHtml(line1)}}" data-tooltip-line2="${{escapeHtml(line2)}}" data-tooltip-line3="${{escapeHtml(line3)}}"/>`);
+            const border = pathwayAdjustedPBorderColor(row);
+            parts.push(`<foreignObject x="4" y="${{(y - 7).toFixed(1)}}" width="${{ml - 14}}" height="14"><div xmlns="http://www.w3.org/1999/xhtml" style="height:14px;line-height:14px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:6.2px;color:var(--muted-color);">${{escapeHtml(term)}}</div></foreignObject>`);
+            parts.push(`<circle cx="${{x.toFixed(1)}}" cy="${{y.toFixed(1)}}" r="${{r.toFixed(1)}}" fill="${{fill}}" fill-opacity="0.9" stroke="${{border}}" stroke-width="1.8" data-tooltip-title="${{escapeHtml(term)}}" data-tooltip-line1="${{escapeHtml(line1)}}" data-tooltip-line2="${{escapeHtml(line2)}}" data-tooltip-line3="${{escapeHtml(line3)}}"/>`);
         }});
 
-        const legendX = W - 58;
-        const colorY = mt + 4;
-        parts.push(`<text class="volcano-axis-label" x="${{legendX}}" y="${{colorY - 6}}" text-anchor="start">adj. p</text>`);
-        [0, 0.25, 0.5, 0.75, 1].forEach((t, idx) => {{
-            const score = minScore + (maxScore - minScore) * t;
-            const pseudoPadj = Math.pow(10, -score);
-            const color = pathwayAdjustedPColor({{ padj: pseudoPadj }}, minScore, maxScore);
-            parts.push(`<rect x="${{legendX}}" y="${{colorY + idx * 9}}" width="18" height="9" fill="${{color}}"/>`);
-        }});
-        parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{colorY + 8}}" text-anchor="start">${{formatPathwayPValue(Math.pow(10, -maxScore))}}</text>`);
-        parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{colorY + 44}}" text-anchor="start">${{formatPathwayPValue(Math.pow(10, -minScore))}}</text>`);
-
-        const sizeY = colorY + 72;
         const sizeTicks = Array.from(new Set([minOverlap, Math.round((minOverlap + maxOverlap) / 2), maxOverlap]))
             .filter(value => Number.isFinite(value) && value > 0);
-        parts.push(`<text class="volcano-axis-label" x="${{legendX}}" y="${{sizeY - 8}}" text-anchor="start">genes</text>`);
+        const legendX = W - mr + 12;
+        const legendBottom = H - mb - 8;
+        const legendHeight = 133 + sizeTicks.length * 24;
+        const colorY = Math.max(mt + 12, legendBottom - legendHeight);
+        parts.push(`<text class="volcano-axis-label" x="${{legendX}}" y="${{colorY - 6}}" text-anchor="start">-log10 adj. p</text>`);
+        [0, 0.25, 0.5, 0.75, 1].forEach((t, idx) => {{
+            const score = minScore + (maxScore - minScore) * (1 - t);
+            const pseudoPadj = Math.pow(10, -score);
+            const color = pathwayAdjustedPColor({{ padj: pseudoPadj }}, minScore, maxScore);
+            parts.push(`<rect x="${{legendX}}" y="${{colorY + idx * 12}}" width="18" height="11" fill="${{color}}"/>`);
+        }});
+        parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{colorY + 9}}" text-anchor="start">${{formatScaleNumber(maxScore)}}</text>`);
+        parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{colorY + 57}}" text-anchor="start">${{formatScaleNumber(minScore)}}</text>`);
+
+        const sizeY = colorY + 84;
+        parts.push(`<text class="volcano-axis-label" x="${{legendX}}" y="${{sizeY - 8}}" text-anchor="start">number of genes</text>`);
         sizeTicks.forEach((value, idx) => {{
-            const y = sizeY + idx * 21;
+            const y = sizeY + idx * 24;
             const rr = radiusForOverlap(value);
             parts.push(`<circle cx="${{legendX + 8}}" cy="${{y}}" r="${{rr.toFixed(1)}}" fill="none" stroke="var(--muted-color)" stroke-width="1"/>`);
             parts.push(`<text class="volcano-axis-label" x="${{legendX + 23}}" y="${{y + 3}}" text-anchor="start">${{Number(value).toLocaleString()}}</text>`);
         }});
 
-        parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 2}}" text-anchor="middle">-log10 adjusted p</text>`);
+        const borderY = sizeY + sizeTicks.length * 24 + 14;
+        parts.push(`<text class="volcano-axis-label" x="${{legendX}}" y="${{borderY}}" text-anchor="start">border</text>`);
+        parts.push(`<circle cx="${{legendX + 8}}" cy="${{borderY + 14}}" r="5" fill="none" stroke="#d94f4f" stroke-width="1.8"/>`);
+        parts.push(`<text class="volcano-axis-label" x="${{legendX + 20}}" y="${{borderY + 17}}" text-anchor="start">adj. p &lt; 0.05</text>`);
+        parts.push(`<circle cx="${{legendX + 8}}" cy="${{borderY + 32}}" r="5" fill="none" stroke="#111111" stroke-width="1.8"/>`);
+        parts.push(`<text class="volcano-axis-label" x="${{legendX + 20}}" y="${{borderY + 35}}" text-anchor="start">adj. p ≥ 0.05</text>`);
+
+        parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 2}}" text-anchor="middle">GeneRatio</text>`);
         parts.push('</svg>');
         return parts.join('');
     }}
 
     function buildPathwayORAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide) {{
         const direction = annotationSide === 'reference' ? 'down' : 'up';
-        const rows = getPathwayEnrichmentRows(result, 'ora', direction)
-            .map(row => ({{ ...row, pathwayDirection: direction }}))
-            .sort((a, b) => {{
-                const ar = pathwayOraGeneRatio(a), br = pathwayOraGeneRatio(b);
-                if (Number.isFinite(ar) && Number.isFinite(br) && ar !== br) return br - ar;
-                const ap = Number(a.padj), bp = Number(b.padj);
-                if (Number.isFinite(ap) && Number.isFinite(bp) && ap !== bp) return ap - bp;
-                return String(a.term || '').localeCompare(String(b.term || ''));
-            }})
+        const rows = sortPathwayRows(
+            getPathwayEnrichmentRows(result, 'ora', direction)
+                .map(row => ({{ ...row, pathwayDirection: direction }})),
+            'ora'
+        )
             .slice(0, 16);
         if (!rows.length) return '';
         const label = annotationSide === 'reference' ? referenceCategory : sourceCategory;
         const svg = buildPathwayORADotPlot(rows, sourceCategory, referenceCategory, sourceColor, referenceColor);
         const meta = `ORA on significant genes favoring ${{label}}`;
-        return wrapClusterDEPlot('ORA Pathways', meta, svg, false, 'pathway-ora');
+        return wrapClusterDEPlot('ORA Pathways', meta, svg, true, 'pathway-ora', 'pathway_ora_plot');
     }}
 
     function buildPathwayORAPlot(result, sourceCategory, referenceCategory, sourceColor, referenceColor) {{
@@ -26150,19 +26587,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const hitY = topY + topH + gap;
         const metricY = hitY + hitH + gap;
         const iw = W - ml - mr;
+        const directionPositive = String(row?.pathwayDirection || row?.direction || '') !== 'negative';
+        const displaySign = directionPositive ? 1 : -1;
+        const displayRank = rank => directionPositive
+            ? Math.min(Math.max(Number(rank), 0), rankCount - 1)
+            : (rankCount - 1) - Math.min(Math.max(Number(rank), 0), rankCount - 1);
         const xForRank = rank => ml + (Math.min(Math.max(Number(rank), 0), rankCount - 1) / (rankCount - 1)) * iw;
-        const esValues = profile.map(point => Number(point?.[1])).filter(Number.isFinite);
+        const esValues = profile.map(point => displaySign * Number(point?.[1])).filter(Number.isFinite);
         const minES = Math.min.apply(null, esValues.concat([0]));
         const maxES = Math.max.apply(null, esValues.concat([0]));
         const esRange = Math.max(maxES - minES, 1e-9);
         const yForES = value => topY + topH - ((Number(value) - minES) / esRange) * topH;
-        const metricValues = metricProfile.map(point => Number(point?.[1])).filter(Number.isFinite);
+        const metricValues = metricProfile.map(point => displaySign * Number(point?.[1])).filter(Number.isFinite);
         const minMetric = Math.min.apply(null, metricValues.concat([0]));
         const maxMetric = Math.max.apply(null, metricValues.concat([0]));
         const metricRange = Math.max(maxMetric - minMetric, 1e-9);
         const yForMetric = value => metricY + metricH - ((Number(value) - minMetric) / metricRange) * metricH;
         const zeroMetricY = yForMetric(0);
-        const directionPositive = String(row?.pathwayDirection || row?.direction || '') !== 'negative';
         const profileColor = directionPositive ? sourceColor : referenceColor;
         const oppositeColor = directionPositive ? referenceColor : sourceColor;
         const term = String(row?.term || 'GSEA pathway');
@@ -26186,16 +26627,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const zeroESY = yForES(0);
         parts.push(`<line x1="${{ml}}" y1="${{zeroESY.toFixed(1)}}" x2="${{W - mr}}" y2="${{zeroESY.toFixed(1)}}" stroke="var(--muted-color)" stroke-opacity="0.8"/>`);
         const profilePoints = profile
-            .map(point => `${{xForRank(Number(point?.[0])).toFixed(1)}},${{yForES(Number(point?.[1])).toFixed(1)}}`)
+            .map(point => ({{ x: xForRank(displayRank(Number(point?.[0]))), y: yForES(displaySign * Number(point?.[1])) }}))
+            .sort((a, b) => a.x - b.x)
+            .map(point => `${{point.x.toFixed(1)}},${{point.y.toFixed(1)}}`)
             .join(' ');
         parts.push(`<polyline points="${{profilePoints}}" fill="none" stroke="${{profileColor}}" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"/>`);
         if (Number.isFinite(peakRank)) {{
-            const peakX = xForRank(peakRank);
+            const peakX = xForRank(displayRank(peakRank));
             parts.push(`<line x1="${{peakX.toFixed(1)}}" y1="${{topY}}" x2="${{peakX.toFixed(1)}}" y2="${{topY + topH}}" stroke="${{profileColor}}" stroke-opacity="0.28" stroke-dasharray="3 3"/>`);
         }}
 
         hitIndices.forEach(rank => {{
-            const x = xForRank(rank);
+            const x = xForRank(displayRank(rank));
             parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{hitY + 2}}" x2="${{x.toFixed(1)}}" y2="${{hitY + hitH - 2}}" stroke="var(--text-color)" stroke-width="1"/>`);
         }});
         const gradientSteps = 36;
@@ -26208,18 +26651,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         parts.push(`<line x1="${{ml}}" y1="${{zeroMetricY.toFixed(1)}}" x2="${{W - mr}}" y2="${{zeroMetricY.toFixed(1)}}" stroke="var(--muted-color)" stroke-opacity="0.7"/>`);
-        metricProfile.forEach((point, idx) => {{
-            const rank = Number(point?.[0]);
-            const value = Number(point?.[1]);
+        const metricPoints = metricProfile
+            .map(point => ({{
+                rank: displayRank(Number(point?.[0])),
+                value: displaySign * Number(point?.[1]),
+            }}))
+            .filter(point => Number.isFinite(point.rank) && Number.isFinite(point.value))
+            .sort((a, b) => a.rank - b.rank);
+        metricPoints.forEach((point, idx) => {{
+            const rank = Number(point.rank);
+            const value = Number(point.value);
             if (!Number.isFinite(rank) || !Number.isFinite(value)) return;
             const x = xForRank(rank);
-            const nextRank = idx + 1 < metricProfile.length ? Number(metricProfile[idx + 1]?.[0]) : rank + Math.max(1, rankCount / 100);
+            const nextRank = idx + 1 < metricPoints.length ? Number(metricPoints[idx + 1].rank) : rank + Math.max(1, rankCount / 100);
             const w = Math.max(1, xForRank(nextRank) - x);
             const y = yForMetric(value);
             parts.push(`<rect x="${{x.toFixed(1)}}" y="${{Math.min(y, zeroMetricY).toFixed(1)}}" width="${{w.toFixed(1)}}" height="${{Math.max(1, Math.abs(zeroMetricY - y)).toFixed(1)}}" fill="#b7b7b7" fill-opacity="0.82"/>`);
         }});
         if (Number.isFinite(zeroCross)) {{
-            const zx = xForRank(zeroCross);
+            const zx = xForRank(displayRank(zeroCross));
             parts.push(`<line x1="${{zx.toFixed(1)}}" y1="${{metricY}}" x2="${{zx.toFixed(1)}}" y2="${{metricY + metricH}}" stroke="var(--muted-color)" stroke-dasharray="3 3"/>`);
             parts.push(`<text class="volcano-axis-label" x="${{zx.toFixed(1)}}" y="${{metricY + metricH / 2}}" text-anchor="middle">Zero cross</text>`);
         }}
@@ -26228,14 +26678,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         tickRanks.forEach(rank => {{
             const x = xForRank(rank);
             parts.push(`<line x1="${{x.toFixed(1)}}" y1="${{metricY + metricH}}" x2="${{x.toFixed(1)}}" y2="${{metricY + metricH + 4}}" stroke="var(--border-color)"/>`);
-            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 6}}" text-anchor="middle">${{Math.round(rank + 1).toLocaleString()}}</text>`);
+            parts.push(`<text class="volcano-axis-label" x="${{x.toFixed(1)}}" y="${{H - 14}}" text-anchor="middle">${{Math.round(rank + 1).toLocaleString()}}</text>`);
         }});
         parts.push(`<text class="volcano-axis-label" x="10" y="${{(topY + topH / 2).toFixed(1)}}" text-anchor="middle" transform="rotate(-90,10,${{(topY + topH / 2).toFixed(1)}})">ES</text>`);
         parts.push(`<text class="volcano-axis-label" x="10" y="${{(metricY + metricH / 2).toFixed(1)}}" text-anchor="middle" transform="rotate(-90,10,${{(metricY + metricH / 2).toFixed(1)}})">Rank metric</text>`);
         parts.push(`<text class="volcano-axis-label" x="${{(ml + iw / 2).toFixed(1)}}" y="${{H - 1}}" text-anchor="middle">Rank in ordered dataset</text>`);
         parts.push(`<text class="volcano-axis-label" x="${{ml + 3}}" y="${{hitY + hitH - 16}}" text-anchor="start" fill="${{profileColor}}">${{escapeHtml(labelA)}} enriched</text>`);
         parts.push(`<text class="volcano-axis-label" x="${{W - mr - 3}}" y="${{hitY + hitH - 16}}" text-anchor="end" fill="${{oppositeColor}}">${{escapeHtml(labelB)}} enriched</text>`);
-        const tooltip1 = `NES: ${{formatScaleNumber(Number(row?.nes))}} | ES: ${{formatScaleNumber(Number(row?.es))}} | adj. p: ${{formatPathwayPValue(row?.padj)}}`;
+        const tooltip1 = `NES: ${{formatScaleNumber(Math.abs(Number(row?.nes)))}} | ES: ${{formatScaleNumber(Math.abs(Number(row?.es)))}} | adj. p: ${{formatPathwayPValue(row?.padj)}}`;
         const tooltip2 = `Hits: ${{hitIndices.length.toLocaleString()}} | leading edge: ${{leading.length ? leading.slice(0, 10).join(', ') : 'n/a'}}${{leading.length > 10 ? ', …' : ''}}`;
         parts.push(`<rect x="${{ml}}" y="${{topY}}" width="${{iw}}" height="${{metricY + metricH - topY}}" fill="transparent" data-tooltip-title="${{escapeHtml(term)}}" data-tooltip-line1="${{escapeHtml(tooltip1)}}" data-tooltip-line2="${{escapeHtml(tooltip2)}}"/>`);
         parts.push('</svg>');
@@ -26244,13 +26694,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function buildPathwayGSEAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide) {{
         const direction = annotationSide === 'reference' ? 'negative' : 'positive';
-        const rows = getPathwayEnrichmentRows(result, 'gsea', direction)
-            .map(row => ({{ ...row, pathwayDirection: direction }}))
-            .sort((a, b) => {{
-                const ap = Number(a.padj), bp = Number(b.padj);
-                if (Number.isFinite(ap) && Number.isFinite(bp) && ap !== bp) return ap - bp;
-                return Math.abs(Number(b.nes || 0)) - Math.abs(Number(a.nes || 0));
-            }})
+        const rows = sortPathwayRows(
+            getPathwayEnrichmentRows(result, 'gsea', direction)
+                .map(row => ({{ ...row, pathwayDirection: direction }})),
+            'gsea'
+        )
             .slice(0, 16);
         if (!rows.length) return '';
         const options = [];
@@ -26259,21 +26707,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const svg = buildPathwayGSEAEnrichmentPlot(row, sourceCategory, referenceCategory, sourceColor, referenceColor);
             if (!svg) return;
             const idx = panels.length;
-            const nes = Number(row.nes);
+            const nes = Math.abs(Number(row.nes));
             const label = `${{shortenPathwayTerm(row.term || 'pathway', 64)}} (NES ${{formatScaleNumber(Number.isFinite(nes) ? nes : NaN)}})`;
             options.push(`<option value="${{idx}}">${{escapeHtml(label)}}</option>`);
             panels.push(`<div data-gsea-pathway-panel="${{idx}}"${{idx === 0 ? '' : ' hidden'}}>${{svg}}</div>`);
         }});
         if (!panels.length) return '';
+        const exportButton = `<button class="icon-btn cluster-de-plot-export" type="button" data-cluster-de-download-plot="pathway-gsea" title="Download GSEA enrichment as SVG" aria-label="Download GSEA enrichment as SVG">${{LEGEND_EXPORT_ICON}}</button>`;
         const control = `
             <div class="pathway-gsea-control">
                 <label>Pathway</label>
                 <select data-pathway-gsea-select>${{options.join('')}}</select>
+                ${{exportButton}}
             </div>
         `;
         const targetLabel = annotationSide === 'reference' ? referenceCategory : sourceCategory;
         const meta = `Preranked GSEA enrichment profile for pathways favoring ${{targetLabel}}.`;
-        return wrapClusterDEPlot('GSEA Enrichment', meta, control + panels.join(''), false, 'pathway-gsea');
+        return `
+            <div class="cluster-de-plot-panel" data-cluster-de-plot="pathway-gsea">
+                <div class="cluster-de-figure-title"><span>GSEA Enrichment</span>${{renderCalcInfoButton('pathway_gsea_plot')}}</div>
+                <div class="cluster-de-plot-meta">${{escapeHtml(meta)}}</div>
+                ${{control + panels.join('')}}
+                <div class="volcano-tooltip"></div>
+            </div>
+        `;
     }}
 
     function buildPathwayGSEAPlot(result, sourceCategory, referenceCategory, sourceColor, referenceColor) {{
@@ -26284,12 +26741,39 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function renderPathwayAnnotationPanel(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide) {{
-        const panels = [
-            buildPathwayORAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide),
-            buildPathwayGSEAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide),
-        ].filter(Boolean).join('');
-        if (panels) {{
-            return `<div class="cluster-de-plot-grid">${{panels}}</div>`;
+        const oraDirection = annotationSide === 'reference' ? 'down' : 'up';
+        const gseaDirection = annotationSide === 'reference' ? 'negative' : 'positive';
+        const oraRows = sortPathwayRows(
+            getPathwayEnrichmentRows(result, 'ora', oraDirection)
+                .map(row => ({{ ...row, pathwayDirection: oraDirection }})),
+            'ora'
+        );
+        const gseaRows = sortPathwayRows(
+            getPathwayEnrichmentRows(result, 'gsea', gseaDirection)
+                .map(row => ({{ ...row, pathwayDirection: gseaDirection }})),
+            'gsea'
+        );
+        const oraPlot = buildPathwayORAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide);
+        const gseaPlot = buildPathwayGSEAPlotForAnnotation(result, sourceCategory, referenceCategory, sourceColor, referenceColor, annotationSide);
+        const activeMode = pathwayEnrichmentMode === 'gsea' ? 'gsea' : 'ora';
+        const plotActive = pathwayViewMode !== 'table';
+        const renderMethodPanel = (method, plotHtml, rows) => {{
+            const hidden = activeMode === method ? '' : ' hidden';
+            const tableButton = `<button type="button" class="icon-btn" data-pathway-download-table="${{method}}" title="Download ${{method.toUpperCase()}} pathway table as CSV" aria-label="Download ${{method.toUpperCase()}} pathway table as CSV">${{LEGEND_EXPORT_ICON}}</button>`;
+            return `
+                <div class="pathway-mode-panel" data-pathway-mode-panel="${{method}}"${{hidden}}>
+                    ${{plotActive ? `<div class="cluster-de-plot-grid">${{plotHtml || '<div class="pathway-analysis-empty">No plot is available for this selection.</div>'}}</div>` : `
+                        <div class="cluster-de-plot-panel">
+                            ${{buildPathwayRawTable(rows, method)}}
+                            <div class="pathway-panel-actions">${{tableButton}}</div>
+                        </div>
+                    `}}
+                </div>
+            `;
+        }};
+        const panels = renderMethodPanel('ora', oraPlot, oraRows) + renderMethodPanel('gsea', gseaPlot, gseaRows);
+        if (oraRows.length || gseaRows.length) {{
+            return renderPathwayViewToggle(activeMode) + panels;
         }}
         const label = annotationSide === 'reference' ? referenceCategory : sourceCategory;
         return `<div class="pathway-analysis-empty">No ORA or GSEA pathways were retained for ${{escapeHtml(label)}}.</div>`;
@@ -26303,17 +26787,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sourcePanel = renderPathwayAnnotationPanel(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'source');
         const referencePanel = renderPathwayAnnotationPanel(result, sourceCategory, referenceCategory, sourceColor, referenceColor, 'reference');
         if (!sourcePanel && !referencePanel) return '';
+        if (!['source', 'reference'].includes(pathwayAnnotationSide)) pathwayAnnotationSide = 'source';
+        const activeMode = pathwayEnrichmentMode === 'gsea' ? 'gsea' : 'ora';
+        const methodButton = (mode, label) => `<button type="button" class="legend-btn${{activeMode === mode ? ' active' : ''}}" data-pathway-mode="${{mode}}">${{escapeHtml(label)}}</button>`;
         return `
+            <select class="pathway-analysis-select" data-pathway-annotation-select>
+                <option value="source"${{pathwayAnnotationSide === 'source' ? ' selected' : ''}}>Annotation A (${{escapeHtml(String(sourceCategory || 'A'))}})</option>
+                <option value="reference"${{pathwayAnnotationSide === 'reference' ? ' selected' : ''}}>Annotation B (${{escapeHtml(String(referenceCategory || 'B'))}})</option>
+            </select>
+            <div class="pathway-panel-mode-switch" role="group" aria-label="Pathway enrichment method">
+                ${{methodButton('ora', 'ORA pathways')}}
+                ${{methodButton('gsea', 'GSEA enrichment')}}
+            </div>
             <div class="cluster-PA-result cluster-pa-result" data-pathway-analysis-result>
-                <div class="pathway-analysis-controls">
-                    <label>Annotation</label>
-                    <select data-pathway-annotation-select>
-                        <option value="source">Annotation A (${{escapeHtml(String(sourceCategory || 'A'))}})</option>
-                        <option value="reference">Annotation B (${{escapeHtml(String(referenceCategory || 'B'))}})</option>
-                    </select>
-                </div>
-                <div data-pathway-annotation-panel="source">${{sourcePanel}}</div>
-                <div data-pathway-annotation-panel="reference" hidden>${{referencePanel}}</div>
+                <div data-pathway-annotation-panel="source"${{pathwayAnnotationSide === 'source' ? '' : ' hidden'}}>${{sourcePanel}}</div>
+                <div data-pathway-annotation-panel="reference"${{pathwayAnnotationSide === 'reference' ? '' : ' hidden'}}>${{referencePanel}}</div>
             </div>
         `;
     }}
@@ -26374,7 +26862,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sourceColor = colorCol && sourceCategory !== null ? getCategoryColorForValue(colorCol, sourceCategory) : '#d94f4f';
         const referenceColor = colorCol && referenceCategory !== null ? getCategoryColorForValue(colorCol, referenceCategory) : '#4f82d9';
 
-        const rows = significantIndices.map((idx) => {{
+        const rows = significantIndices.map((idx, rowIndex) => {{
             const gene = genes[idx];
             const log2fcValue = Number(log2fc[idx]);
             const pvalAdjValue = Number(pvalsAdj[idx]);
@@ -26389,8 +26877,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const mostExpressed = Number.isFinite(log2fcValue)
                 ? (log2fcValue >= 0 ? sourceCategory : referenceCategory)
                 : '';
+            const extraAttrs = rowIndex >= 20
+                ? ` class="is-extra-row"${{clusterDETableExpanded ? '' : ' hidden'}}`
+                : '';
             return `
-                <tr style="background:${{rowBackground}};" data-most-expressed="${{escapeHtml(mostExpressed || '')}}">
+                <tr${{extraAttrs}} style="background:${{rowBackground}};" data-most-expressed="${{escapeHtml(mostExpressed || '')}}">
                     <td><button type="button" class="cluster-de-gene-btn" ${{embedded ? `data-cluster-de-gene="${{escapeHtml(gene)}}"` : 'disabled'}} title="${{embedded ? 'Load DE gene into the viewer' : 'Expression vector not embedded'}}">${{escapeHtml(gene)}}</button></td>
                     <td>${{formatScaleNumber(Number.isFinite(log2fcValue) ? log2fcValue : NaN)}}</td>
                     <td>${{formatAdjustedPValue(pvalAdjValue)}}</td>
@@ -26416,32 +26907,60 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </table>
             ` : `
                 <div class="agg-group-meta">
-                    No genes pass adj. p <= ${{formatScaleNumber(padjCutoff)}}, |log\u2082FC| >= ${{formatScaleNumber(log2fcCutoff)}}${{minPctCutoff > 0 ? `, and max % expressed >= ${{formatClusterDEPct(minPctCutoff)}}` : ''}}.
+                    No genes pass adj. p < ${{formatScaleNumber(padjCutoff)}} and |log\u2082FC| >= ${{formatScaleNumber(log2fcCutoff)}}.
                 </div>
             `;
         const volcanoHtml = buildVolcanoPlot(
             genes, log2fc, pvalsAdj, pctSource, pctReference, minPctCutoff, padjCutoff, log2fcCutoff,
             colorCol, sourceCategory, referenceCategory
         );
+        const tableMoreButton = significantIndices.length > 20
+            ? `<button type="button" class="cluster-de-more-link" data-cluster-de-table-more>${{clusterDETableExpanded ? 'Hide extra lines' : `Show more (${{(significantIndices.length - 20).toLocaleString()}})`}}</button>`
+            : '';
+        const tableExportButton = `<button class="icon-btn cluster-de-plot-export" type="button" data-cluster-de-download-csv title="Download differential-expression table as CSV" aria-label="Download differential-expression table as CSV">${{LEGEND_EXPORT_ICON}}</button>`;
         const tablePanel = `
             <div class="cluster-de-plot-panel cluster-de-table-panel">
-                <div class="cluster-de-plot-title">
-                    <span>Differential Expression Table</span>
-                    <button class="icon-btn cluster-de-plot-export" type="button" data-cluster-de-download-csv title="Download differential-expression table as CSV" aria-label="Download differential-expression table as CSV">${{LEGEND_EXPORT_ICON}}</button>
+                <div class="cluster-de-figure-title">
+                    <span>Differential Expression Table</span>${{renderCalcInfoButton('pseudobulk_simple_de_table')}}
                 </div>
                 ${{tableHtml}}
+                <div class="cluster-de-table-actions">
+                    <span>${{tableMoreButton}}</span>
+                    ${{tableExportButton}}
+                </div>
             </div>
         `;
-        const plotPanels = [
-            buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, padjCutoff, log2fcCutoff),
+        const genePanels = [
+            buildMAPlot(genes, baseMean, log2fc, pvals, pvalsAdj, pctSource, pctReference, minPctCutoff, padjCutoff, log2fcCutoff, colorCol, sourceCategory, referenceCategory),
+            wrapClusterDEVolcanoPlot(volcanoHtml),
+        ].filter(Boolean).join('');
+        const samplePanels = [
             buildPseudobulkPCAPlot(sampleInfo, colorCol),
             buildPseudobulkDistanceHeatmap(sampleInfo, colorCol),
-            wrapClusterDEVolcanoPlot(volcanoHtml),
-            tablePanel,
         ].filter(Boolean).join('');
-        const diagnosticPlots = `<div class="cluster-de-plot-grid">${{plotPanels}}</div>`;
+        if (!['raw', 'genes', 'samples'].includes(clusterDeResultMode)) clusterDeResultMode = 'raw';
+        const modeButton = (mode, label) => `<button type="button" class="legend-btn${{clusterDeResultMode === mode ? ' active' : ''}}" data-cluster-de-result-mode="${{mode}}">${{escapeHtml(label)}}</button>`;
+        const modeSwitch = `
+            <div class="cluster-de-panel-mode-switch" role="group" aria-label="Pseudobulk DE result view">
+                ${{modeButton('raw', 'Raw table')}}
+                ${{modeButton('genes', 'Genes')}}
+                ${{modeButton('samples', 'Samples')}}
+            </div>
+        `;
+        const diagnosticPlots = `
+            <div class="cluster-de-mode-panel" data-cluster-de-mode-panel="raw"${{clusterDeResultMode === 'raw' ? '' : ' hidden'}}>
+                ${{tablePanel}}
+            </div>
+            <div class="cluster-de-mode-panel" data-cluster-de-mode-panel="genes"${{clusterDeResultMode === 'genes' ? '' : ' hidden'}}>
+                <div class="cluster-de-plot-grid">${{genePanels || '<div class="agg-group-meta">No gene-level plots are available.</div>'}}</div>
+            </div>
+            <div class="cluster-de-mode-panel" data-cluster-de-mode-panel="samples"${{clusterDeResultMode === 'samples' ? '' : ' hidden'}}>
+                <div class="cluster-de-plot-grid">${{samplePanels || '<div class="agg-group-meta">No pseudobulk sample diagnostics are available.</div>'}}</div>
+            </div>
+        `;
 
         return `
+            ${{modeSwitch}}
             <div class="cluster-de-result">
                 ${{diagnosticPlots}}
             </div>
@@ -26597,6 +27116,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const minPct = Number.isFinite(minPctRaw)
             ? (minPctRaw > 1 ? minPctRaw / 100 : minPctRaw)
             : 0;
+        const minPctRemovedGenes = Number(contrastResult?.min_pct_removed_gene_count);
+        const minPctRetainedGenes = Number(contrastResult?.min_pct_retained_gene_count);
+        const minPctPrefilterGenes = Number(contrastResult?.min_pct_prefilter_gene_count);
+        const minPctRemovalCountText = Number.isFinite(minPctRemovedGenes)
+            ? ` ${{minPctRemovedGenes.toLocaleString()}} gene${{minPctRemovedGenes === 1 ? '' : 's'}} ${{minPctRemovedGenes === 1 ? 'was' : 'were'}} removed${{
+                Number.isFinite(minPctRetainedGenes) && Number.isFinite(minPctPrefilterGenes)
+                    ? ` (${{minPctRetainedGenes.toLocaleString()}} of ${{minPctPrefilterGenes.toLocaleString()}} fitted genes retained)`
+                    : ''
+            }}.`
+            : ' Removed-gene count is unavailable for this export.';
         const padjCutoff = Math.min(Math.max(normalizePositiveThreshold(
             contrastResult?.padj_cutoff ?? pseudobulkSettings.padj_cutoff,
             0.05
@@ -26606,16 +27135,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             0.5
         );
         const contrastInfo = `
+            <div class="comparison-info-warning"><strong>Warning.</strong> If annotations were defined from the same expression patterns being tested here, DE results can be inflated by double dipping. Interpret these marker genes as exploratory unless the annotations were defined independently or validated on independent data.</div>
             <div class="comparison-info">
-                <strong>DESeq2 contrast.</strong> Shared model: ~ ${{escapeHtml(replicateMetadata)}} + ${{escapeHtml(conditionMetadata)}}. The selected annotations are evaluated as a category-versus-category contrast from this shared fit.
+                <strong>DESeq2 contrast.</strong> Shared model: ~ ${{escapeHtml(replicateMetadata)}} + ${{escapeHtml(conditionMetadata)}}.
                 <div class="comparison-info-settings">
                     <span><code>--pseudobulk-min-replicates</code> ≥ ${{minReplicates}}</span>
                     <span><code>--pseudobulk-p-adjust-method</code> = ${{escapeHtml(pAdjustMethod)}}</span>
                     <span><code>--pseudobulk-min-pct-expressed</code> ≥ ${{formatScaleNumber(100 * minPct)}}%</span>
-                    <span><code>--pseudobulk-padj-cutoff</code> ≤ ${{formatScaleNumber(padjCutoff)}}</span>
+                    <span><code>--pseudobulk-padj-cutoff</code> &lt; ${{formatScaleNumber(padjCutoff)}}</span>
                     <span><code>--pseudobulk-log2fc-cutoff</code> |log₂FC| ≥ ${{formatScaleNumber(log2fcCutoff)}}</span>
                 </div>
             </div>
+            ${{minPct > 0 ? `<div class="comparison-info-warning"><strong>Warning.</strong> Genes expressed in less than ${{formatScaleNumber(100 * minPct)}}% of cells in both selected annotations are removed before DESeq2 statistical testing.${{minPctRemovalCountText}}</div>` : ''}}
         `;
 
         const markerSummary = renderComparisonMarkerSummary(
@@ -26636,9 +27167,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ${{controlsHtml}}
             ${{contrastInfo}}
             ${{markerSection}}
-            <div class="selection-summary-title">Pseudobulk gene expression differential analysis</div>
+            <div class="selection-summary-title">Pseudobulk gene expression differential analysis${{renderCalcInfoButton('de_genes')}}</div>
             ${{renderClusterDEResultSection(clusterDeGroupby, clusterDeSourceCategory, clusterDeReferenceCategory)}}
-            ${{pathwaySection ? '<div class="selection-summary-title">Gene Enrichment</div>' + pathwaySection : ''}}
+            ${{pathwaySection ? '<div class="selection-summary-title">Pathway Enrichment' + renderCalcInfoButton('pathway_enrichment_section') + '</div>' + pathwaySection : ''}}
         `;
 
         const sourceSelect = container.querySelector('#cluster-de-source');
@@ -26647,6 +27178,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             sourceSelect.value = clusterDeSourceCategory;
             sourceSelect.addEventListener('change', () => {{
                 clusterDeSourceCategory = sourceSelect.value || null;
+                clusterDETableExpanded = false;
+                pathwayAnnotationSide = 'source';
                 renderClusterDE();
             }});
         }}
@@ -26655,6 +27188,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             referenceSelect.disabled = categories.length < 2;
             referenceSelect.addEventListener('change', () => {{
                 clusterDeReferenceCategory = referenceSelect.value || null;
+                clusterDETableExpanded = false;
+                pathwayAnnotationSide = 'source';
                 renderClusterDE();
             }});
         }}
@@ -26662,7 +27197,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const source = clusterDeSourceCategory;
             clusterDeSourceCategory = clusterDeReferenceCategory;
             clusterDeReferenceCategory = source;
+            clusterDETableExpanded = false;
+            pathwayAnnotationSide = 'source';
             renderClusterDE();
+        }});
+        container.querySelectorAll('[data-cluster-de-result-mode]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                clusterDeResultMode = button.getAttribute('data-cluster-de-result-mode') || 'raw';
+                renderClusterDE();
+            }});
+        }});
+        container.querySelector('[data-cluster-de-table-more]')?.addEventListener('click', () => {{
+            clusterDETableExpanded = !clusterDETableExpanded;
+            renderClusterDE();
+        }});
+        container.querySelectorAll('[data-cluster-de-marker-more]').forEach((button) => {{
+            button.addEventListener('click', () => {{
+                const key = button.getAttribute('data-cluster-de-marker-more') || '';
+                if (!key) return;
+                clusterDEMarkerExpanded[key] = !clusterDEMarkerExpanded[key];
+                renderClusterDE();
+            }});
         }});
 
         bindGeneActivateButtons(container, renderClusterDE);
@@ -26676,7 +27231,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
         container.querySelectorAll('[data-cluster-de-download-plot]').forEach((button) => {{
             button.addEventListener('click', () => {{
-                downloadClusterDEPlotSvg(container, button.getAttribute('data-cluster-de-download-plot'));
+                downloadClusterDEPlotSvg(
+                    button.closest('.cluster-de-plot-panel') || container,
+                    button.getAttribute('data-cluster-de-download-plot')
+                );
             }});
         }});
         container.querySelector('[data-cluster-de-download-csv]')?.addEventListener('click', () => {{
@@ -28060,26 +28618,84 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
     }}
 
+    function getNeighborStatsColorColumn() {{
+        const candidate = explorationColorCol || currentColor;
+        return DATA.colors_meta?.[candidate] ? candidate : currentColor;
+    }}
+
+    function getExplorationOnlyColorColumn() {{
+        const options = getExplorationColorOptions();
+        const values = options.metadata.concat(options.annotations)
+            .map((entry) => entry.value)
+            .filter((value) => DATA.colors_meta?.[value]);
+        const selected = getExplorationColorOptionValue(explorationColorCol);
+        if (selected && values.includes(selected)) return selected;
+        return values[0] || DATA.initial_color || '';
+    }}
+
+    function getAvailableNeighborStatsColumns() {{
+        return Object.entries(DATA.neighbor_stats || {{}})
+            .filter(([, stats]) => stats && Array.isArray(stats.counts) && Array.isArray(stats.categories))
+            .map(([colorCol]) => colorCol);
+    }}
+
+    function hasNeighborStatsForColor(colorCol) {{
+        const stats = (DATA.neighbor_stats || {{}})[colorCol];
+        return !!(stats && Array.isArray(stats.counts) && Array.isArray(stats.categories));
+    }}
+
+    function renderNeighborStatsUnavailableWarning(colorCol) {{
+        const selectedChip = renderAggChip(formatMetadataLabel(colorCol || 'selected annotation'));
+        const available = getAvailableNeighborStatsColumns();
+        const availableChips = available.length
+            ? available.map((col) => renderAggChip(formatMetadataLabel(col))).join(' ')
+            : renderAggChip('none');
+        return `
+            <div class="neighbor-warning">
+                <strong>Warning.</strong> The selected annotation ${{selectedChip}} does not have neighbor stats.
+                Neighbor enrichment and interactions are available for: ${{availableChips}}
+            </div>
+        `;
+    }}
+
+    function setNeighborStatsPanelAvailability(panelId, available, colorCol) {{
+        const panel = document.getElementById(panelId);
+        const warning = document.getElementById('neighbors-stats-warning');
+        if (panel) {{
+            panel.hidden = !available;
+            panel.style.display = available ? '' : 'none';
+            panel.querySelectorAll('.neighbor-view-controls').forEach((controls) => {{
+                controls.style.display = available ? '' : 'none';
+            }});
+        }}
+        if (!warning) return available;
+        if (available) {{
+            warning.style.display = 'none';
+            warning.innerHTML = '';
+        }} else {{
+            warning.style.display = '';
+            warning.innerHTML = renderNeighborStatsUnavailableWarning(colorCol);
+        }}
+        return available;
+    }}
+
     function getNeighborStatsViewState() {{
         if (!DATA.has_neighbors) {{
-            return {{ error: 'No neighbor graph was found in this dataset.' }};
+            return {{ error: 'No neighbor graph was found in this dataset. Neighbor enrichment cannot be calculated.', warning: true }};
         }}
 
-        if (currentGene) {{
-            return {{ error: 'Clear the gene input to view neighbor stats.' }};
-        }}
-
-        const config = getColorConfig();
+        const colorCol = getNeighborStatsColorColumn();
+        const config = DATA.colors_meta?.[colorCol] || {{ is_continuous: true, categories: [] }};
         if (config.is_continuous) {{
             return {{ error: 'Neighbor stats are available for categorical annotations only.' }};
         }}
 
-        const stats = (DATA.neighbor_stats || {{}})[currentColor];
+        const stats = (DATA.neighbor_stats || {{}})[colorCol];
         if (!stats || !stats.counts || !stats.categories) {{
-            return {{ error: 'No neighbor stats available for this color.' }};
+            return {{ error: '', missingStats: true, colorCol }};
         }}
 
-        const categories = (stats.categories || []).map((category) => formatCategoryLabel(currentColor, category));
+        const categories = (stats.categories || []).map((category) => formatCategoryLabel(colorCol, category));
         const counts = stats.counts || [];
         const nCells = stats.n_cells || [];
         const meanDegree = stats.mean_degree || [];
@@ -28089,7 +28705,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             return {{ error: 'Neighbor stats are empty for this color.' }};
         }}
 
-        const query = (document.getElementById('neighbor-search')?.value || '').trim().toLowerCase();
+        const query = '';
         const matches = categories
             .map((cat, idx) => (!query || cat.toLowerCase().includes(query)) ? idx : null)
             .filter((idx) => idx !== null);
@@ -28100,6 +28716,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         return {{
             stats,
+            colorCol,
             categories,
             counts,
             nCells,
@@ -28483,7 +29100,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const zoomLabel = `${{Math.round(state.zoom * 100)}}%`;
         return `
             <div class="neighbor-visualization-toolbar">
-                <div class="neighbor-view-note">${{escapeHtml(label)}}${{renderCalcInfoButton('neighbor_stats')}}</div>
+                <div class="neighbor-view-note">${{escapeHtml(label)}}</div>
                 <div class="neighbor-zoom-controls">
                     <button type="button" class="legend-btn" data-neighbor-zoom-action="out">-</button>
                     <span class="neighbor-zoom-label" data-neighbor-zoom-label>${{zoomLabel}}</span>
@@ -28946,7 +29563,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function renderNeighborStatsTableView(viewState) {{
-        const {{ categories, counts, nCells, meanDegree, zscores, permN, matches }} = viewState;
+        const {{ colorCol, categories, counts, nCells, meanDegree, zscores, permN, matches }} = viewState;
         return matches.map((idx) => {{
             const source = String(categories[idx]);
             const row = counts[idx] || [];
@@ -28955,7 +29572,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 .map((val, j) => (Number.isFinite(val) && val > 0) ? [j, val] : null)
                 .filter(Boolean)
                 .sort((a, b) => b[1] - a[1]);
-            const key = `${{currentColor}}::${{idx}}`;
+            const key = `${{colorCol}}::${{idx}}`;
             const isExpanded = expandedNeighborGroups.has(key);
             const top = isExpanded ? entries : entries.slice(0, 6);
             const shownTotal = top.reduce((sum, [, v]) => sum + v, 0);
@@ -28970,14 +29587,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const rowsHtml = top.map(([j, val]) => {{
                 const pct = total > 0 ? (val / total) * 100 : 0;
                 const target = String(categories[j] ?? 'unknown');
-                const color = j >= 0 ? getCategoryColor(j, currentColor) : '#999';
+                const color = j >= 0 ? getCategoryColor(j, colorCol) : '#999';
                 let zLabel = '';
                 if (zscores && zscores[idx] && Number.isFinite(zscores[idx][j])) {{
                     zLabel = ` z=${{zscores[idx][j].toFixed(2)}}`;
                 }}
                 return `
                     <div class="agg-row" data-target-cat="${{escapeHtml(target)}}">
-                        <span class="agg-label">${{renderAggCategoryChip(currentColor, target, j)}}</span>
+                        <span class="agg-label">${{renderAggCategoryChip(colorCol, target, j)}}</span>
                         <span class="agg-value">${{pct.toFixed(1)}}% (${{formatCount(val)}})${{zLabel}}</span>
                     </div>
                 `;
@@ -28998,17 +29615,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             if (entries.length === 0) {{
                 return `
                     <div class="agg-group">
-                        <div class="agg-group-title">${{renderAggCategoryChip(currentColor, source, idx)}}${{renderCalcInfoButton('neighbor_stats')}}</div>
-                        <div class="agg-group-meta">n=${{nLabel}} | mean degree=${{degreeLabel}}</div>
-                        <div class="agg-group-meta">No neighbors found for this cell type.</div>
+                        <div class="agg-group-title">${{renderAggCategoryChip(colorCol, source, idx)}}</div>
                     </div>
                 `;
             }}
 
             return `
                 <div class="agg-group" data-source-cat="${{escapeHtml(source)}}">
-                    <div class="agg-group-title">${{renderAggCategoryChip(currentColor, source, idx)}}${{renderCalcInfoButton('neighbor_stats')}}</div>
-                    <div class="agg-group-meta">n=${{nLabel}} | mean degree=${{degreeLabel}} | neighbor edges=${{totalLabel}}${{permLabel}}</div>
+                    <div class="agg-group-title">${{renderAggCategoryChip(colorCol, source, idx)}}</div>
                     ${{rowsHtml}}
                     ${{otherRow}}
                     <button class="agg-toggle-link" type="button" data-neighbor-toggle="${{idx}}">${{toggleLabel}}</button>
@@ -29018,7 +29632,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function renderNeighborNetworkView(viewState) {{
-        const {{ categories, nCells, zscores, permN }} = viewState;
+        const {{ colorCol, categories, nCells, zscores, permN }} = viewState;
         // If this dataset has no z-scores, don't default to the z-score metric
         // (it would only show an error) — fall back to edge count so the network
         // still renders. The user can still pick z-score manually elsewhere.
@@ -29027,16 +29641,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const controlPanel = renderNeighborVisualizationControlPanel('bubble', viewState);
         const vizState = getNeighborVisualizationState('bubble');
         if (controls.metric === 'zscore' && !zscores) {{
-            return controlPanel + '<div class="agg-group-meta">This viewer has no neighbor z-scores for the current annotation. Switch the metric to edge count or share.</div>';
+            return controlPanel + '<div class="neighbor-view-note">This viewer has no neighbor z-scores for the current annotation. Switch the metric to edge count or share.</div>';
         }}
 
         const focusState = getNeighborFocusedIndices(viewState, controls.metric, controls);
         if (focusState.error) {{
-            return controlPanel + `<div class="agg-group-meta">${{escapeHtml(focusState.error)}}</div>`;
+            return controlPanel + `<div class="neighbor-view-note">${{escapeHtml(focusState.error)}}</div>`;
         }}
         const {{ indices, trimmedCount, focus, seedIndices }} = focusState;
         if (!indices.length) {{
-            return controlPanel + '<div class="agg-group-meta">No matching cell types.</div>';
+            return controlPanel + '<div class="neighbor-view-note">No matching cell types.</div>';
         }}
 
         const pairCandidates = [];
@@ -29152,7 +29766,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     tabindex="0"
                 >
                     <title>${{escapeHtml(label)}} | n=${{nodeN.toLocaleString()}} | outgoing edges=${{formatNeighborCount(getNeighborRowTotal(viewState.counts, categoryIdx))}}</title>
-                    <circle cx="${{pos.x.toFixed(2)}}" cy="${{pos.y.toFixed(2)}}" r="${{radius.toFixed(2)}}" fill="${{getCategoryColor(categoryIdx, currentColor)}}"></circle>
+                    <circle cx="${{pos.x.toFixed(2)}}" cy="${{pos.y.toFixed(2)}}" r="${{radius.toFixed(2)}}" fill="${{getCategoryColor(categoryIdx, colorCol)}}"></circle>
                     ${{labelText}}
                     ${{metaText}}
                 </g>
@@ -29210,18 +29824,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     }}
 
     function renderNeighborChordDiagram(viewState) {{
-        const {{ categories, nCells }} = viewState;
+        const {{ colorCol, categories, nCells }} = viewState;
         const controls = getNeighborViewControlState('chord');
         const controlPanel = renderNeighborVisualizationControlPanel('chord', viewState);
         const vizState = getNeighborVisualizationState('chord');
         const focusState = getNeighborFocusedIndices(viewState, controls.metric, controls);
         if (focusState.error) {{
-            return controlPanel + `<div class="agg-group-meta">${{escapeHtml(focusState.error)}}</div>`;
+            return controlPanel + `<div class="neighbor-view-note">${{escapeHtml(focusState.error)}}</div>`;
         }}
 
         const orderedIndices = sortNeighborIndicesForChord(focusState.indices, viewState, controls.chordOrder);
         if (orderedIndices.length < 2) {{
-            return controlPanel + '<div class="agg-group-meta">Chord view needs at least two visible cell types after the current focus and category settings.</div>';
+            return controlPanel + '<div class="neighbor-view-note">Chord view needs at least two visible cell types after the current focus and category settings.</div>';
         }}
 
         const pairCandidates = [];
@@ -29236,7 +29850,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }}
         if (!(totalSymmetricCount > 0)) {{
-            return controlPanel + '<div class="agg-group-meta">No neighbor connections are available for the current annotation.</div>';
+            return controlPanel + '<div class="neighbor-view-note">No neighbor connections are available for the current annotation.</div>';
         }}
 
         let linkEntries = pairCandidates.map((entry) => ({{
@@ -29251,12 +29865,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             linkEntries = linkEntries.filter((entry) => focusState.seedIndices.includes(entry.sourceIdx) || focusState.seedIndices.includes(entry.targetIdx));
         }}
         if (!linkEntries.length) {{
-            return controlPanel + '<div class="agg-group-meta">No chord ribbons pass the current focus and threshold settings.</div>';
+            return controlPanel + '<div class="neighbor-view-note">No chord ribbons pass the current focus and threshold settings.</div>';
         }}
 
         const visibleIndices = Array.from(new Set(linkEntries.flatMap((entry) => [entry.sourceIdx, entry.targetIdx])));
         if (visibleIndices.length < 2) {{
-            return controlPanel + '<div class="agg-group-meta">Chord view needs at least two connected cell types after the current focus and threshold settings.</div>';
+            return controlPanel + '<div class="neighbor-view-note">Chord view needs at least two connected cell types after the current focus and threshold settings.</div>';
         }}
 
         const indices = sortNeighborIndicesForChord(visibleIndices, viewState, controls.chordOrder);
@@ -29279,7 +29893,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const totals = indices.map((idx) => Number(totalsByIndex.get(idx) || 0));
         const grandTotal = totals.reduce((sum, value) => sum + value, 0);
         if (!(grandTotal > 0)) {{
-            return controlPanel + '<div class="agg-group-meta">No chord ribbons pass the current focus and threshold settings.</div>';
+            return controlPanel + '<div class="neighbor-view-note">No chord ribbons pass the current focus and threshold settings.</div>';
         }}
 
         const gap = 0.045;
@@ -29320,7 +29934,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <path
                     class="neighbor-chord-arc neighbor-interactive"
                     d="${{describeSvgArc(cx, cy, outerRadius, layout[pos].start, layout[pos].end)}}"
-                    stroke="${{getCategoryColor(categoryIdx, currentColor)}}"
+                    stroke="${{getCategoryColor(categoryIdx, colorCol)}}"
                     stroke-width="16"
                     data-neighbor-kind="category"
                     data-neighbor-source-idx="${{categoryIdx}}"
@@ -29351,8 +29965,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (i < 0 || j < 0) return '';
                 const sourceLabel = categories[entry.sourceIdx];
                 const targetLabel = categories[entry.targetIdx];
-                const sourceColor = cssColorToRgb(getCategoryColor(entry.sourceIdx, currentColor));
-                const targetColor = cssColorToRgb(getCategoryColor(entry.targetIdx, currentColor));
+                const sourceColor = cssColorToRgb(getCategoryColor(entry.sourceIdx, colorCol));
+                const targetColor = cssColorToRgb(getCategoryColor(entry.targetIdx, colorCol));
                 const alpha = entry.sourceIdx === entry.targetIdx
                     ? 0.40
                     : 0.18 + 0.22 * Math.sqrt(maxMetric > 0 ? clamp01(entry.metricValue / maxMetric) : 0);
@@ -29387,7 +30001,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const legend = indices.map((categoryIdx, pos) => {{
             return `
                 <div class="neighbor-chord-legend-item neighbor-interactive" data-neighbor-kind="category" data-neighbor-source-idx="${{categoryIdx}}" role="button" tabindex="0">
-                    <span>${{renderAggCategoryChip(currentColor, categories[categoryIdx], categoryIdx)}} · n=${{Number(nCells[categoryIdx] ?? 0).toLocaleString()}} · ${{formatNeighborMetricLabel(controls.metric)}}=${{formatNeighborMetricValue(controls.metric, totals[pos])}}</span>
+                    <span>${{renderAggCategoryChip(colorCol, categories[categoryIdx], categoryIdx)}} · n=${{Number(nCells[categoryIdx] ?? 0).toLocaleString()}} · ${{formatNeighborMetricLabel(controls.metric)}}=${{formatNeighborMetricValue(controls.metric, totals[pos])}}</span>
                 </div>
             `;
         }}).join('');
@@ -29551,10 +30165,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return results;
     }}
 
-    // Cached, cross-section cell-weighted aggregation for the current color.
+    // Cached, cross-section cell-weighted aggregation for the selected exploration annotation.
     function computeDispersionInsights(colorCol) {{
         if (_dispersionCache.has(colorCol)) return _dispersionCache.get(colorCol);
-        const config = getColorConfig();
+        const config = DATA.colors_meta?.[colorCol] || null;
         if (!config || config.is_continuous || !(config.categories && config.categories.length)) return null;
         const sections = getFilteredSections();
         if (!sections.length) return null;
@@ -29590,11 +30204,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function renderDispersionInsights() {{
         const container = document.getElementById('dispersion-panel');
         if (!container) return;
-        if (currentGene || getColorConfig().is_continuous) {{
+        const colorCol = getExplorationOnlyColorColumn();
+        setNeighborStatsPanelAvailability('neighbors-tab-dispersion-content', true, colorCol);
+        const config = DATA.colors_meta?.[colorCol] || {{ is_continuous: true, categories: [] }};
+        if (config.is_continuous) {{
             container.innerHTML = '<div class="agg-group-meta">Pick a categorical annotation (not a gene) to view spatial dispersion metrics.</div>';
             return;
         }}
-        const config = getColorConfig();
         if (!(config.categories && config.categories.length)) {{
             container.innerHTML = '<div class="agg-group-meta">No categories available for the current color.</div>';
             return;
@@ -29602,16 +30218,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         container.innerHTML = '<progress style="width:100%; height:12px;"></progress>'
             + '<div class="agg-group-meta">Computing spatial dispersion…</div>';
-        const colorAtRequest = currentColor;
+        const colorAtRequest = colorCol;
         // Defer so "Computing…" paints before the synchronous nearest-neighbour scan.
         setTimeout(() => {{
             // Bail if anything that invalidates this run changed while deferred:
-            // a gene was loaded, the color switched, or the user left the tab.
-            // (Missing the currentGene check let a stale table overwrite the
-            // "pick a categorical annotation" message.)
-            if (currentGene || currentColor !== colorAtRequest
+            // the selected exploration annotation switched, or the user left the tab.
+            if (getExplorationOnlyColorColumn() !== colorAtRequest
                 || insightsTopLevelTab !== 'neighbors' || insightsNeighborsTab !== 'dispersion') return;
-            const rows = computeDispersionInsights(currentColor);
+            const rows = computeDispersionInsights(colorAtRequest);
             if (!rows || !rows.length) {{
                 container.innerHTML = '<div class="agg-group-meta">No position data available for the current sections.</div>';
                 return;
@@ -29644,7 +30258,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const lbl = label(r.nni);
                 const saiCell = hasAdj ? `<td>${{fmtPct(r.sai)}}</td>` : '<td>—</td>';
                 return `<tr data-dispersion-cat="${{escapeHtml(r.catName)}}" title="Click to spotlight ${{escapeHtml(r.catName)}}">
-                    <td>${{renderAggCategoryChip(currentColor, r.catName)}}</td>
+                    <td>${{renderAggCategoryChip(colorAtRequest, r.catName)}}</td>
                     <td>${{fmtN(r.n)}}</td>
                     ${{saiCell}}
                     <td>${{fmtNNI(r.nni)}}</td>
@@ -29713,8 +30327,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         const viewState = getNeighborStatsViewState();
+        if (viewState.missingStats) {{
+            setNeighborStatsPanelAvailability('neighbors-tab-enrichment-content', false, viewState.colorCol || getNeighborStatsColorColumn());
+            container.innerHTML = '';
+            return;
+        }}
+        setNeighborStatsPanelAvailability('neighbors-tab-enrichment-content', true, viewState.colorCol || getNeighborStatsColorColumn());
         if (viewState.error) {{
-            container.innerHTML = `<div class="agg-group-meta">${{escapeHtml(viewState.error)}}</div>`;
+            container.innerHTML = viewState.warning
+                ? `<div class="neighbor-warning"><strong>Warning.</strong> ${{escapeHtml(viewState.error)}}</div>`
+                : `<div class="neighbor-view-note">${{escapeHtml(viewState.error)}}</div>`;
             return;
         }}
 
@@ -29742,7 +30364,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             btn.addEventListener('click', () => {{
                 const idx = btn.getAttribute('data-neighbor-toggle');
                 if (idx === null) return;
-                const key = `${{currentColor}}::${{idx}}`;
+                const key = `${{getNeighborStatsColorColumn()}}::${{idx}}`;
                 if (expandedNeighborGroups.has(key)) expandedNeighborGroups.delete(key);
                 else expandedNeighborGroups.add(key);
                 renderNeighborStats();
@@ -29777,39 +30399,38 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sourceSelect = document.getElementById('interaction-source');
         if (!container || !sourceSelect) return;
 
+        const colorCol = getNeighborStatsColorColumn();
         if (!DATA.has_neighbors) {{
+            setNeighborStatsPanelAvailability('neighbors-tab-interactions-content', true, colorCol);
             container.innerHTML = '<div class="agg-group-meta">No neighbor graph was found in this dataset.</div>';
             sourceSelect.innerHTML = '';
             return;
         }}
-        if (currentGene) {{
-            container.innerHTML = '<div class="agg-group-meta">Clear the gene input to browse cell-cell interactions.</div>';
-            sourceSelect.innerHTML = '';
-            return;
-        }}
 
-        const config = getColorConfig();
-        const colorCol = currentColor;
+        const config = DATA.colors_meta?.[colorCol] || getColorConfig();
         if (config.is_continuous) {{
+            setNeighborStatsPanelAvailability('neighbors-tab-interactions-content', true, colorCol);
             container.innerHTML = '<div class="agg-group-meta">Interaction browser is available for categorical annotations only.</div>';
             sourceSelect.innerHTML = '';
             return;
         }}
 
-        const stats = (DATA.neighbor_stats || {{}})[currentColor];
+        const stats = (DATA.neighbor_stats || {{}})[colorCol];
         if (!stats || !stats.counts || !stats.categories) {{
-            container.innerHTML = '<div class="agg-group-meta">No neighbor stats available for this color.</div>';
+            setNeighborStatsPanelAvailability('neighbors-tab-interactions-content', false, colorCol);
+            container.innerHTML = '';
             sourceSelect.innerHTML = '';
             return;
         }}
+        setNeighborStatsPanelAvailability('neighbors-tab-interactions-content', true, colorCol);
 
-        const categories = (stats.categories || []).map(cat => formatCategoryLabel(currentColor, cat));
+        const categories = (stats.categories || []).map(cat => formatCategoryLabel(colorCol, cat));
         const counts = stats.counts || [];
         const zscores = stats.zscore || null;
         const nCells = stats.n_cells || [];
         const meanDegree = stats.mean_degree || [];
-        const markers = (DATA.marker_genes || {{}})[currentColor] || {{}};
-        const interactionMarkersByColor = (DATA.interaction_markers || {{}})[currentColor] || {{}};
+        const markers = (DATA.marker_genes || {{}})[colorCol] || {{}};
+        const interactionMarkersByColor = (DATA.interaction_markers || {{}})[colorCol] || {{}};
         const hasInteractionMarkers = Object.keys(interactionMarkersByColor).length > 0;
         if (categories.length === 0 || counts.length === 0) {{
             container.innerHTML = '<div class="agg-group-meta">Interaction data is empty for this color.</div>';
@@ -29847,7 +30468,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             container.innerHTML = '<div class="agg-group-meta">Choose a source cell type.</div>';
             return;
         }}
-        const rawSource = resolveRawCategoryValue(currentColor, source);
+        const rawSource = resolveRawCategoryValue(colorCol, source);
         const sourceInteractionMarkers = interactionMarkersByColor[rawSource] || {{}};
 
         const row = counts[sourceIdx] || [];
@@ -29861,7 +30482,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const z = (zscores && zscores[sourceIdx] && Number.isFinite(zscores[sourceIdx][targetIdx]))
                     ? Number(zscores[sourceIdx][targetIdx])
                     : null;
-                const rawTarget = resolveRawCategoryValue(currentColor, target);
+                const rawTarget = resolveRawCategoryValue(colorCol, target);
                 const targetMarkers = (markers[rawTarget] || []).slice(0, 4);
                 const contact = sourceInteractionMarkers[rawTarget] || null;
                 const contactMarkers = contact && Array.isArray(contact.genes)
@@ -29896,9 +30517,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const sourceN = (nCells[sourceIdx] ?? 0).toLocaleString();
         const degreeLabel = Number.isFinite(meanDegree[sourceIdx]) ? meanDegree[sourceIdx].toFixed(2) : '0.00';
         const withContactMarkers = topEntries.filter(entry => !!entry.contact).length;
-        const sourceColor = getCategoryColor(sourceIdx, currentColor);
+        const sourceColor = getCategoryColor(sourceIdx, colorCol);
         const rows = topEntries.map(entry => {{
-            const color = getCategoryColor(entry.targetIdx, currentColor);
+            const color = getCategoryColor(entry.targetIdx, colorCol);
             const zLabel = entry.z === null ? 'n/a' : entry.z.toFixed(2);
             const markerLabel = entry.targetMarkers.length ? renderInlineGeneLinks(entry.targetMarkers) : '—';
             const contactLabel = entry.contactMarkers.length ? renderInlineGeneLinks(entry.contactMarkers) : '—';
@@ -31357,18 +31978,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 event.stopPropagation();
                 if (!infoPopover) return;
                 const isActive = infoPopover.classList.toggle('active');
+                infoTrigger.classList.toggle('active', isActive);
                 infoPopover.setAttribute('aria-hidden', isActive ? 'false' : 'true');
             }});
             document.addEventListener('click', (event) => {{
                 if (!infoPopover || !infoPopover.classList.contains('active')) return;
                 if (infoPopover.contains(event.target) || event.target === infoTrigger) return;
                 infoPopover.classList.remove('active');
+                infoTrigger.classList.remove('active');
                 infoPopover.setAttribute('aria-hidden', 'true');
             }});
             document.addEventListener('keydown', (event) => {{
                 if (!infoPopover || !infoPopover.classList.contains('active')) return;
                 if (event.key === 'Escape') {{
                     infoPopover.classList.remove('active');
+                    infoTrigger.classList.remove('active');
                     infoPopover.setAttribute('aria-hidden', 'true');
                 }}
             }});
@@ -32366,8 +32990,9 @@ def export_to_html(
         contrast.
         Pseudobulk DE always requires at least two replicates.
     pseudobulk_min_pct_expressed : float
-        Minimum fraction of cells expressing a gene required in both compared
-        groups. Values > 1 are interpreted as percentages.
+        Minimum fraction of cells expressing a gene required in at least one
+        compared group before DeseqStats is run. Values > 1 are interpreted as
+        percentages.
     pseudobulk_p_adjust_method : str
         Multiple-testing correction method: "fdr_bh", "bonferroni", "holm", or "none".
     pseudobulk_padj_cutoff : float

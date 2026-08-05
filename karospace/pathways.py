@@ -229,7 +229,7 @@ def _ora_rows(
             if row.get("padj") is not None
             and row.get("log2fc") is not None
             and _passes_pct(row)
-            and float(row["padj"]) <= padj_cutoff
+            and float(row["padj"]) < padj_cutoff
             and float(row["log2fc"]) >= log2fc_cutoff
         }
     else:
@@ -239,7 +239,7 @@ def _ora_rows(
             if row.get("padj") is not None
             and row.get("log2fc") is not None
             and _passes_pct(row)
-            and float(row["padj"]) <= padj_cutoff
+            and float(row["padj"]) < padj_cutoff
             and float(row["log2fc"]) <= -log2fc_cutoff
         }
     if len(universe) < 1 or len(query) < int(min_overlap):

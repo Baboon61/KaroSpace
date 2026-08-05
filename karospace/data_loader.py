@@ -1396,8 +1396,9 @@ class SpatialDataset:
             contrast.
             Pseudobulk DE always requires at least two replicates.
         pseudobulk_min_pct_expressed : float
-            Minimum fraction of cells expressing a gene required in both compared
-            groups. Values > 1 are interpreted as percentages.
+            Minimum fraction of cells expressing a gene required in at least one
+            compared group before DeseqStats is run. Values > 1 are interpreted
+            as percentages.
         pseudobulk_p_adjust_method : str
             Multiple-testing correction method for pseudobulk p-values.
         pseudobulk_padj_cutoff : float
@@ -2026,7 +2027,6 @@ class SpatialDataset:
             payload: Any,
             padj_threshold: float,
             log2fc_threshold: float,
-            min_pct_threshold: float,
             *,
             exclude_category_vs_rest: bool = False,
             limit_per_comparison: int = 20,
@@ -2044,8 +2044,6 @@ class SpatialDataset:
                 genes_list = node.get("genes")
                 padj_list = node.get("pvals_adj")
                 log2fc_list = node.get("log2foldchanges")
-                pct_source_list = node.get("pct_source")
-                pct_reference_list = node.get("pct_reference")
                 if not isinstance(log2fc_list, list):
                     log2fc_list = node.get("logfoldchanges")
                 if (
@@ -2058,26 +2056,10 @@ class SpatialDataset:
                         try:
                             padj_value = float(padj)
                             log2fc_value = float(log2fc)
-                            pct_source_value = (
-                                float(pct_source_list[idx])
-                                if isinstance(pct_source_list, list) and idx < len(pct_source_list)
-                                else 0.0
-                            )
-                            pct_reference_value = (
-                                float(pct_reference_list[idx])
-                                if isinstance(pct_reference_list, list) and idx < len(pct_reference_list)
-                                else 0.0
-                            )
                         except (TypeError, ValueError):
                             continue
-                        pct_pass = (
-                            min_pct_threshold <= 0
-                            or pct_source_value >= min_pct_threshold
-                            or pct_reference_value >= min_pct_threshold
-                        )
                         if (
-                            pct_pass
-                            and np.isfinite(padj_value)
+                            np.isfinite(padj_value)
                             and np.isfinite(log2fc_value)
                             and padj_value < padj_threshold
                             and abs(log2fc_value) >= log2fc_threshold
@@ -2098,7 +2080,6 @@ class SpatialDataset:
             payload: Any,
             padj_threshold: float,
             log2fc_threshold: float,
-            min_pct_threshold: float,
             limit_per_category: int = 50,
         ) -> Dict[str, Dict[str, List[str]]]:
             markers: Dict[str, Dict[str, List[str]]] = {}
@@ -2127,8 +2108,6 @@ class SpatialDataset:
                         genes_list = result.get("genes")
                         padj_list = result.get("pvals_adj")
                         log2fc_list = result.get("log2foldchanges") or result.get("logfoldchanges")
-                        pct_source_list = result.get("pct_source")
-                        pct_reference_list = result.get("pct_reference")
                         if (
                             not isinstance(genes_list, list)
                             or not isinstance(padj_list, list)
@@ -2139,26 +2118,10 @@ class SpatialDataset:
                             try:
                                 padj_value = float(padj)
                                 log2fc_value = float(log2fc)
-                                pct_source_value = (
-                                    float(pct_source_list[idx])
-                                    if isinstance(pct_source_list, list) and idx < len(pct_source_list)
-                                    else 0.0
-                                )
-                                pct_reference_value = (
-                                    float(pct_reference_list[idx])
-                                    if isinstance(pct_reference_list, list) and idx < len(pct_reference_list)
-                                    else 0.0
-                                )
                             except (TypeError, ValueError):
                                 continue
-                            pct_pass = (
-                                min_pct_threshold <= 0
-                                or pct_source_value >= min_pct_threshold
-                                or pct_reference_value >= min_pct_threshold
-                            )
                             if (
-                                pct_pass
-                                and np.isfinite(padj_value)
+                                np.isfinite(padj_value)
                                 and np.isfinite(log2fc_value)
                                 and padj_value < padj_threshold
                                 and log2fc_value >= log2fc_threshold
@@ -2182,18 +2145,12 @@ class SpatialDataset:
 
         requested_genes = list(genes or [])
         de_embed_limit = int(pseudobulk_embed_top_n_per_comparison)
-        de_min_pct_threshold = (
-            float(pseudobulk_min_pct_expressed) / 100.0
-            if float(pseudobulk_min_pct_expressed) > 1.0
-            else float(pseudobulk_min_pct_expressed)
-        )
         de_gene_candidates = []
         de_gene_candidates.extend(
             _significant_de_genes(
                 pseudobulk_de,
                 float(pseudobulk_padj_cutoff),
                 float(pseudobulk_log2fc_cutoff),
-                de_min_pct_threshold,
                 limit_per_comparison=de_embed_limit,
             )
         )
@@ -2202,7 +2159,6 @@ class SpatialDataset:
                 interaction_markers,
                 float(pseudobulk_padj_cutoff),
                 float(pseudobulk_log2fc_cutoff),
-                de_min_pct_threshold,
                 limit_per_comparison=de_embed_limit,
             )
         )
@@ -2225,7 +2181,6 @@ class SpatialDataset:
             pseudobulk_de,
             float(pseudobulk_padj_cutoff),
             float(pseudobulk_log2fc_cutoff),
-            de_min_pct_threshold,
         )
 
         gene_data = self._collect_gene_data(export_genes)
