@@ -109,6 +109,8 @@ from karospace import load_spatial_data, export_to_html
 dataset = load_spatial_data(
     "your_data.h5ad",
     groupby="sample_id",  # Column identifying each section
+    metadata_section=["course", "region", "condition"],  # Section metadata shown as visual filter chips
+    metadata_section_extra=["patient_id", "slide_id"],  # Section metadata stored without filter chips
     metadata_value_order={
         "course": ["naive", "peak_I", "peak_II", "peak_III"],
     },
@@ -122,7 +124,7 @@ export_to_html(
     min_panel_size=150,          # Min panel width (responsive autoscaling)
     spot_size="auto",            # Adaptive by section density (or set a fixed number)
     downsample=30000,            # Max cells per section
-    additional_annotations=[          # Extra columns for annotation dropdown
+    cells_annotations=[          # Extra cell annotation columns for annotation dropdown
         "leiden",
         "condition",
     ],
@@ -204,10 +206,11 @@ karospace your_spatialdata.zarr -o viewer.html --annotation cell_type --spatiald
 |--------|-------------|---------|
 | `-o, --output` | Output HTML file path | `karospace.html` |
 | `--annotation` | Initial cell-annotation column | `leiden` |
-| `--additional-annotations` | Comma-separated extra obs columns to embed as selectable annotations | empty |
+| `--cells-annotations` | Comma-separated extra cell obs annotation columns to embed as selectable annotations | empty |
 | `--genes` | Comma-separated genes to preload; significant pseudobulk DE genes are embedded automatically up to the per-comparison cap | empty |
 | `--metadata-labels` | JSON object mapping metadata/obs column keys to display labels in the viewer UI | empty |
-| `--metadata-columns` | Comma-separated obs columns to use as section metadata and filter chips | loader defaults |
+| `--metadata-section` | Comma-separated obs columns to use as section metadata and visual filter chips | loader defaults |
+| `--metadata-section-extra` | Comma-separated obs columns to store as section metadata without visual filter chips | empty |
 | `--metadata-value-order` | JSON object mapping metadata columns to ordered value lists | empty |
 | `--metadata-max-columns` | Limit metadata columns used, preserving order | empty |
 | `-g, --groupby` | Column to group sections by | `sample_id` |

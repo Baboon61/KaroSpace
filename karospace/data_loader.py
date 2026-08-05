@@ -891,10 +891,35 @@ class SpatialDataset:
     obs_columns: List[str]
     var_names: List[str]
     metadata_columns: List[str]
+    metadata_section: List[str] = field(default_factory=list)
+    metadata_section_extra: List[str] = field(default_factory=list)
+    metadata_sample_extra: List[str] = field(default_factory=list)
     metadata_value_order: Optional[Dict[str, List[str]]] = None
     modalities: Dict[str, Modality] = field(default_factory=dict)
     default_modality: str = "rna"
     spatial_key: str = "spatial"
+
+    def __post_init__(self) -> None:
+        def _clean(values: Optional[List[str]]) -> List[str]:
+            cleaned = []
+            for value in values or []:
+                if value is None:
+                    continue
+                text = str(value).strip()
+                if text:
+                    cleaned.append(text)
+            return list(dict.fromkeys(cleaned))
+
+        if self.metadata_section:
+            self.metadata_section = _clean(self.metadata_section)
+            self.metadata_columns = list(self.metadata_section)
+        else:
+            self.metadata_columns = _clean(self.metadata_columns)
+            self.metadata_section = list(self.metadata_columns)
+        if not self.metadata_section_extra and self.metadata_sample_extra:
+            self.metadata_section_extra = self.metadata_sample_extra
+        self.metadata_section_extra = _clean(self.metadata_section_extra)
+        self.metadata_sample_extra = list(self.metadata_section_extra)
 
     @property
     def n_sections(self) -> int:
@@ -992,7 +1017,7 @@ class SpatialDataset:
     def get_metadata_filters(self) -> Dict[str, List[str]]:
         """Get unique values for filterable metadata columns."""
         filters = {}
-        for col in self.metadata_columns:
+        for col in self.metadata_section:
             if col in self.adata.obs.columns:
                 unique_vals = list(self.adata.obs[col].dropna().astype(str).unique())
                 custom_order = None
@@ -1471,7 +1496,7 @@ class SpatialDataset:
         self,
         annotation: str,
         downsample: Optional[int] = None,
-        additional_annotations: Optional[List[str]] = None,
+        cells_annotations: Optional[List[str]] = None,
         genes: Optional[List[str]] = None,
         gene_encoding: str = "auto",
         gene_sparse_zero_threshold: float = 0.8,
@@ -1501,6 +1526,7 @@ class SpatialDataset:
         interaction_markers_min_neighbors: int = 1,
         section_rotations: Optional[Dict[str, float]] = None,
         deconvolutions: Optional[Dict[str, str]] = None,
+        additional_annotations: Optional[List[str]] = None,
     ) -> Dict:
         """
         Export dataset to JSON-serializable format for the HTML viewer.
@@ -1511,8 +1537,10 @@ class SpatialDataset:
             Initial cell annotation column or gene
         downsample : int, optional
             If set, randomly downsample to this many cells per section
+        cells_annotations : list, optional
+            Additional cell obs columns to include for annotation switching.
         additional_annotations : list, optional
-            Additional obs columns to include for annotation switching.
+            Deprecated alias for ``cells_annotations``.
         genes : list, optional
             Gene names to include for expression visualization
         gene_encoding : str
@@ -1593,6 +1621,9 @@ class SpatialDataset:
         dict
             JSON-serializable data structure
         """
+        if cells_annotations is None and additional_annotations is not None:
+            cells_annotations = additional_annotations
+
         coords = np.asarray(self.adata.obsm[self.spatial_key])[:, :2]
         export_section_indices = self._get_export_section_indices(downsample=downsample)
 
@@ -1659,8 +1690,8 @@ class SpatialDataset:
 
         # Build list of all annotations to export
         all_colors = [annotation]
-        if additional_annotations:
-            all_colors.extend([c for c in additional_annotations if c != annotation and c in self.obs_columns])
+        if cells_annotations:
+            all_colors.extend([c for c in cells_annotations if c != annotation and c in self.obs_columns])
 
         # Pre-compute all color data
         color_data = {}
@@ -2740,6 +2771,9 @@ class SpatialDataset:
             "genes_meta": genes_meta,
             "gene_encodings": gene_encodings,
             "metadata_filters": metadata_filters,
+            "metadata_section": list(self.metadata_section),
+            "metadata_section_extra": list(self.metadata_section_extra),
+            "metadata_sample_extra": list(self.metadata_section_extra),
             "n_sections": len(sections_data),
             "total_cells": sum(s["n_cells"] for s in sections_data),
             "loaded_genes": len(genes_meta),
@@ -2831,6 +2865,9 @@ def load_spatial_data(
     spatial_columns: Optional[Tuple[str, str]] = None,
     group_order: Optional[List[str]] = None,
     metadata_columns: Optional[List[str]] = None,
+    metadata_section: Optional[List[str]] = None,
+    metadata_section_extra: Optional[List[str]] = None,
+    metadata_sample_extra: Optional[List[str]] = None,
     metadata_value_order: Optional[Dict[str, List[str]]] = None,
     metadata_max_columns: Optional[int] = None,
     spatialdata_table: Optional[str] = None,
@@ -2853,8 +2890,14 @@ def load_spatial_data(
         columns rather than an obsm matrix.
     group_order : list, optional
         Custom order for sections
+    metadata_section : list, optional
+        Obs columns to use for section metadata and visual filter chips.
+    metadata_section_extra : list, optional
+        Additional obs columns to store as section metadata without visual filter chips.
+    metadata_sample_extra : list, optional
+        Deprecated alias for ``metadata_section_extra``.
     metadata_columns : list, optional
-        Obs columns to use for section metadata and filter chips
+        Deprecated alias for ``metadata_section``.
     metadata_value_order : dict, optional
         Custom ordering for metadata values per column (e.g. {"course": ["A", "B"]})
         If group_order is not provided, the first key in this dict is used to order sections
@@ -2916,13 +2959,32 @@ def load_spatial_data(
 
     print(f"  Found {len(section_ids)} sections")
 
-    # Determine metadata columns
-    if metadata_columns is None:
-        metadata_columns = ["course", "region", "condition", "timepoint", "last_score", "last_day"]
+    def _clean_column_list(values: Optional[List[str]]) -> List[str]:
+        cleaned = []
+        for col in values or []:
+            if col is None:
+                continue
+            text = str(col).strip()
+            if text:
+                cleaned.append(text)
+        return list(dict.fromkeys(cleaned))
+
+    # Determine section metadata columns. metadata_columns is kept as a
+    # backwards-compatible alias for metadata_section.
+    if metadata_section is None:
+        metadata_section = metadata_columns
+    if metadata_section is None:
+        metadata_section = ["course", "region", "condition", "timepoint", "last_score", "last_day"]
+    else:
+        metadata_section = _clean_column_list(metadata_section)
+    if metadata_section_extra is None:
+        metadata_section_extra = metadata_sample_extra
+    metadata_section_extra = _clean_column_list(metadata_section_extra)
     if metadata_max_columns is not None:
         if metadata_max_columns < 0:
             raise ValueError("metadata_max_columns must be >= 0")
-        metadata_columns = metadata_columns[:metadata_max_columns]
+        metadata_section = metadata_section[:metadata_max_columns]
+    section_metadata_columns = list(dict.fromkeys([*metadata_section, *metadata_section_extra]))
 
     # Build section data
     coords = np.asarray(adata.obsm[spatial_key])[:, :2]
@@ -2935,7 +2997,7 @@ def load_spatial_data(
 
         # Extract metadata
         metadata = {}
-        for meta_col in metadata_columns:
+        for meta_col in section_metadata_columns:
             if meta_col in adata.obs.columns:
                 vals = adata.obs.loc[mask, meta_col].dropna().astype(str).unique()
                 if len(vals) == 1:
@@ -2968,7 +3030,10 @@ def load_spatial_data(
         groupby=groupby,
         obs_columns=obs_columns,
         var_names=list(adata.var_names),
-        metadata_columns=metadata_columns,
+        metadata_columns=metadata_section,
+        metadata_section=metadata_section,
+        metadata_section_extra=metadata_section_extra,
+        metadata_sample_extra=metadata_section_extra,
         metadata_value_order=metadata_value_order,
         modalities=modalities,
         default_modality=default_modality,

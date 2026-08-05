@@ -77,12 +77,18 @@ def _run_export_cli(argv=None):
         help="Initial cell annotation column or gene (default: leiden)"
     )
     viewer_args.add_argument(
-        "--additional-annotations",
+        "--cells-annotations",
         type=str,
         default="",
-        dest="additional_annotations",
-        help="Comma-separated extra obs columns to embed as selectable annotations "
+        dest="cells_annotations",
+        help="Comma-separated extra cell obs annotation columns to embed as selectable annotations "
              "(e.g. a second clustering). Needed to compare annotations in the River plot."
+    )
+    viewer_args.add_argument(
+        "--additional-annotations",
+        type=str,
+        dest="cells_annotations",
+        help=argparse.SUPPRESS,
     )
     gene_args.add_argument(
         "--genes",
@@ -145,13 +151,36 @@ def _run_export_cli(argv=None):
         ),
     )
     metadata_args.add_argument(
-        "--metadata-columns",
+        "--metadata-section",
         type=str,
         default="",
+        dest="metadata_section",
         help=(
-            "Comma-separated obs columns to use as section metadata and filter chips "
+            "Comma-separated obs columns to use as section metadata and visual filter chips "
             "(e.g. strain,region,Batch,Slide). Empty uses loader defaults."
         ),
+    )
+    metadata_args.add_argument(
+        "--metadata-columns",
+        type=str,
+        dest="metadata_section",
+        help=argparse.SUPPRESS,
+    )
+    metadata_args.add_argument(
+        "--metadata-section-extra",
+        type=str,
+        default="",
+        dest="metadata_section_extra",
+        help=(
+            "Comma-separated obs columns to store as section metadata without adding "
+            "visual filter chips."
+        ),
+    )
+    metadata_args.add_argument(
+        "--metadata-sample-extra",
+        type=str,
+        dest="metadata_section_extra",
+        help=argparse.SUPPRESS,
     )
     metadata_args.add_argument(
         "--metadata-value-order",
@@ -624,10 +653,11 @@ def _run_export_cli(argv=None):
     pseudobulk_simple_constrast_categories = _parse_csv(args.pseudobulk_simple_constrast_categories)
     pathway_gmt = _parse_csv(args.pathway_gmt) or None
     pathway_organism = str(args.pathway_organism or "Human").strip() or "Human"
-    additional_annotations = _parse_csv(args.additional_annotations)
+    cells_annotations = _parse_csv(args.cells_annotations)
     genes = _parse_csv(args.genes)
     group_order = _parse_csv(args.group_order)
-    metadata_columns = _parse_csv(args.metadata_columns)
+    metadata_section = _parse_csv(args.metadata_section)
+    metadata_section_extra = _parse_csv(args.metadata_section_extra)
     metadata_labels_raw = _parse_json_object(args.metadata_labels, "--metadata-labels")
     metadata_labels = {
         str(key): str(value)
@@ -683,8 +713,10 @@ def _run_export_cli(argv=None):
         load_kwargs["spatial_columns"] = spatial_columns
     if group_order is not None:
         load_kwargs["group_order"] = group_order
-    if metadata_columns is not None:
-        load_kwargs["metadata_columns"] = metadata_columns
+    if metadata_section is not None:
+        load_kwargs["metadata_section"] = metadata_section
+    if metadata_section_extra is not None:
+        load_kwargs["metadata_section_extra"] = metadata_section_extra
     if metadata_value_order is not None:
         load_kwargs["metadata_value_order"] = metadata_value_order
     if args.metadata_max_columns is not None:
@@ -699,7 +731,7 @@ def _run_export_cli(argv=None):
         dataset,
         output_path=args.output,
         annotation=args.annotation,
-        additional_annotations=additional_annotations,
+        cells_annotations=cells_annotations,
         genes=genes,
         title=args.title,
         modalities=modalities_arg,

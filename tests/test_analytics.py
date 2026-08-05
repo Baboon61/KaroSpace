@@ -107,6 +107,38 @@ def test_to_json_data_numeric_category_order_and_palette(tmp_path):
     assert dict(embedded) == dict(Counter(str(v) for v in labels))
 
 
+def test_metadata_section_and_section_extra_split():
+    obs = pd.DataFrame(
+        {
+            "sample": pd.Categorical(["s1", "s1", "s2", "s2"]),
+            "condition": pd.Categorical(["ctrl", "ctrl", "case", "case"]),
+            "patient_id": pd.Categorical(["p1", "p1", "p2", "p2"]),
+        },
+        index=[f"c{i}" for i in range(4)],
+    )
+    adata = AnnData(
+        X=np.ones((4, 2), dtype=float),
+        obs=obs,
+        var=pd.DataFrame(index=["G1", "G2"]),
+    )
+    adata.obsm["spatial"] = np.asarray(
+        [[0, 0], [1, 0], [0, 1], [1, 1]],
+        dtype=float,
+    )
+
+    dataset = load_spatial_data(
+        adata,
+        groupby="sample",
+        metadata_section=["condition"],
+        metadata_section_extra=["patient_id"],
+    )
+
+    assert dataset.get_metadata_filters() == {"condition": ["case", "ctrl"]}
+    assert dataset.metadata_section == ["condition"]
+    assert dataset.metadata_section_extra == ["patient_id"]
+    assert dataset.sections[0].metadata == {"condition": "ctrl", "patient_id": "p1"}
+
+
 # --------------------------------------------------------------------------- #
 # _resolve_spatial_key
 # --------------------------------------------------------------------------- #
@@ -454,7 +486,7 @@ def test_cli_accepts_spatial_obs_columns(monkeypatch, tmp_path):
     assert captured["load"]["spatial_columns"] == ("x_centroid", "y_centroid")
 
 
-def test_cli_accepts_metadata_columns(monkeypatch, tmp_path):
+def test_cli_accepts_metadata_section(monkeypatch, tmp_path):
     import karospace.cli as cli_module
 
     input_path = tmp_path / "input.h5ad"
@@ -466,14 +498,16 @@ def test_cli_accepts_metadata_columns(monkeypatch, tmp_path):
         groupby="sample_id",
         spatial_key="spatial",
         spatial_columns=None,
-        metadata_columns=None,
+        metadata_section=None,
+        metadata_section_extra=None,
     ):
         captured["load"] = {
             "path": path,
             "groupby": groupby,
             "spatial_key": spatial_key,
             "spatial_columns": spatial_columns,
-            "metadata_columns": metadata_columns,
+            "metadata_section": metadata_section,
+            "metadata_section_extra": metadata_section_extra,
         }
         class MockDataset:
             metadata_columns = []
@@ -497,15 +531,18 @@ def test_cli_accepts_metadata_columns(monkeypatch, tmp_path):
             "x_centroid",
             "--spatial-y",
             "y_centroid",
-            "--metadata-columns",
+            "--metadata-section",
             "strain,region,Batch,Slide",
+            "--metadata-section-extra",
+            "patient_id,slide_id",
         ],
     )
 
     cli_module.main()
 
     assert captured["load"]["spatial_columns"] == ("x_centroid", "y_centroid")
-    assert captured["load"]["metadata_columns"] == ["strain", "region", "Batch", "Slide"]
+    assert captured["load"]["metadata_section"] == ["strain", "region", "Batch", "Slide"]
+    assert captured["load"]["metadata_section_extra"] == ["patient_id", "slide_id"]
 
 
 def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
@@ -545,6 +582,8 @@ def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
             "strain",
             "--genes",
             "G1,G2",
+            "--cells-annotations",
+            "cell_type,subcluster",
             "--viewer-info-html",
             "<div>Info</div>",
             "--gene-value-encoding",
@@ -580,6 +619,7 @@ def test_cli_exposes_api_load_and_export_options(monkeypatch, tmp_path):
     export_kwargs = captured["export_kwargs"]
     assert export_kwargs["outline_by"] == "strain"
     assert export_kwargs["genes"] == ["G1", "G2"]
+    assert export_kwargs["cells_annotations"] == ["cell_type", "subcluster"]
     assert "vmin" not in export_kwargs
     assert "vmax" not in export_kwargs
     assert "theme" not in export_kwargs
