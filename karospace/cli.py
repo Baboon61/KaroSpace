@@ -229,6 +229,14 @@ def _run_export_cli(argv=None):
         default=None,
         help="Path to an HTML fragment file shown in the viewer Info tab."
     )
+    viewer_args.add_argument(
+        "--tutorial",
+        action="store_true",
+        help=(
+            "Embed the interactive guided tutorial and start it automatically "
+            "the first time the HTML viewer is opened."
+        ),
+    )
     gene_args.add_argument(
         "--gene-encoding",
         choices=["auto", "dense", "sparse"],
@@ -745,6 +753,7 @@ def _run_export_cli(argv=None):
         outline_by=outline_by,
         metadata_labels=metadata_labels,
         viewer_info_html=viewer_info_html,
+        tutorial=args.tutorial,
         gene_encoding=args.gene_encoding,
         gene_value_encoding=args.gene_value_encoding,
         gene_storage=args.gene_storage,

@@ -3198,6 +3198,118 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 11px;
             color: var(--muted-color);
         }}
+        .tutorial-overlay {{
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 2200;
+            pointer-events: none;
+        }}
+        .tutorial-overlay.active {{
+            display: block;
+        }}
+        .tutorial-spotlight {{
+            position: fixed;
+            left: 16px;
+            top: 16px;
+            width: 1px;
+            height: 1px;
+            border: 2px solid var(--accent-border);
+            border-radius: 8px;
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58), 0 0 0 4px rgba(255, 255, 255, 0.22);
+            background: transparent;
+            pointer-events: none;
+            transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
+        }}
+        .tutorial-card {{
+            position: fixed;
+            width: min(380px, calc(100vw - 28px));
+            max-height: min(70vh, 560px);
+            overflow: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--panel-bg);
+            color: var(--text-color);
+            box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+            pointer-events: auto;
+            padding: 12px;
+        }}
+        .tutorial-card-header {{
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 8px;
+        }}
+        .tutorial-eyebrow {{
+            color: var(--accent-text);
+            font-size: 10px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 3px;
+        }}
+        .tutorial-title {{
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.25;
+        }}
+        .tutorial-body {{
+            color: var(--text-color);
+            font-size: 13px;
+            line-height: 1.45;
+        }}
+        .tutorial-body p {{
+            margin: 0 0 8px;
+        }}
+        .tutorial-body p:last-child {{
+            margin-bottom: 0;
+        }}
+        .tutorial-close {{
+            width: 28px;
+            height: 28px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 18px;
+            line-height: 1;
+        }}
+        .tutorial-close:hover {{
+            background: var(--icon-hover-bg);
+            border-color: var(--accent-border);
+            color: var(--accent-text);
+        }}
+        .tutorial-disable-row {{
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            margin: 10px 0 0;
+            color: var(--muted-color);
+            font-size: 12px;
+            user-select: none;
+        }}
+        .tutorial-actions {{
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 12px;
+        }}
+        .tutorial-action-spacer {{
+            flex: 1 1 auto;
+        }}
+        .tutorial-primary {{
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
+        }}
+        .tutorial-primary:hover {{
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: var(--accent-border);
+            filter: brightness(0.96);
+        }}
         .color-list {{
             display: flex;
             flex-direction: column;
@@ -6994,6 +7106,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <path d="M12 17h.01"></path>
                     </svg>
                 </button>
+                <button class="icon-btn" id="tutorial-trigger" type="button" title="Start guided tutorial" aria-label="Start guided tutorial" data-help="Start the guided walkthrough of the main KaroSpace viewer functions." style="{tutorial_button_style}">
+                    <svg class="lucide lucide-graduation-cap" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"></path>
+                        <path d="M22 10v6"></path>
+                        <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"></path>
+                    </svg>
+                </button>
             </div>
             {downsample_warning_html}
             <div class="info-popover" id="info-popover" aria-hidden="true">
@@ -7414,6 +7533,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         </div>
     </div>
 
+    <div class="tutorial-overlay" id="tutorial-overlay" aria-hidden="true">
+        <div class="tutorial-spotlight" id="tutorial-spotlight"></div>
+        <div class="tutorial-card" id="tutorial-card" role="dialog" aria-modal="true" aria-labelledby="tutorial-title">
+            <div class="tutorial-card-header">
+                <div>
+                    <div class="tutorial-eyebrow" id="tutorial-progress">Tutorial</div>
+                    <div class="tutorial-title" id="tutorial-title">KaroSpace tutorial</div>
+                </div>
+                <button class="tutorial-close" id="tutorial-close" type="button" aria-label="Close tutorial">&times;</button>
+            </div>
+            <div class="tutorial-body" id="tutorial-body"></div>
+            <label class="tutorial-disable-row">
+                <input type="checkbox" id="tutorial-disable-autostart">
+                Do not open automatically again
+            </label>
+            <div class="tutorial-actions">
+                <button class="legend-btn" id="tutorial-skip" type="button">Skip</button>
+                <div class="tutorial-action-spacer"></div>
+                <button class="legend-btn" id="tutorial-prev" type="button">Back</button>
+                <button class="legend-btn tutorial-primary" id="tutorial-next" type="button">Next</button>
+            </div>
+        </div>
+    </div>
+
     <div class="modal-overlay" id="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -7736,6 +7879,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     DATA.gene_value_encodings = DATA.gene_value_encodings || {{}};
     DATA.pseudobulk_de = DATA.pseudobulk_de || DATA.cluster_de || {{}};
     delete DATA.cluster_de;
+    const TUTORIAL_CONFIG = DATA.tutorial && typeof DATA.tutorial === 'object' ? DATA.tutorial : {{ enabled: false }};
     const PALETTE = {palette_json};
     const METADATA_LABELS = {metadata_labels_json};
     const OUTLINE_BY = {outline_by_json};
@@ -9234,6 +9378,376 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
     }}
 
+    let tutorialActive = false;
+    let tutorialStepIndex = 0;
+    const tutorialSteps = [
+        {{
+            title: 'Overview of panels',
+            target: ['#grid-stage', '#grid', '.main-container'],
+            body: [
+                'The main grid displays every exported section. Use it to scan spatial patterns across samples, open a section, and keep the broad dataset context visible.',
+                'The right-side legend and Insights panel are companion panels: one controls visible categories, the other summarizes analyses.'
+            ]
+        }},
+        {{
+            title: 'Color selector and categories',
+            target: ['#visual-color-controls', '#color-select', '#legend'],
+            body: [
+                'The annotation selector controls how cells are colored in every section.',
+                'The legend lists the categories for the selected annotation. It also lets you hide, spotlight, rename, recolor, and export category information.'
+            ]
+        }},
+        {{
+            title: 'Section filters',
+            target: ['#filter-bar', '#visual-params-bar'],
+            body: [
+                'Section filters reduce the grid to the samples or metadata values you want to inspect.',
+                'These filters affect the visible panels without changing the exported data stored in the viewer.'
+            ]
+        }},
+        {{
+            title: 'Search and load genes',
+            target: ['#visual-gene-controls', '#gene-input-shell', '#gene-input'],
+            action: () => safeTutorialClick('#default-source-gene'),
+            body: [
+                'Switch to Gene mode and search a gene or feature name to paint expression on the spatial panels.',
+                'Loaded genes can be reused in modal views, comparisons, and gene-focused Insights panels.'
+            ]
+        }},
+        {{
+            title: 'Sidecar gene loading',
+            target: ['#gene-input-shell', '#visual-gene-controls'],
+            condition: () => !!DATA.gene_aux_url,
+            action: () => safeTutorialClick('#default-source-gene'),
+            body: [
+                'This viewer uses sidecar gene loading. The HTML starts smaller because non-embedded gene vectors live in the sidecar manifest and shard files.',
+                'Open sidecar viewers through HTTP or a .karospace loader so the browser is allowed to fetch additional genes.'
+            ]
+        }},
+        {{
+            title: 'Lasso selection',
+            target: ['#umap-lasso-btn', '#visual-spatial-tools'],
+            body: [
+                'The lasso tool selects cells directly from the spatial view.',
+                'Selections feed the Selection panel, focused views, per-cell comparison, and region annotation workflows.'
+            ]
+        }},
+        {{
+            title: 'Modal zoom view',
+            target: ['#modal .modal-header-tool-group', '#modal-canvas-container', '#modal'],
+            action: () => {{
+                if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') {{
+                    openModal(DATA.sections[0].id);
+                }}
+            }},
+            body: [
+                'Clicking a section opens the modal view. Here you can zoom, pan, rotate, inspect cells, overlay images, and work with region tools in more detail.',
+                'The modal keeps the high-detail section workflow separate from the overview grid.'
+            ]
+        }},
+        {{
+            title: 'Split compare',
+            target: ['#overview-mode-split', '#split-expression-scale-section', '#visual-params-bar'],
+            action: () => {{
+                if (typeof closeModal === 'function') closeModal();
+                safeTutorialClick('#overview-mode-split');
+            }},
+            body: [
+                'Split mode compares two visual layers side by side across the same spatial coordinates.',
+                'Use it for annotation-versus-annotation, gene-versus-gene, or annotation-versus-gene checks without losing section alignment.'
+            ]
+        }},
+        {{
+            title: 'Insights panel',
+            target: ['#color-panel', '#color-toggle', '#insights-exploration-panel'],
+            action: () => {{
+                if (typeof closeModal === 'function') closeModal();
+                if (typeof openInsightsMode === 'function') openInsightsMode('exploration');
+            }},
+            body: [
+                'Insights contains summary views, gene panels, comparisons, and neighborhood analyses.',
+                'The Visualization menu inside Insights chooses which analysis panel is displayed.'
+            ]
+        }},
+        {{
+            title: 'Pseudobulk DE plots',
+            target: ['#cluster-de-results', '#compare-tab-cell-de-content', '#color-tab-compare-content'],
+            condition: tutorialHasPseudobulk,
+            action: () => openTutorialInsightsPanel('compare', 'cell-de'),
+            body: [
+                'The Simple design pseudobulk section shows category-versus-category DE results from the exported pseudobulk analysis.',
+                'Use the raw table, gene plots, sample diagnostics, and pathway enrichment views to inspect the contrast.'
+            ]
+        }},
+        {{
+            title: 'Neighborhood and interactions',
+            target: ['#color-tab-neighbors-content', '#neighbor-stats', '#interaction-browser'],
+            condition: tutorialHasNeighborhoods,
+            action: () => openTutorialInsightsPanel('neighbors', 'enrichment'),
+            body: [
+                'Neighborhood panels summarize spatial neighbor composition, interaction marker results, and dispersion.',
+                'These panels depend on the neighbor graph and the annotations selected during export.'
+            ]
+        }},
+        {{
+            title: 'Region annotation and region DE',
+            target: ['#modal-annotation-section', '#insights-annotate-toggle', '#compare-tab-regions-content'],
+            action: () => {{
+                if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') {{
+                    openModal(DATA.sections[0].id);
+                }}
+                if (typeof setInsightsMode === 'function') setInsightsMode('annotate');
+            }},
+            body: [
+                'Regions are user-drawn annotations created from selected cells in the modal workflow.',
+                'After regions exist, the Regions comparison panel can summarize and compare those cell sets, including region-level DE where available.'
+            ]
+        }},
+        {{
+            title: 'Export buttons',
+            target: ['#export-menu-wrap', '#screenshot-menu-wrap', '#save-session-btn'],
+            action: () => {{
+                if (typeof closeModal === 'function') closeModal();
+            }},
+            body: [
+                'Export controls download screenshots, sessions, legends, annotations, tables, plots, and data bundles depending on the active panel.',
+                'Use session export when you want to preserve viewer state such as rotations, selections, hidden categories, and annotations.'
+            ]
+        }}
+    ];
+
+    function getTutorialStorageKey(suffix) {{
+        const base = String(TUTORIAL_CONFIG.storage_key || 'karospace:tutorial:v1');
+        return base + ':' + suffix;
+    }}
+
+    function getTutorialFlag(suffix) {{
+        try {{
+            return window.localStorage?.getItem(getTutorialStorageKey(suffix)) === '1';
+        }} catch (error) {{
+            return false;
+        }}
+    }}
+
+    function setTutorialFlag(suffix, value) {{
+        try {{
+            if (value) window.localStorage?.setItem(getTutorialStorageKey(suffix), '1');
+            else window.localStorage?.removeItem(getTutorialStorageKey(suffix));
+        }} catch (error) {{
+            // localStorage can be unavailable for some file/browser privacy modes.
+        }}
+    }}
+
+    function safeTutorialClick(selector) {{
+        const el = document.querySelector(selector);
+        if (el && typeof el.click === 'function') el.click();
+    }}
+
+    function tutorialHasPseudobulk() {{
+        const payload = DATA.pseudobulk_de || {{}};
+        return Object.entries(payload).some(([key, value]) => {{
+            if (String(key).startsWith('_') || !value || typeof value !== 'object') return false;
+            return Object.keys(value).some(k => !String(k).startsWith('_'));
+        }});
+    }}
+
+    function tutorialHasNeighborhoods() {{
+        const stats = DATA.neighbor_stats || {{}};
+        const interactions = DATA.interaction_markers || {{}};
+        return !!DATA.has_neighbors || Object.keys(stats).length > 0 || Object.keys(interactions).length > 0;
+    }}
+
+    function openTutorialInsightsPanel(topLevel, subtab) {{
+        if (typeof closeModal === 'function') closeModal();
+        if (typeof openInsightsMode === 'function') openInsightsMode('exploration');
+        if (typeof activateInsightsSubtab === 'function') activateInsightsSubtab(topLevel, subtab);
+    }}
+
+    function isTutorialElementVisible(el) {{
+        if (!el || !(el instanceof Element)) return false;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none' || style.visibility === 'hidden') return false;
+        const rect = el.getBoundingClientRect();
+        return rect.width > 2 && rect.height > 2;
+    }}
+
+    function findTutorialTarget(step) {{
+        const selectors = Array.isArray(step.target) ? step.target : [step.target];
+        for (const selector of selectors) {{
+            if (!selector) continue;
+            const matches = Array.from(document.querySelectorAll(selector));
+            const visible = matches.find(isTutorialElementVisible);
+            if (visible) return visible;
+        }}
+        return null;
+    }}
+
+    function positionTutorialCard(target) {{
+        const overlay = document.getElementById('tutorial-overlay');
+        const spotlight = document.getElementById('tutorial-spotlight');
+        const card = document.getElementById('tutorial-card');
+        if (!overlay || !spotlight || !card || !target) return;
+        const rect = target.getBoundingClientRect();
+        const margin = 12;
+        const padded = {{
+            left: Math.max(8, rect.left - 6),
+            top: Math.max(8, rect.top - 6),
+            width: Math.min(window.innerWidth - 16, rect.width + 12),
+            height: Math.min(window.innerHeight - 16, rect.height + 12)
+        }};
+        spotlight.style.left = padded.left + 'px';
+        spotlight.style.top = padded.top + 'px';
+        spotlight.style.width = Math.max(24, padded.width) + 'px';
+        spotlight.style.height = Math.max(24, padded.height) + 'px';
+
+        const cardRect = card.getBoundingClientRect();
+        const cardW = cardRect.width || Math.min(380, window.innerWidth - 28);
+        const cardH = cardRect.height || 220;
+        let left = rect.right + margin;
+        let top = rect.top;
+        if (left + cardW > window.innerWidth - margin) left = rect.left - cardW - margin;
+        if (left < margin) left = Math.min(Math.max(margin, rect.left), window.innerWidth - cardW - margin);
+        if (top + cardH > window.innerHeight - margin) top = window.innerHeight - cardH - margin;
+        if (top < margin) top = margin;
+        if (window.innerWidth < 720) {{
+            left = Math.max(margin, Math.min(window.innerWidth - cardW - margin, margin));
+            top = rect.bottom + margin;
+            if (top + cardH > window.innerHeight - margin) top = Math.max(margin, rect.top - cardH - margin);
+        }}
+        card.style.left = Math.round(left) + 'px';
+        card.style.top = Math.round(top) + 'px';
+    }}
+
+    function renderTutorialStep(target, step, displayIndex) {{
+        const overlay = document.getElementById('tutorial-overlay');
+        const title = document.getElementById('tutorial-title');
+        const body = document.getElementById('tutorial-body');
+        const progress = document.getElementById('tutorial-progress');
+        const prev = document.getElementById('tutorial-prev');
+        const next = document.getElementById('tutorial-next');
+        const disable = document.getElementById('tutorial-disable-autostart');
+        if (!overlay || !title || !body || !progress || !prev || !next) return;
+        overlay.classList.add('active');
+        overlay.setAttribute('aria-hidden', 'false');
+        title.textContent = step.title || 'Tutorial';
+        const total = getAvailableTutorialStepCount();
+        progress.textContent = 'Step ' + String(displayIndex + 1) + ' of ' + String(total);
+        body.innerHTML = (step.body || []).map(text => '<p>' + escapeHtml(text) + '</p>').join('');
+        prev.disabled = displayIndex <= 0;
+        next.textContent = displayIndex >= total - 1 ? 'Finish' : 'Next';
+        if (disable) disable.checked = getTutorialFlag('disabled') || getTutorialFlag('seen');
+        positionTutorialCard(target);
+    }}
+
+    function getAvailableTutorialSteps() {{
+        return tutorialSteps.filter(step => !step.condition || step.condition());
+    }}
+
+    function getAvailableTutorialStepCount() {{
+        return Math.max(1, getAvailableTutorialSteps().length);
+    }}
+
+    function getTutorialDisplayIndex(index) {{
+        const available = getAvailableTutorialSteps();
+        const step = tutorialSteps[index];
+        const found = available.indexOf(step);
+        return found >= 0 ? found : Math.max(0, Math.min(available.length - 1, index));
+    }}
+
+    function showTutorialStep(index, direction = 1, attempts = 0) {{
+        if (!tutorialActive) return;
+        if (attempts > tutorialSteps.length) {{
+            setTutorialOpen(false, true);
+            return;
+        }}
+        if (index < 0) index = 0;
+        if (index >= tutorialSteps.length) {{
+            setTutorialOpen(false, true);
+            return;
+        }}
+        const step = tutorialSteps[index];
+        if (step.condition && !step.condition()) {{
+            showTutorialStep(index + direction, direction, attempts + 1);
+            return;
+        }}
+        tutorialStepIndex = index;
+        try {{
+            step.action?.();
+        }} catch (error) {{
+            console.warn('Tutorial step action failed', error);
+        }}
+        window.setTimeout(() => {{
+            if (!tutorialActive) return;
+            const target = findTutorialTarget(step);
+            if (!target) {{
+                showTutorialStep(index + direction, direction, attempts + 1);
+                return;
+            }}
+            target.scrollIntoView?.({{ block: 'center', inline: 'center', behavior: 'smooth' }});
+            window.setTimeout(() => {{
+                if (!tutorialActive) return;
+                renderTutorialStep(target, step, getTutorialDisplayIndex(index));
+            }}, 180);
+        }}, 80);
+    }}
+
+    function stepTutorial(direction) {{
+        const increment = Number(direction) || 1;
+        showTutorialStep(tutorialStepIndex + increment, increment);
+    }}
+
+    function setTutorialOpen(open, completed = false, force = false) {{
+        if (!TUTORIAL_CONFIG.enabled && !force) return;
+        const overlay = document.getElementById('tutorial-overlay');
+        const disable = document.getElementById('tutorial-disable-autostart');
+        if (!overlay) return;
+        if (open) {{
+            setTutorialFlag('disabled', false);
+            document.getElementById('shortcuts-overlay')?.classList.remove('active');
+            document.getElementById('info-popover')?.classList.remove('active');
+            document.getElementById('app-help-popover')?.classList.remove('active');
+            tutorialActive = true;
+            tutorialStepIndex = 0;
+            showTutorialStep(0, 1);
+        }} else {{
+            tutorialActive = false;
+            overlay.classList.remove('active');
+            overlay.setAttribute('aria-hidden', 'true');
+            if (completed || disable?.checked) setTutorialFlag('seen', true);
+            if (disable?.checked) setTutorialFlag('disabled', true);
+        }}
+    }}
+
+    function initTutorialOverlay() {{
+        const trigger = document.getElementById('tutorial-trigger');
+        if (!TUTORIAL_CONFIG.enabled) {{
+            if (trigger) trigger.style.display = 'none';
+            return;
+        }}
+        if (trigger) {{
+            trigger.style.display = '';
+            trigger.addEventListener('click', () => setTutorialOpen(true, false, true));
+        }}
+        document.getElementById('tutorial-close')?.addEventListener('click', () => setTutorialOpen(false, false));
+        document.getElementById('tutorial-skip')?.addEventListener('click', () => setTutorialOpen(false, true));
+        document.getElementById('tutorial-prev')?.addEventListener('click', () => stepTutorial(-1));
+        document.getElementById('tutorial-next')?.addEventListener('click', () => {{
+            const available = getAvailableTutorialSteps();
+            const step = tutorialSteps[tutorialStepIndex];
+            const displayIndex = available.indexOf(step);
+            if (displayIndex >= available.length - 1) setTutorialOpen(false, true);
+            else stepTutorial(1);
+        }});
+        document.getElementById('tutorial-disable-autostart')?.addEventListener('change', (event) => {{
+            const checked = !!event.target.checked;
+            setTutorialFlag('seen', checked);
+            setTutorialFlag('disabled', checked);
+        }});
+        if (TUTORIAL_CONFIG.autostart && !getTutorialFlag('seen') && !getTutorialFlag('disabled')) {{
+            window.setTimeout(() => setTutorialOpen(true), 550);
+        }}
+    }}
+
     function initKeyboardShortcuts() {{
         document.addEventListener('keydown', (event) => {{
             if (event.defaultPrevented) return;
@@ -9252,6 +9766,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
 
             if (key === 'Escape') {{
+                const tutorialOverlay = document.getElementById('tutorial-overlay');
+                if (tutorialOverlay?.classList.contains('active')) {{
+                    event.preventDefault();
+                    setTutorialOpen(false, false);
+                    return;
+                }}
                 const shortcutsOverlay = document.getElementById('shortcuts-overlay');
                 if (shortcutsOverlay?.classList.contains('active')) {{
                     event.preventDefault();
@@ -32795,7 +33315,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             // Always clear loader/warning, even if an init step throws.
             hideLoader();
         }}
-        if (initSucceeded) requestAnimationFrame(renderAllSections);
+        if (initSucceeded) requestAnimationFrame(() => {{
+            renderAllSections();
+            initTutorialOverlay();
+        }});
     }});
     window.addEventListener('resize', () => {{
         updateStickyOffsets();
@@ -32807,6 +33330,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderModalSection();
         }}
         if (umapVisible) renderUMAP();
+        if (tutorialActive) {{
+            const step = tutorialSteps[tutorialStepIndex];
+            const target = step ? findTutorialTarget(step) : null;
+            if (target) positionTutorialCard(target);
+        }}
     }});
     </script>
     {footer_logo}
@@ -32826,6 +33354,7 @@ def export_to_html(
     outline_by: Optional[str] = "course",
     metadata_labels: Optional[Mapping[str, str]] = None,
     viewer_info_html: Optional[str] = None,
+    tutorial: bool = False,
     cells_annotations: Optional[List[str]] = None,
     genes: Optional[List[str]] = None,
     gene_encoding: str = "auto",
@@ -32901,6 +33430,9 @@ def export_to_html(
         UI without renaming the underlying obs/metadata columns.
     viewer_info_html : str, optional
         HTML string shown in the Info tab of the color panel.
+    tutorial : bool
+        Embed and autostart the guided HTML tutorial on first open. The viewer
+        still includes an in-page control to stop or restart the tutorial.
     cells_annotations : list, optional
         Additional cell obs columns to include for annotation switching.
     genes : list, optional
@@ -33272,6 +33804,17 @@ def export_to_html(
         "exported_total_cells": exported_total_cells,
         "removed_cells": max(0, original_total_cells - exported_total_cells),
     }
+    tutorial_storage_basis = (
+        package_output_path_obj.stem
+        if package_mode and package_output_path_obj is not None
+        else requested_output_path.stem
+    )
+    tutorial_storage_key = re.sub(r"[^A-Za-z0-9_.:-]+", "_", str(tutorial_storage_basis or "viewer"))
+    data["tutorial"] = {
+        "enabled": bool(tutorial),
+        "autostart": bool(tutorial),
+        "storage_key": f"karospace:tutorial:{tutorial_storage_key}:v1",
+    }
 
     if section_images:
         log_step("Embedding section image overlays")
@@ -33500,6 +34043,7 @@ def export_to_html(
         outline_by_json=json.dumps(outline_by),
         viewer_info_html_json=json.dumps(viewer_info_html),
         viewer_info_html=viewer_info_html_safe,
+        tutorial_button_style="" if bool(tutorial) else "display:none",
         theme_icon=theme_icon,
         initial_theme=initial_theme,
         favicon_link=favicon_link,

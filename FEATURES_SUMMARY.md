@@ -150,6 +150,7 @@ This document summarizes the current capabilities in this repository, focused on
   - SpatialData table selection with `--spatialdata-table`
   - `--cells-annotations`, `--metadata-section`, and `--metadata-section-extra`
   - color, groupby, panel size, spot size, downsample
+  - optional guided HTML tutorial with `--tutorial`
   - gene encoding options
   - sidecar gene storage and `.karospace` package options
   - neighbor stats controls

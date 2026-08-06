@@ -325,6 +325,14 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "function toggleShortcutsOverlay()" in html_text
     assert "if (key === '?')" in html_text
     assert "Open the full keyboard shortcuts overlay." in html_text
+    assert 'id="tutorial-overlay"' in html_text
+    assert 'id="tutorial-trigger"' in html_text
+    assert "function initTutorialOverlay()" in html_text
+    assert "const tutorialSteps = [" in html_text
+    assert "Pseudobulk DE plots" in html_text
+    embedded = _extract_data_json(html_text)
+    assert embedded["tutorial"]["enabled"] is False
+    assert embedded["tutorial"]["autostart"] is False
     assert "--selection-outline-color:" in html_text
     assert "function getSelectionOutlineColor()" in html_text
     assert "const metadataColor = getMetadataValueColor(OUTLINE_BY, value);" in html_text
@@ -358,6 +366,7 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert '<select id="neighbor-hop-select"' not in html_text
     assert ">Keyboard Shortcuts<" in html_text
     assert "<kbd>/</kbd>" in html_text
+
     assert "<kbd>I</kbd>" in html_text
     assert "function toggleLegendPanel()" in html_text
     assert "function toggleInsightsPanel()" in html_text
@@ -621,6 +630,28 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
             )
         finally:
             Path(script_path).unlink(missing_ok=True)
+
+
+def test_export_can_enable_guided_tutorial(tmp_path):
+    dataset = _build_dataset()
+    output_path = tmp_path / "viewer.html"
+
+    export_to_html(
+        dataset,
+        output_path=str(output_path),
+        main_cells_annotation="leiden",
+        genes=["G1"],
+        tutorial=True,
+    )
+
+    html_text = output_path.read_text(encoding="utf-8")
+    embedded = _extract_data_json(html_text)
+    assert embedded["tutorial"]["enabled"] is True
+    assert embedded["tutorial"]["autostart"] is True
+    assert embedded["tutorial"]["storage_key"].endswith(":viewer:v1")
+    assert 'id="tutorial-trigger"' in html_text
+    assert 'style=""' in html_text
+    assert "Do not open automatically again" in html_text
 
 
 def test_sidecar_export_with_no_embedded_genes_keeps_gene_catalog_and_warns(tmp_path, capsys):
@@ -1300,6 +1331,7 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
             "0",
             "--interaction-markers",
             "None",
+            "--tutorial",
         ],
     )
 
@@ -1334,6 +1366,7 @@ def test_cli_omits_removed_cluster_de_options(monkeypatch, tmp_path):
     assert captured["kwargs"]["pathway_top_n"] == 9
     assert captured["kwargs"]["pathway_min_overlap"] == 2
     assert captured["kwargs"]["pathway_gsea_permutations"] == 0
+    assert captured["kwargs"]["tutorial"] is True
 
 
 def test_cli_rejects_flat_pseudobulk_categories_with_multiple_annotations(monkeypatch, tmp_path, capsys):
