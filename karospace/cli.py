@@ -233,8 +233,8 @@ def _run_export_cli(argv=None):
         "--tutorial",
         action="store_true",
         help=(
-            "Embed the interactive guided tutorial and start it automatically "
-            "the first time the HTML viewer is opened."
+            "Embed the interactive guided tutorial and show an in-page control "
+            "to start it."
         ),
     )
     gene_args.add_argument(

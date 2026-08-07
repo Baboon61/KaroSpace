@@ -329,7 +329,13 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert 'id="tutorial-trigger"' in html_text
     assert "function initTutorialOverlay()" in html_text
     assert "const tutorialSteps = [" in html_text
-    assert "Pseudobulk DE plots" in html_text
+    assert "function buildDetailedTutorialSteps()" in html_text
+    assert "Welcome the KaroSpace" in html_text
+    assert "Recommended DE workflow" in html_text
+    assert "I tried it" not in html_text
+    assert 'id="tutorial-skip"' not in html_text
+    assert "tutorial-task" in html_text
+    assert html_text.count("step('") > 100
     embedded = _extract_data_json(html_text)
     assert embedded["tutorial"]["enabled"] is False
     assert embedded["tutorial"]["autostart"] is False

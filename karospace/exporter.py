@@ -1343,6 +1343,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-color: var(--accent-border);
             color: var(--accent-text);
         }}
+        .tutorial-start-info {{
+            padding: 5px 9px;
+            border: 1px solid #93c5fd;
+            border-radius: 6px;
+            background: #dbeafe;
+            color: #1e3a8a;
+            font-size: 12px;
+            line-height: 1.25;
+            user-select: none;
+        }}
+        :root.dark .tutorial-start-info {{
+            border-color: #2563eb;
+            background: #172554;
+            color: #bfdbfe;
+        }}
         .controls {{ display: flex; align-items: center; justify-content: flex-end; gap: 6px 8px; flex-wrap: wrap; margin-left: auto; max-width: 560px; }}
         .sr-only {{
             position: absolute;
@@ -3254,6 +3269,53 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-weight: 700;
             line-height: 1.25;
         }}
+        .tutorial-chapter {{
+            margin: 8px 0 10px;
+        }}
+        .tutorial-chapter-row {{
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            color: var(--muted-color);
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.3;
+        }}
+        .tutorial-chapter-name {{
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }}
+        .tutorial-chapter-count {{
+            flex: 0 0 auto;
+            color: var(--accent-text);
+        }}
+        .tutorial-chapter-track {{
+            height: 6px;
+            margin-top: 6px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--accent) 16%, var(--input-bg));
+            overflow: hidden;
+        }}
+        .tutorial-chapter-fill {{
+            width: 0%;
+            height: 100%;
+            border-radius: inherit;
+            background: var(--accent-fill);
+            transition: width 0.18s ease;
+        }}
+        .tutorial-chapter-select {{
+            width: 100%;
+            margin-top: 8px;
+            padding: 6px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            background: var(--input-bg);
+            color: var(--text-color);
+            font-size: 12px;
+        }}
         .tutorial-body {{
             color: var(--text-color);
             font-size: 13px;
@@ -3264,6 +3326,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         .tutorial-body p:last-child {{
             margin-bottom: 0;
+        }}
+        .tutorial-task {{
+            margin-top: 10px;
+            padding: 9px 10px;
+            border: 1px solid var(--accent-border);
+            border-radius: 6px;
+            background: var(--surface-raised);
+            color: var(--accent-text);
+            font-size: 12px;
+            line-height: 1.4;
+            font-weight: 600;
         }}
         .tutorial-close {{
             width: 28px;
@@ -3281,15 +3354,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             border-color: var(--accent-border);
             color: var(--accent-text);
         }}
-        .tutorial-disable-row {{
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            margin: 10px 0 0;
-            color: var(--muted-color);
-            font-size: 12px;
-            user-select: none;
-        }}
         .tutorial-actions {{
             display: flex;
             align-items: center;
@@ -3299,16 +3363,20 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .tutorial-action-spacer {{
             flex: 1 1 auto;
         }}
-        .tutorial-primary {{
-            background: var(--accent-fill);
-            color: var(--accent-on-fill);
-            border-color: var(--accent-border);
+        .tutorial-nav-btn {{
+            width: auto;
+            min-width: 54px;
+            padding: 0 10px;
+            font-size: 12px;
+            font-weight: 600;
         }}
-        .tutorial-primary:hover {{
-            background: var(--accent-fill);
-            color: var(--accent-on-fill);
-            border-color: var(--accent-border);
-            filter: brightness(0.96);
+        .tutorial-nav-btn:disabled,
+        .tutorial-nav-btn:disabled:hover {{
+            opacity: 0.45;
+            cursor: not-allowed;
+            background: var(--input-bg);
+            border-color: var(--border-color);
+            color: var(--muted-color);
         }}
         .color-list {{
             display: flex;
@@ -4933,6 +5001,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             padding: 2px;
             position: relative;
         }}
+        .modal-header-tool-pair {{
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }}
         .modal-header-tool-group .zoom-info {{
             margin: 0 4px 0 2px;
             min-width: 48px;
@@ -5017,7 +5090,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             opacity: 0.6;
         }}
         .modal-controls-toggle {{
-            display: none;
+            display: inline-flex;
+            align-items: center;
             padding: 4px 8px;
             border: 1px solid var(--border-color);
             border-radius: 999px;
@@ -5051,7 +5125,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             bottom: 12px;
             left: 50%;
             transform: translateX(-50%);
-            display: none;
+            display: flex;
             flex-wrap: wrap;
             justify-content: flex-start;
             align-items: stretch;
@@ -5190,21 +5264,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }}
         .zoom-info {{ font-size: 10px; color: var(--muted-color); margin-left: 6px; }}
-        .modal-blend-panel {{
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            width: min(420px, calc(100% - 16px));
-            padding: 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: color-mix(in srgb, var(--header-bg) 92%, transparent);
-            backdrop-filter: blur(6px);
-            z-index: 3;
-            display: none;
-            pointer-events: auto;
-        }}
-        .modal-blend-panel.visible {{ display: block; }}
         .modal-gene-panel {{
             position: absolute;
             left: 12px;
@@ -5346,140 +5405,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             height: 100%;
             border-radius: inherit;
             background: color-mix(in srgb, var(--accent-strong) 86%, white 14%);
-        }}
-        .modal-blend-title {{
-            font-size: 10px;
-            text-transform: uppercase;
-            letter-spacing: 0.04em;
-            color: var(--muted-color);
-            margin-bottom: 6px;
-        }}
-        .modal-blend-row {{
-            display: grid;
-            grid-template-columns: 18px 112px 1fr;
-            gap: 6px;
-            align-items: center;
-            margin-bottom: 6px;
-        }}
-        .modal-blend-row:last-child {{ margin-bottom: 0; }}
-        .modal-blend-row select,
-        .modal-blend-row input[type="text"],
-        .modal-blend-row input[type="range"] {{
-            min-width: 0;
-            width: 100%;
-            font-size: 11px;
-        }}
-        .modal-blend-side {{
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-color);
-        }}
-        .modal-blend-fields {{
-            display: flex;
-            gap: 4px;
-            min-width: 0;
-        }}
-        .modal-blend-fields > * {{
-            flex: 1 1 0;
-            min-width: 0;
-        }}
-        .modal-blend-scale-row {{
-            margin-top: -2px;
-        }}
-        .modal-blend-scale-label {{
-            font-size: 10px;
-            color: var(--muted-color);
-        }}
-        .modal-blend-scale-controls {{
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            min-width: 0;
-        }}
-        .modal-blend-scale-controls input[type="number"] {{
-            width: 64px;
-            min-width: 0;
-            padding: 4px 6px;
-            font-size: 10px;
-        }}
-        .modal-blend-scale-controls .legend-btn {{
-            flex: 0 0 auto;
-            font-size: 10px;
-            padding: 3px 6px;
-            min-width: 84px;
-        }}
-        .modal-blend-meta {{
-            margin-top: 4px;
-            font-size: 10px;
-            color: var(--muted-color);
-            line-height: 1.35;
-            white-space: pre-line;
-            max-height: 180px;
-            overflow: auto;
-        }}
-        .modal-blend-loading {{
-            display: none;
-            align-items: center;
-            gap: 7px;
-            margin: 6px 0 4px;
-            padding: 6px 8px;
-            border-radius: 8px;
-            border: 1px solid var(--border-color);
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--text-color);
-            font-size: 10px;
-            line-height: 1.3;
-        }}
-        .modal-blend-loading.visible {{
-            display: flex;
-        }}
-        .modal-blend-loading::before {{
-            content: '';
-            width: 7px;
-            height: 7px;
-            border-radius: 999px;
-            background: var(--accent-fill);
-            animation: modalBlendPulse 1s ease-in-out infinite;
-            flex: 0 0 auto;
-        }}
-        @keyframes modalBlendPulse {{
-            0%, 100% {{ transform: scale(0.85); opacity: 0.45; }}
-            50% {{ transform: scale(1.15); opacity: 1; }}
-        }}
-        .modal-blend-summary {{
-            color: var(--text-color);
-            font-weight: 500;
-        }}
-        .modal-blend-markers-toggle {{
-            margin-top: 4px;
-            padding: 0;
-            border: none;
-            background: none;
-            color: var(--accent-text);
-            font-size: 10px;
-            font-weight: 600;
-            cursor: pointer;
-        }}
-        .modal-blend-markers-toggle:hover {{
-            text-decoration: underline;
-        }}
-        .modal-blend-markers {{
-            margin-top: 4px;
-        }}
-        .modal-blend-markers.collapsed {{
-            display: none;
-        }}
-        .modal-blend-marker-header {{
-            margin-top: 4px;
-            font-weight: 600;
-            color: var(--text-color);
-        }}
-        .modal-blend-marker-row {{
-            margin-top: 2px;
-        }}
-        .modal-blend-marker-name {{
-            color: var(--text-color);
-            font-weight: 600;
         }}
         .selection-summary {{
             position: absolute;
@@ -7106,13 +7031,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         <path d="M12 17h.01"></path>
                     </svg>
                 </button>
-                <button class="icon-btn" id="tutorial-trigger" type="button" title="Start guided tutorial" aria-label="Start guided tutorial" data-help="Start the guided walkthrough of the main KaroSpace viewer functions." style="{tutorial_button_style}">
-                    <svg class="lucide lucide-graduation-cap" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"></path>
-                        <path d="M22 10v6"></path>
-                        <path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"></path>
-                    </svg>
-                </button>
+                {tutorial_trigger_html}
             </div>
             {downsample_warning_html}
             <div class="info-popover" id="info-popover" aria-hidden="true">
@@ -7230,7 +7149,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <button class="visual-mode-btn" id="overview-mode-split" type="button" data-overview-mode="split">Split</button>
         </div>
         <div class="visual-default-controls color-mode" id="visual-default-controls">
-            <div class="visual-source-switch" role="group" aria-label="Default view source">
+            <div class="visual-source-switch" id="visual-source-switch" role="group" aria-label="Default view source">
                 <button class="visual-source-btn active" id="default-source-color" type="button" data-default-source="color">Annotation</button>
                 <button class="visual-source-btn" id="default-source-gene" type="button" data-default-source="gene">Gene</button>
             </div>
@@ -7264,7 +7183,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
         </div>
         <div class="overview-blend-panel" id="overview-blend-panel">
-            <div class="overview-blend-row">
+            <div class="overview-blend-row" id="overview-blend-row-a">
                 <span class="overview-blend-side">A</span>
                 <select id="overview-blend-a-kind"></select>
                 <select id="overview-blend-a-color"></select>
@@ -7272,7 +7191,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <input type="text" id="overview-blend-a-gene" list="overview-blend-a-gene-list" placeholder="Gene symbol" style="display:none;">
                 <datalist id="overview-blend-a-gene-list"></datalist>
             </div>
-            <div class="overview-blend-row">
+            <div class="overview-blend-row" id="overview-blend-row-b">
                 <span class="overview-blend-side">B</span>
                 <select id="overview-blend-b-kind"></select>
                 <select id="overview-blend-b-color"></select>
@@ -7543,16 +7462,21 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
                 <button class="tutorial-close" id="tutorial-close" type="button" aria-label="Close tutorial">&times;</button>
             </div>
+            <div class="tutorial-chapter" aria-label="Tutorial chapter progress">
+                <div class="tutorial-chapter-row">
+                    <span class="tutorial-chapter-name" id="tutorial-chapter-name">Chapter</span>
+                    <span class="tutorial-chapter-count" id="tutorial-chapter-count">0/0</span>
+                </div>
+                <div class="tutorial-chapter-track" aria-hidden="true">
+                    <div class="tutorial-chapter-fill" id="tutorial-chapter-fill"></div>
+                </div>
+                <select class="tutorial-chapter-select" id="tutorial-chapter-select" aria-label="Jump to tutorial chapter"></select>
+            </div>
             <div class="tutorial-body" id="tutorial-body"></div>
-            <label class="tutorial-disable-row">
-                <input type="checkbox" id="tutorial-disable-autostart">
-                Do not open automatically again
-            </label>
             <div class="tutorial-actions">
-                <button class="legend-btn" id="tutorial-skip" type="button">Skip</button>
                 <div class="tutorial-action-spacer"></div>
-                <button class="legend-btn" id="tutorial-prev" type="button">Back</button>
-                <button class="legend-btn tutorial-primary" id="tutorial-next" type="button">Next</button>
+                <button class="icon-btn tutorial-nav-btn" id="tutorial-prev" type="button">Back</button>
+                <button class="icon-btn tutorial-nav-btn" id="tutorial-next" type="button">Next</button>
             </div>
         </div>
     </div>
@@ -7566,20 +7490,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
                 <div class="modal-header-actions">
                     <div class="modal-header-tool-group" aria-label="Modal view controls">
-                        <button class="modal-header-icon" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M8 11h6"></path></svg>
-                        </button>
-                        <button class="modal-header-icon" id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M11 8v6"></path><path d="M8 11h6"></path></svg>
-                        </button>
+                        <span class="modal-header-tool-pair" id="modal-zoom-controls">
+                            <button class="modal-header-icon" id="zoom-out" type="button" title="Zoom out" aria-label="Zoom out">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M8 11h6"></path></svg>
+                            </button>
+                            <button class="modal-header-icon" id="zoom-in" type="button" title="Zoom in" aria-label="Zoom in">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path><path d="M11 8v6"></path><path d="M8 11h6"></path></svg>
+                            </button>
+                        </span>
                         <span class="zoom-info" id="zoom-info">100%</span>
                         <span class="zoom-info" id="modal-rotation-info">Rot 0 deg</span>
-                        <button class="modal-header-icon" id="modal-rotate-left" type="button" title="Rotate section −45°" aria-label="Rotate section −45°">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
-                        </button>
-                        <button class="modal-header-icon" id="modal-rotate-right" type="button" title="Rotate section +45°" aria-label="Rotate section +45°">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
-                        </button>
+                        <span class="modal-header-tool-pair" id="modal-rotation-controls">
+                            <button class="modal-header-icon" id="modal-rotate-left" type="button" title="Rotate section −45°" aria-label="Rotate section −45°">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                            </button>
+                            <button class="modal-header-icon" id="modal-rotate-right" type="button" title="Rotate section +45°" aria-label="Rotate section +45°">
+                                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12a9 9 0 1 1-9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path></svg>
+                            </button>
+                        </span>
                         <button class="modal-header-icon" id="modal-visual-params-toggle" type="button" title="Modal visual parameters" aria-label="Modal visual parameters" aria-expanded="false" aria-controls="modal-visual-params-panel">
                             <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="bubbles"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg>
                         </button>
@@ -7613,56 +7541,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <button class="modal-gene-panel-close" id="modal-gene-panel-close" type="button" aria-label="Dismiss selection genes">×</button>
                         </div>
                         <div class="modal-gene-panel-body" id="modal-gene-panel-body"></div>
-                    </div>
-                    <div class="modal-blend-panel" id="modal-blend-panel">
-                        <div class="modal-blend-title">Variable Slider</div>
-                        <div class="modal-blend-loading" id="modal-blend-loading" role="status" aria-live="polite"></div>
-                        <div class="modal-blend-row">
-                            <span class="modal-blend-side">A</span>
-                            <select id="modal-blend-a-kind"></select>
-                            <div class="modal-blend-fields">
-                                <select id="modal-blend-a-color"></select>
-                                <select id="modal-blend-a-category"></select>
-                                <input type="text" id="modal-blend-a-gene" list="modal-blend-a-gene-list" placeholder="Gene symbol">
-                                <datalist id="modal-blend-a-gene-list"></datalist>
-                            </div>
-                        </div>
-                        <div class="modal-blend-row modal-blend-scale-row" id="modal-blend-a-scale-row" style="display: none;">
-                            <span></span>
-                            <span class="modal-blend-scale-label">Scale</span>
-                            <div class="modal-blend-scale-controls">
-                                <input type="number" id="modal-blend-a-vmin" step="0.001" placeholder="min">
-                                <span class="scale-sep">to</span>
-                                <input type="number" id="modal-blend-a-vmax" step="0.001" placeholder="max">
-                                <button class="legend-btn" id="modal-blend-a-auto" type="button">Auto (1-99%)</button>
-                            </div>
-                        </div>
-                        <div class="modal-blend-row">
-                            <span class="modal-blend-side">B</span>
-                            <select id="modal-blend-b-kind"></select>
-                            <div class="modal-blend-fields">
-                                <select id="modal-blend-b-color"></select>
-                                <select id="modal-blend-b-category"></select>
-                                <input type="text" id="modal-blend-b-gene" list="modal-blend-b-gene-list" placeholder="Gene symbol">
-                                <datalist id="modal-blend-b-gene-list"></datalist>
-                            </div>
-                        </div>
-                        <div class="modal-blend-row modal-blend-scale-row" id="modal-blend-b-scale-row" style="display: none;">
-                            <span></span>
-                            <span class="modal-blend-scale-label">Scale</span>
-                            <div class="modal-blend-scale-controls">
-                                <input type="number" id="modal-blend-b-vmin" step="0.001" placeholder="min">
-                                <span class="scale-sep">to</span>
-                                <input type="number" id="modal-blend-b-vmax" step="0.001" placeholder="max">
-                                <button class="legend-btn" id="modal-blend-b-auto" type="button">Auto (1-99%)</button>
-                            </div>
-                        </div>
-                        <div class="modal-blend-row">
-                            <span class="modal-blend-side">Split</span>
-                            <span id="modal-blend-mix-label" style="font-size: 10px; color: var(--muted-color);">A left 50% • B right 50%</span>
-                            <input type="range" id="modal-blend-mix" min="0" max="100" step="1" value="50">
-                        </div>
-                        <div class="modal-blend-meta" id="modal-blend-meta"></div>
                     </div>
                     <div class="modal-controls">
                         <div class="modal-control-group" data-modal-group="graph" hidden>
@@ -8702,7 +8580,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     const geneAuxBinaryShardIndexPromises = new Map();
     const geneAuxBinaryShardBufferCache = new Map();
     const geneAuxBinaryShardBufferPromises = new Map();
-    const modalBlendGeneLoads = new Set();
+    const overviewBlendGeneLoads = new Set();
     let geneAuxLoadingMessage = '';
     let geneDiscoveryOpen = false;
     let geneDiscoveryResults = [];
@@ -8721,7 +8599,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let modalSpacePanActive = false;
     let modalGeneRenderMode = 'cells';
     let isDragging = false;
-    let isSplitDragging = false;
     let dragStartX = 0, dragStartY = 0;
     let lastPanX = 0, lastPanY = 0;
     let modalPointerMoved = false;
@@ -8735,9 +8612,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let draggedModalAnnotationId = null;
     let modalNextAnnotationId = 1;
     let updateModalCanvasCursor = () => {{}};
-    let modalBlendEnabled = false;
-    let modalBlendMix = 0.5;  // Split position from left: 0 = all B, 1 = all A
-    let modalBlendMarkersCollapsed = true;
     let modalControlsCollapsed = false;
     let modalControlsCustomPosition = null;
     let isDraggingModalControls = false;
@@ -8747,8 +8621,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let modalInteractionCommitTimer = null;
     let modalResizeObserver = null;
     let modalResizeRenderFrame = null;
-    let modalBlendRenderFrame = null;
-    let modalBlendRenderCache = null;
     let modalGeneDensityCache = null;
     let modalSubview = null;
     let sectionImageStates = {{}};
@@ -8777,10 +8649,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let heDragStartX = 0, heDragStartY = 0;
     let heDragStartCx = 0, heDragStartCy = 0;
     const BLEND_ALL_CATEGORIES = '__ALL__';
-    let modalBlendSpec = {{
-        a: {{ kind: 'cell', color: null, category: null, gene: '' }},
-        b: {{ kind: 'cell', color: null, category: null, gene: '' }},
-    }};
     let overviewBlendEnabled = false;
     let overviewBlendMix = 0.5;
     let overviewBlendSpec = {{
@@ -9380,6 +9248,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     let tutorialActive = false;
     let tutorialStepIndex = 0;
+    let tutorialRenderToken = 0;
+    let tutorialSplitExpressionGenePair = null;
+    let tutorialRegionBClearStepStarted = false;
     const tutorialSteps = [
         {{
             title: 'Overview of panels',
@@ -9516,6 +9387,480 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     ];
 
+    function buildDetailedTutorialSteps() {{
+        const step = (title, target, body, extra = {{}}) => ({{ title, target, body, ...extra }});
+        const tryIt = 'Next';
+        const hasRegionRows = () => !!document.querySelector('.modal-annotation-row');
+        const hasPathwayPanel = () => !!document.querySelector('[data-pathway-annotation-select], .cluster-PA-result, .cluster-pa-result');
+        const ensureLegendOpen = () => {{
+            const legend = document.getElementById('legend');
+            if (legend?.classList.contains('collapsed')) toggleLegendPanel?.();
+            if (typeof renderLegend === 'function') renderLegend('legend');
+        }};
+        const rawSteps = [
+            step('Welcome the KaroSpace', ['#grid-stage', '#grid', '.main-container'], [
+                'KaroSpace is a self-contained spatial viewer. The central grid is where you inspect sections, while the surrounding controls change color, expression, filters, and analysis panels.'
+            ], {{ task: 'Complete actions in this box to finish the tutorial', nextLabel: tryIt, scroll: false }}),
+            step('Section filter bar', ['#filter-bar', '#visual-params-bar'], [
+                'The filter bar contains section-level metadata filters when they were exported.',
+                'Filters reduce what is visible in the grid and help you review one condition, slide, patient, or batch at a time.'
+            ], {{ nextLabel: tryIt }}),
+            step('Viewer info button', ['#info-trigger', '#info-popover'], [
+                'The Info button contains viewer notes, dataset context, and shortcut reminders.'
+            ], {{ nextLabel: tryIt }}),
+            step('Button guide', ['#app-help-trigger', '#app-help-popover'], [
+                'The question-mark message icon opens a guide to the unique icon buttons used across the viewer.',
+                'Use it when an icon is unfamiliar but you do not want to search the whole interface.'
+            ], {{ nextLabel: tryIt }}),
+            step('Theme toggle', ['#theme-toggle', '#theme-icon'], [
+                'The theme button switches between light and dark mode.'
+            ], {{ nextLabel: tryIt }}),
+            step('Current viewer status', ['#stats-text', '.stats'], [
+                'The status text summarizes how many sections and cells are currently visible.',
+                'It updates when filters, hidden sections, or some display choices change.'
+            ], {{ nextLabel: tryIt }}),
+            step('Screenshot menu', ['#screenshot-menu-wrap', '#screenshot-btn'], [
+                'The screenshot menu exports either the grid or the current screen view.',
+                'Resolution and transparent-background options let you prepare figures without changing the analysis.'
+            ], {{ nextLabel: tryIt }}),
+            step('Save the viewer session', ['#save-session-btn'], [
+                'Session export saves interactive state JSON file containing annotations, hidden categories, and current views.'
+            ], {{ nextLabel: tryIt }}),
+            step('Load a previous session', ['#load-session-btn'], [
+                'Session import restores a JSON session that was previously exported from the viewer.'
+            ], {{ nextLabel: tryIt }}),
+            step('Annotation export menu', ['#export-menu-wrap', '#export-menu-toggle'], [
+                'The export menu contains broad data and category exports.'
+            ], {{ nextLabel: tryIt }}),
+            step('Visual parameters', ['#visual-params-panel', '#visual-params-toggle'], [
+                'The visual parameters button opens controls for the cells display.'
+            ], {{ action: () => setTutorialToolbarPanel('visual'), placement: 'right', nextLabel: tryIt }}),
+            step('Visual mode switch', ['.visual-mode-switch'], [
+                'The top visual mode switch controls whether the grid shows one visual layer or a split comparison.',
+                'Start with Default mode when browsing, then move to Split mode when comparing two signals.'
+            ], {{ nextLabel: tryIt, placement: 'below' }}),
+            step('Default source switch', ['#visual-source-switch'], [
+                'Default mode can show either a cell annotation layer or a gene expression layer.',
+                'The Annotation and Gene buttons decide which controls are visible.'
+            ], {{ nextLabel: tryIt }}),
+            step('Annotation selector', ['#visual-color-controls', '#color-select'], [
+                'The annotation selector chooses which cell-level annotation colors every section.',
+                'This is the main starting point for browsing cell types, clusters, or other categorical cell labels.'
+            ], {{ task: 'Open the dropdown and pick another annotation if one is available.', nextLabel: tryIt }}),
+            step('Open split mode', ['#overview-mode-split', '#visual-params-bar'], [
+                'Split mode compares two visual layers in the same spatial panels.',
+                'This is the easiest way to compare two annotations, two genes, or annotation versus gene.'
+            ], {{ action: () => {{ if (typeof closeModal === 'function') closeModal(); safeTutorialClick('#overview-mode-split'); }}, nextLabel: tryIt }}),
+            step('Choose split layer A', ['#overview-blend-row-a'], [
+                'Layer A controls the left side or first layer in split comparison.',
+                'It can represent an annotation, a gene, or another exported modality depending on the viewer.'
+            ], {{ action: () => safeTutorialClick('#overview-mode-split'), nextLabel: tryIt }}),
+            step('Choose split layer B', ['#overview-blend-row-b'], [
+                'Layer B is the comparison layer paired with layer A.',
+                'Pick a meaningful counterpart, such as another gene or the same annotation under a different category view.'
+            ], {{ action: () => safeTutorialClick('#overview-mode-split'), nextLabel: tryIt }}),
+            step('Split expression scales', ['#split-expression-scale-section', '#split-a-vmin', '#split-b-vmin'], [
+                'When split layers use expression, each side can have its own scale.',
+                'Propagate is useful when both sides should share a comparable range.'
+            ], {{ action: () => safeTutorialClick('#overview-mode-split'), task: 'Inspect the A and B scale controls. Try Auto or Propagate if they are active.', nextLabel: tryIt }}),
+            step('Legend panel toggle', ['#legend-toggle'], [
+                'The Legend button shows or hides the category legend.'
+            ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
+            step('Legend category rows', ['#legend .legend-item', '#legend .legend-list'], [
+                'Legend rows show category colors and category labels for the active annotation.',
+                'Hide or show a specific category by hitting the color dot associated to that category.'
+            ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
+            step('Hide and show categories', ['#legend-visibility-toggle', '#legend .legend-color'], [
+                'Hide or show all categories using this button.'
+            ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
+            step('Spotlight a category', ['#legend-spotlight-toggle'], [
+                'Spotlight mode focuses attention on one selected category while muting the rest.'
+            ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
+            step('Legend export controls', ['#legend-export-toggle', '#legend-export-menu'], [
+                'Legend export downloads palettes or category labels so manual edits can be reused.'
+            ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
+            step('Legend import controls', ['#legend-import-toggle', '#legend-import-menu'], [
+                'Legend import restores a previously exported palette or category label file.'
+            ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
+            step('Visual parameter button', ['#visual-params-toggle', '#visual-params-panel'], [
+                'The visual-parameters button opens spatial display controls for the current grid view.'
+            ], {{ task: 'Open the visual parameters panel.', nextLabel: tryIt }}),
+            step('Tweak cell size', ['#spot-size', '#visual-params-panel'], [
+                'The Size slider changes how large cells or spots are drawn.',
+                'Increase it for sparse sections; decrease it for dense areas where cells overlap.'
+            ], {{ task: 'Drag the Size slider a little, observe the grid, then put it near a comfortable value.', nextLabel: tryIt }}),
+            step('Tweak cell opacity', ['#cell-opacity', '#visual-params-panel'], [
+                'Opacity controls how strongly cells cover the background and image overlays.',
+                'Lower opacity can reveal histology or dense overlapping regions.'
+            ], {{ task: 'Move opacity down and back up once.', nextLabel: tryIt }}),
+            step('UMAP toggle', ['#umap-toggle', '#umap-panel'], [
+                'If a UMAP embedding was exported, this button opens a global embedding panel linked to the spatial view.',
+                'Cells selection via the lasso tool is also enabled directly in the UMAP.'
+            ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, nextLabel: tryIt }}),
+            step('UMAP panel position and size', ['#umap-panel', '#umap-dock-btn'], [
+                'The UMAP panel can be docked to different corners and resized.',
+                'This lets you keep it pinned while browsing the section grid.'
+            ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, nextLabel: tryIt }}),
+            step('Pan mode', ['#umap-pan-btn', '#visual-spatial-tools'], [
+                'Pan mode is the default interaction mode for moving around the spatial view, and navigate without selecting cells.'
+            ], {{ nextLabel: tryIt }}),
+            step('Lasso selection mode', ['#umap-lasso-btn', '#visual-spatial-tools'], [
+                'Lasso mode lets you draw around cells directly on the spatial panels to select cells.'
+            ], {{ task: 'Select the lasso tool and draw a small selection on one visible section to continue.', requiresSelection: true, nextLabel: tryIt }}),
+            step('Compare two selections', ['#umap-compare-btn', '#visual-spatial-tools'], [
+                'The compare button starts a Region A / Region B selection workflow.',
+                'Use it to compare two manually selected spatial cell sets before committing to annotations.'
+            ], {{ task: 'Click the compare button, then draw Region B to continue.', requiresRegionB: true, nextLabel: tryIt }}),
+            step('Clear Region B selection', ['#umap-compare-btn', '#visual-spatial-tools'], [
+                'When Regions are selected, the compare buttons change to a cross to deselect the cells.'
+            ], {{ action: () => {{ tutorialRegionBClearStepStarted = selectedCellsB.size > 0; updateUMAPCompareButtonState?.(); }}, task: 'Click the cross to deselect Region B and return to a single active selection.', requiresRegionBCleared: true, nextLabel: tryIt }}),
+            step('Create annotation from selection', ['#selection-create-annotation-btn', '#visual-spatial-tools'], [
+                'When cells are selected, you can create a region annotation from them.',
+                'Region annotations are user-defined spatial cell sets stored in the viewer session.'
+            ], {{ task: 'If you have a selection, create a small test annotation, by clicking the button.', requiresAnnotationCreated: true, nextLabel: tryIt }}),
+            step('Selection count chip', ['#umap-selection-info', '#umap-selection-info-text'], [
+                'After selecting cells, this chip reports how many cells are selected.',
+                'It also gives you a quick way to clear the active selection.'
+            ], {{ task: 'Clear the selection by clicking on the small red cross of the chip.', requiresNoSelection: true, nextLabel: tryIt }}),
+            step('Find cells by query', ['#umap-selection-query-panel', '#umap-query-toggle'], [
+                'The query tool finds cells using annotation values, genes, or section metadata.'
+            ], {{ action: () => {{ const panel = document.getElementById('umap-selection-query-panel'); if (!panel?.classList.contains('visible')) safeTutorialClick('#umap-query-toggle'); }}, task: 'Select cells by searching a simple query.', requiresQuerySelection: true, nextLabel: tryIt }}),
+            step('Switch to Gene source', ['#default-source-gene', '#visual-gene-controls'], [
+                'Gene source changes the grid from categorical annotation colors to gene or feature expression.'
+            ], {{ action: () => safeTutorialClick('#default-source-gene'), nextLabel: tryIt }}),
+            step('Gene discovery panel', ['#gene-discovery-panel', '#gene-input-shell'], [
+                'Gene discovery helps you search, activate genes, and inspect related gene information.',
+                'It can include marker genes, spatial genes, correlations, and module tools depending on the exported payload.'
+            ], {{ action: () => {{ safeTutorialClick('#default-source-gene'); document.getElementById('gene-input')?.focus(); }}, nextLabel: tryIt }}),
+            step('Gene input field', ['#gene-input', '#gene-input-shell'], [
+                'The gene input accepts embedded genes and sidecar-loadable genes when sidecar mode is available.'
+            ], {{ action: () => safeTutorialClick('#default-source-gene'), onNext: () => setTutorialSplitGeneDisplay(), nextLabel: tryIt }}),
+            step('Gene expression scale', ['#gene-params-panel', '#gene-params-toggle'], [
+                'Modify the default scaling of a gene to highlight its expression. Scaling can be propagated to the other gene in the Split setup to compare gene expression.'
+            ], {{ action: () => prepareTutorialGeneExpressionScaleStep(), positionTarget: '#gene-params-panel', placement: 'right', prepareDelay: 360, nextLabel: tryIt }}),
+            step('Sidecar gene loading note', ['#gene-input-shell', '#gene-discovery-panel'], [
+                'In sidecar mode, the HTML contains only selected embedded genes and fetches the rest from nearby sidecar files.',
+                'If the viewer is opened with file://, browsers can block those fetches. Serve the folder or use a .karospace package.'
+            ], {{ condition: () => !!DATA.gene_aux_url, action: () => safeTutorialClick('#default-source-gene'), task: 'Try searching for a gene that was not initially embedded and watch the loading status.', nextLabel: tryIt }}),
+            step('Modality selector', ['#modality-control-group', '#modality-select'], [
+                'If multiple modalities were exported, the modality selector switches the feature namespace.',
+                'For example, RNA genes and protein features can be searched separately.'
+            ], {{ condition: () => Array.isArray(MODALITY_DESCRIPTORS) && MODALITY_DESCRIPTORS.length > 1, action: () => safeTutorialClick('#default-source-gene'), task: 'Switch modality once, then switch back to the one you want.', nextLabel: tryIt }}),
+            step('Open a section modal', ['.section-panel:not(.filtered-out)', '.section-panel', '#grid-stage', '#grid'], [
+                'Clicking a section opens a high-detail modal view for that section.'
+            ], {{ action: () => {{ if (typeof closeModal === 'function') closeModal(); }}, task: 'Click the highlighted section to open the modal view.', requiresModalOpen: true, nextLabel: tryIt }}),
+            step('Modal zoom controls', ['#modal-zoom-controls'], [
+                'Zoom in and zoom out change the modal magnification.'
+            ], {{ action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); }}, spotlightPadding: 2, nextLabel: tryIt }}),
+            step('Modal rotation controls', ['#modal-rotation-controls', '#modal-rotate-left', '#modal-rotate-right'], [
+                'Rotation helps align sections visually when coordinates or images need manual orientation.'
+            ], {{ action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); }}, nextLabel: tryIt }}),
+            step('Region annotation mode', ['#insights-annotate-toggle', '#modal-annotation-section'], [
+                'Region mode organizes user-created spatial annotations.',
+                'Annotations can be drawn from lasso selections and later compared.'
+            ], {{ action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); if (typeof setInsightsMode === 'function') setInsightsMode('annotate'); }}, task: 'Switch to Region mode and inspect the annotation list.', nextLabel: tryIt }}),
+            step('Annotation list rows', ['#modal-annotation-list', '.modal-annotation-row'], [
+                'Each annotation row represents a saved spatial region or annotation group.',
+                'Rows can be selected, compared, recolored, grouped, exported, or deleted depending on the action.'
+            ], {{ action: () => {{ if (typeof setInsightsMode === 'function') setInsightsMode('annotate'); }}, task: 'If you created a test annotation, select it in the list.', nextLabel: tryIt }}),
+            step('Create annotation groups', ['#modal-annotations-create-group', '#modal-annotation-section'], [
+                'Annotation groups help organize multiple regions into a hierarchy.',
+                'Use groups when reviewing many regions across one section.'
+            ], {{ action: () => {{ if (typeof setInsightsMode === 'function') setInsightsMode('annotate'); }}, task: 'Click create group if you want to test grouping; otherwise just locate the button.', nextLabel: tryIt }}),
+            step('Export annotations', ['#modal-annotations-export', '#modal-annotation-section'], [
+                'Annotation export downloads your user-created regions as JSON.',
+                'This lets you preserve manual work or transfer annotations to another viewer.'
+            ], {{ action: () => {{ if (typeof setInsightsMode === 'function') setInsightsMode('annotate'); }}, task: 'Locate the annotation export button. Download only if you have annotations you want to keep.', nextLabel: tryIt }}),
+            step('Open Insights', ['#color-toggle', '#color-panel'], [
+                'Insights is the right-side analysis workspace.',
+                'It contains Overview, Genes, Compare, and Neighbors panels.'
+            ], {{ action: () => {{ if (typeof closeModal === 'function') closeModal(); if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); }}, task: 'Click Insights if the panel is not open.', nextLabel: tryIt }}),
+            step('Insights top modes', ['.insights-mode-switch', '#insights-exploration-panel'], [
+                'The top Insights switch changes between Selection, Region, Module, and Exploration workflows.',
+                'Exploration is the main navigation mode for built-in summaries.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); }}, task: 'Click each top mode briefly, then return to Exploration.', nextLabel: tryIt }}),
+            step('Exploration annotation selector', ['#exploration-color-select', '#exploration-color-label'], [
+                'This selector chooses which annotation the Insights panels summarize.',
+                'It can be independent from the main grid selector, depending on the panel.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); }}, task: 'Change the selected annotation if multiple options exist.', nextLabel: tryIt }}),
+            step('Visualization menu tree', ['[data-insights-tree]', '[data-insights-tree-root]'], [
+                'The Visualization menu is the navigation tree for Insights.',
+                'It groups analyses by human workflow: overview, genes, comparisons, and neighbors.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); }}, task: 'Open the Visualization menu and expand one branch.', nextLabel: tryIt }}),
+            step('Overview summary', ['#color-tab-overview-content', '#color-aggregation'], [
+                'Overview Summary aggregates cells across section metadata.',
+                'Use it to check whether categories differ by sample, condition, region, or other section-level metadata.'
+            ], {{ action: () => openTutorialInsightsPanel('overview', 'summary'), task: 'Change Aggregate By if options are available, then inspect the summary.', nextLabel: tryIt }}),
+            step('Per-annotation trend', ['#celltype-select-row', '#celltype-trend'], [
+                'The per-annotation selector focuses one cell type or category across section metadata.',
+                'This is useful for quick abundance trend checks.'
+            ], {{ action: () => openTutorialInsightsPanel('overview', 'summary'), task: 'Pick one category in Per Annotation and inspect its trend.', nextLabel: tryIt }}),
+            step('Overview sections', ['#samples-panel', '#overview-tab-sections-content'], [
+                'The Sections overview compares per-section composition as bars or heatmaps.',
+                'Use it for sample-level quality control before focusing on gene or DE results.'
+            ], {{ action: () => openTutorialInsightsPanel('overview', 'sections'), task: 'Switch the section view if a mode toggle is present.', nextLabel: tryIt }}),
+            step('Genes: marker panel', ['#marker-genes', '#genes-tab-de-genes-content'], [
+                'The marker panel lists pseudobulk-derived marker genes by category when available.',
+                'Genes that were not embedded may be shown but disabled for direct expression viewing.'
+            ], {{ action: () => openTutorialInsightsPanel('genes', 'de-genes'), task: 'Search or click one available marker gene to load it in the viewer.', nextLabel: tryIt }}),
+            step('Marker gene search', ['#marker-gene-search', '#marker-gene-search-clear'], [
+                'The marker gene search filters marker results to a specific gene.',
+                'Use it when you already know a gene and want to see where it appears as a marker.'
+            ], {{ action: () => openTutorialInsightsPanel('genes', 'de-genes'), task: 'Open the marker search dropdown and clear it afterward.', nextLabel: tryIt }}),
+            step('Spatially variable genes', ['#spatially-variable-genes', '#genes-tab-spatial-content'], [
+                'The Spatial genes panel shows Moran I rankings computed at export.',
+                'High values suggest genes with stronger spatial autocorrelation.'
+            ], {{ action: () => openTutorialInsightsPanel('genes', 'spatial'), task: 'Click one spatial gene if it is enabled for expression viewing.', nextLabel: tryIt }}),
+            step('Gene distribution plot', ['#gene-distribution-panel', '#genes-tab-distribution-content'], [
+                'The distribution panel summarizes expression distributions across categories.',
+                'It helps determine whether an expression signal is broad, rare, or category-specific.'
+            ], {{ action: () => openTutorialInsightsPanel('genes', 'distribution'), task: 'Change the restriction controls if available and observe the plot.', nextLabel: tryIt }}),
+            step('Gene means plot', ['#pseudobulk-gene-means', '#genes-tab-means-content'], [
+                'The means panel uses pseudobulk/category mean summaries to compare expression across categories.',
+                'It is a compact way to inspect category-level gene expression.'
+            ], {{ action: () => openTutorialInsightsPanel('genes', 'means'), task: 'Load a gene, then inspect its category means.', nextLabel: tryIt }}),
+            step('Gene module mode', ['#insights-mode-module', '#insights-module-panel'], [
+                'Module mode lets users organize groups of genes as reusable modules.',
+                'Modules are useful for signatures or custom marker sets.'
+            ], {{ action: () => {{ if (typeof setInsightsMode === 'function') setInsightsMode('module'); }}, task: 'Open Module mode and inspect available module actions.', nextLabel: tryIt }}),
+            step('Selection Insights mode', ['#insights-mode-selection', '#insights-selection-panel'], [
+                'Selection mode summarizes cells selected by lasso or query.',
+                'It is most useful after creating a spatial or UMAP selection.'
+            ], {{ action: () => {{ if (typeof setInsightsMode === 'function') setInsightsMode('selection'); }}, task: 'Open Selection mode. If no cells are selected, select cells later and return.', nextLabel: tryIt }}),
+            step('Compare: annotation groups', ['#group-de-panel', '#compare-tab-groups-content'], [
+                'Annotation comparison is an exploratory per-cell comparison between groups or annotations.',
+                'It can scan loaded genes quickly and can use sidecar genes for fuller runs when configured.'
+            ], {{ action: () => openTutorialInsightsPanel('compare', 'groups'), task: 'Configure two groups if possible, but do not start a long sidecar scan unless you need it.', nextLabel: tryIt }}),
+            step('Compare: regions', ['#annotation-comparison', '#compare-tab-regions-content'], [
+                'Region comparison uses user-created region annotations.',
+                'It can compare composition and region-level differential expression when regions exist.'
+            ], {{ action: () => openTutorialInsightsPanel('compare', 'regions'), task: 'If you created two regions, select them here and inspect the comparison.', nextLabel: tryIt }}),
+            step('Compare: selections', ['#compare-selection-panel', '#compare-tab-selection-content'], [
+                'Selection comparison summarizes current lasso/query selections.',
+                'It is useful for quick checks before turning selections into saved annotations.'
+            ], {{ action: () => openTutorialInsightsPanel('compare', 'selection'), task: 'Make or reuse a selection and inspect this panel.', nextLabel: tryIt }}),
+            step('Compare: Simple design', ['#cluster-de-results', '#compare-tab-cell-de-content'], [
+                'Simple design contains category-versus-category pseudobulk DE results.',
+                'This is the main panel for the exported per-sample DE workflow.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Open Simple design and choose Annotation A and B if selectors are available.', nextLabel: tryIt }}),
+            step('Pseudobulk category selectors', ['#cluster-de-source', '#cluster-de-reference', '#cluster-de-results'], [
+                'Annotation A and Annotation B define the active category-versus-category contrast.',
+                'Changing them updates the DE table, plots, diagnostics, and pathway section.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Pick two biologically meaningful categories.', nextLabel: tryIt }}),
+            step('Swap DE contrast direction', ['#cluster-de-swap', '#cluster-de-results'], [
+                'The swap button reverses Annotation A and B.',
+                'This changes the interpretation of positive and negative log2 fold change.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Use Swap once and confirm the category labels reverse.', nextLabel: tryIt }}),
+            step('Raw DE table', ['.cluster-de-panel-mode-switch', '#cluster-de-results'], [
+                'Raw table mode shows the differential expression rows directly.',
+                'The table is the most precise view for gene names, log2FC, adjusted p-values, baseMean, and expression percentages.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Switch to Raw table and use Show more if the link is visible.', nextLabel: tryIt }}),
+            step('DE gene plots', ['#cluster-de-results', '.cluster-de-qc-svg'], [
+                'Gene plot mode contains MA and volcano-style views.',
+                'Use these plots to see the relationship between effect size, expression level, and adjusted p-value.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Switch to Genes and hover points if tooltips are available.', nextLabel: tryIt }}),
+            step('MA plot interpretation', ['#cluster-de-results', '.cluster-de-qc-svg'], [
+                'The MA plot uses baseMean on one axis and log2FC on the other.',
+                'Coloring highlights genes passing the adjusted p-value threshold while filtered genes are shown separately.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Find one red point or one grey/black point and read its tooltip.', nextLabel: tryIt }}),
+            step('Volcano plot interpretation', ['#cluster-de-results', '.cluster-de-qc-svg'], [
+                'The volcano plot emphasizes statistical strength and effect size.',
+                'It helps quickly identify strong positive and negative DE genes.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Compare the most extreme positive and negative sides.', nextLabel: tryIt }}),
+            step('Sample diagnostics', ['#cluster-de-results', '.samples-controls'], [
+                'Samples mode shows pseudobulk sample diagnostics such as PCA and distance matrices.',
+                'Use these before interpreting DE if you want to see replicate-level structure.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Switch to Samples and inspect PCA or distance matrix if present.', nextLabel: tryIt }}),
+            step('Pseudobulk plot info buttons', ['#cluster-de-results', '.calc-info-btn'], [
+                'Calculation info buttons explain how each DE section or plot was generated.',
+                'They are useful for checking thresholds and assumptions without leaving the HTML.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Click one calculation info button and read the explanation.', nextLabel: tryIt }}),
+            step('Pathway Enrichment section', ['.cluster-PA-result', '.cluster-pa-result', '#cluster-de-results'], [
+                'Pathway Enrichment is built from the active pseudobulk contrast.',
+                'ORA uses significant DE genes favoring the selected annotation; GSEA uses the full retained ranked list.'
+            ], {{ condition: () => tutorialHasPseudobulk() && hasPathwayPanel(), action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Scroll to Pathway Enrichment in Simple design.', nextLabel: tryIt }}),
+            step('Pathway annotation selector', ['[data-pathway-annotation-select]', '.cluster-PA-result'], [
+                'The pathway annotation selector chooses whether you inspect pathways for Annotation A or B.',
+                'ORA and GSEA dropdowns update to the selected side.'
+            ], {{ condition: () => tutorialHasPseudobulk() && hasPathwayPanel(), action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Switch between Annotation A and B and watch the pathway content change.', nextLabel: tryIt }}),
+            step('ORA pathway dot plot', ['[data-pathway-ora-panel]', '.cluster-PA-result'], [
+                'The ORA dot plot places GeneRatio on the x-axis and pathways on the y-axis.',
+                'Dot size represents gene count, fill color represents -log10 adjusted p-value, and border color indicates significance.'
+            ], {{ condition: () => tutorialHasPseudobulk() && hasPathwayPanel(), action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Hover or inspect the top ORA dots and read the pathway labels.', nextLabel: tryIt }}),
+            step('ORA raw table', ['[data-pathway-ora-panel]', '.cluster-PA-result'], [
+                'The ORA table exposes the numeric pathway results behind the plot.',
+                'Use it when labels are long or when exact adjusted p-values matter.'
+            ], {{ condition: () => tutorialHasPseudobulk() && hasPathwayPanel(), action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Switch ORA from plot to raw table if the toggle is visible.', nextLabel: tryIt }}),
+            step('GSEA pathway dropdown', ['[data-pathway-gsea-select]', '.cluster-PA-result'], [
+                'GSEA shows one enrichment profile at a time.',
+                'The dropdown lets you choose which pathway profile to inspect.'
+            ], {{ condition: () => tutorialHasPseudobulk() && hasPathwayPanel(), action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Open the GSEA pathway dropdown and choose a different pathway if available.', nextLabel: tryIt }}),
+            step('GSEA enrichment profile', ['[data-gsea-pathway-panel]', '.cluster-PA-result'], [
+                'The green profile shows the running enrichment score along the ranked gene list.',
+                'Black ticks mark pathway genes, and the bottom distribution shows the ranking metric from one end of the contrast to the other.'
+            ], {{ condition: () => tutorialHasPseudobulk() && hasPathwayPanel(), action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Inspect where the black ticks cluster and where the enrichment score peaks.', nextLabel: tryIt }}),
+            step('Pathway downloads', ['.cluster-PA-result', '[data-pathway-download]'], [
+                'Pathway panels include downloads for plots or full raw tables depending on the active subview.',
+                'Use these for reports instead of screenshotting the whole viewer.'
+            ], {{ condition: () => tutorialHasPseudobulk() && hasPathwayPanel(), action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Find the download button in ORA or GSEA.', nextLabel: tryIt }}),
+            step('Complex pseudobulk design', ['#complex-pseudobulk-design', '#compare-tab-complex-contrast-content'], [
+                'Complex design is reserved for more advanced pseudobulk contrasts when exported or configured.',
+                'Use Simple design first unless your question requires a custom design.'
+            ], {{ action: () => openTutorialInsightsPanel('compare', 'complex-contrast'), task: 'Open Complex design and read what inputs are available.', nextLabel: tryIt }}),
+            step('Relationships river plot', ['#river-plot', '#compare-tab-river-content'], [
+                'The Relationships view shows how categories from two annotations correspond.',
+                'It helps translate between annotation levels, clustering resolutions, or curated labels.'
+            ], {{ action: () => openTutorialInsightsPanel('compare', 'river'), task: 'Choose the target annotation and inspect the largest flows.', nextLabel: tryIt }}),
+            step('River direction and export', ['#river-swap', '#river-export', '#river-plot'], [
+                'The river swap button reverses the relationship direction.',
+                'The export button downloads the correspondence table for downstream use.'
+            ], {{ action: () => openTutorialInsightsPanel('compare', 'river'), task: 'Swap direction once and observe how the labels move.', nextLabel: tryIt }}),
+            step('Neighbors overview', ['#color-tab-neighbors-content', '#neighbor-stats'], [
+                'Neighbors panels use spatial adjacency to summarize which categories are near each other.',
+                'They depend on neighbor stats calculated at export for the selected annotation.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'enrichment'), task: 'Open Neighbors > Enrichment.', nextLabel: tryIt }}),
+            step('Neighbor enrichment table', ['#neighbor-stats', '#neighbors-tab-enrichment-content'], [
+                'The table view reports observed neighbor relationships and enrichment metrics.',
+                'Start here when you need exact category-pair values.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'enrichment'), task: 'Read one row and identify source, target, and metric columns.', nextLabel: tryIt }}),
+            step('Neighbor network view', ['[data-neighbor-view="bubble"]', '#neighbor-stats'], [
+                'Network view turns neighbor relationships into nodes and edges.',
+                'It is better for seeing global interaction structure than reading a long table.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'enrichment'), task: 'Switch to Network view and hover a node or edge.', nextLabel: tryIt }}),
+            step('Neighbor chord view', ['[data-neighbor-view="chord"]', '#neighbor-stats'], [
+                'Chord view emphasizes pairwise connections as ribbons around a circle.',
+                'It is useful when many categories interact and you need a compact relationship view.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'enrichment'), task: 'Switch to Chord view and change the ordering if controls are present.', nextLabel: tryIt }}),
+            step('Neighbor visualization controls', ['#neighbor-metric-mode', '#neighbor-threshold-range', '#neighbor-max-categories'], [
+                'Neighbor visualization controls change metric, threshold, labels, focus behavior, and maximum categories.',
+                'They help reduce clutter without changing the underlying neighbor statistics.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'enrichment'), task: 'Adjust the minimum strength or max category control and observe the plot.', nextLabel: tryIt }}),
+            step('Neighbor interaction markers', ['#interaction-source', '#interaction-browser'], [
+                'Interactions shows contact-conditioned marker results by source and target category.',
+                'It asks which genes differ when source cells are near a target category.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'interactions'), task: 'Choose an interaction source and filter target names if the list is long.', nextLabel: tryIt }}),
+            step('Neighbor dispersion', ['#dispersion-panel', '#neighbors-tab-dispersion-content'], [
+                'Dispersion summarizes whether categories are spatially clustered, dispersed, or near-random compared with the all-cell layout.',
+                'Use it to separate local neighborhood enrichment from whole-section spatial patterning.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'dispersion'), task: 'Open Dispersion and compare at least two categories.', nextLabel: tryIt }}),
+            step('No neighbor stats warning', ['#neighbors-stats-warning', '#color-tab-neighbors-content'], [
+                'If a selected annotation has no exported neighbor stats, the panel shows a yellow warning instead of stale results.',
+                'Switch to an annotation chip listed in the warning to view available stats.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'enrichment'), task: 'Change the Exploration annotation and check whether the neighbor panel updates.', nextLabel: tryIt }}),
+            step('Panel-specific download buttons', ['#marker-genes-export-btn', '#gene-distribution-export-svg', '#gene-means-export-svg'], [
+                'Many Insights panels have their own download button next to the active plot or table.',
+                'These are more precise than the global export menu because they download the current analysis view.'
+            ], {{ action: () => openTutorialInsightsPanel('genes', 'de-genes'), task: 'Find one panel-specific download button and read its tooltip.', nextLabel: tryIt }}),
+            step('Calculation info buttons', ['.calc-info-btn', '#color-panel'], [
+                'Calculation info buttons explain formulas, filters, and thresholds for the active metric.',
+                'Use them whenever you need to know how a plot or table was generated.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); }}, task: 'Click any calculation info button visible in the current panel.', nextLabel: tryIt }}),
+            step('Keyboard shortcuts overlay', ['#shortcuts-overlay', '#info-trigger'], [
+                'The keyboard shortcut overlay opens with the question-mark key.',
+                'Shortcuts are disabled while typing in inputs, selects, or textareas.'
+            ], {{ task: 'Press ? to open shortcuts, then close the overlay.', nextLabel: tryIt }}),
+            step('Use I for Insights', ['#color-toggle', '#color-panel'], [
+                'The I key toggles the Insights panel.',
+                'This is the fastest way to move between full-grid browsing and analysis summaries.'
+            ], {{ task: 'Press I twice and watch the Insights panel open and close.', nextLabel: tryIt }}),
+            step('Use L for Legend', ['#legend-toggle', '#legend'], [
+                'The L key toggles the legend.',
+                'This is helpful on small screens where the legend takes space.'
+            ], {{ task: 'Press L twice and watch the legend open and close.', nextLabel: tryIt }}),
+            step('Use slash for gene search', ['#gene-input', '#visual-gene-controls'], [
+                'The slash key focuses gene search when you are not typing elsewhere.',
+                'This makes expression lookup faster during review sessions.'
+            ], {{ action: () => safeTutorialClick('#default-source-gene'), task: 'Press / and type part of a gene name.', nextLabel: tryIt }}),
+            step('Recommended first-pass workflow', ['#grid-stage', '#color-panel'], [
+                'A practical first pass is: choose annotation, check legend, apply section filters, scan the grid, inspect one modal, then open Insights.',
+                'Do this before interpreting DE or pathway results.'
+            ], {{ task: 'Mentally map where you are in that workflow for this dataset.', nextLabel: tryIt }}),
+            step('Recommended expression workflow', ['#gene-input-shell', '#gene-discovery-panel'], [
+                'For a gene-focused pass: search gene, tune scale, inspect spatial panels, open modal, then check gene distribution and means in Insights.',
+                'If sidecar mode is active, remember that first load can fetch external shards.'
+            ], {{ action: () => safeTutorialClick('#default-source-gene'), task: 'Pick one gene you care about and follow the first two steps of this workflow.', nextLabel: tryIt }}),
+            step('Recommended DE workflow', ['#cluster-de-results', '#compare-tab-cell-de-content'], [
+                'For pseudobulk DE: choose categories, read warnings, inspect raw table, check MA and volcano plots, review sample diagnostics, then inspect pathways.',
+                'The order matters because diagnostics and warnings affect how much you should trust the table.'
+            ], {{ condition: tutorialHasPseudobulk, action: () => openTutorialInsightsPanel('compare', 'cell-de'), task: 'Follow the order shown here for one contrast.', nextLabel: tryIt }}),
+            step('Recommended neighborhood workflow', ['#neighbor-stats', '#color-tab-neighbors-content'], [
+                'For spatial neighborhoods: choose annotation, start with enrichment table, switch to network or chord, then inspect interactions and dispersion.',
+                'This separates pairwise adjacency, contact-conditioned genes, and whole-section spatial patterning.'
+            ], {{ condition: tutorialHasNeighborhoods, action: () => openTutorialInsightsPanel('neighbors', 'enrichment'), task: 'Follow this order for one annotation.', nextLabel: tryIt }}),
+            step('Finish the tutorial', ['#tutorial-trigger', '.header-title-row'], [
+                'You have now touched the major viewer workflows: browsing, filters, genes, modal inspection, selections, annotations, Insights, DE, pathways, neighbors, and exports.',
+                'Restart the tutorial from the graduation-cap button if you want to revisit any workflow.'
+            ], {{ task: 'Decide which steps felt unnecessary; those can be removed from future versions.', nextLabel: 'Finish' }})
+        ];
+        const filterStartIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
+        const filterEndIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+        const legendStartIndex = rawSteps.findIndex(item => item.title === 'Legend panel toggle');
+        if (filterStartIndex >= 0 && filterEndIndex > filterStartIndex && legendStartIndex >= 0 && legendStartIndex < filterStartIndex) {{
+            const filterSteps = rawSteps.splice(filterStartIndex, filterEndIndex - filterStartIndex);
+            const currentLegendStartIndex = rawSteps.findIndex(item => item.title === 'Legend panel toggle');
+            rawSteps.splice(currentLegendStartIndex, 0, ...filterSteps);
+        }}
+        const geneStartIndex = rawSteps.findIndex(item => item.title === 'Switch to Gene source');
+        const geneEndIndex = rawSteps.findIndex(item => item.title === 'Open a section modal');
+        const visualSetupEndIndex = rawSteps.findIndex(item => item.title === 'Split expression scales');
+        if (geneStartIndex >= 0 && geneEndIndex > geneStartIndex && visualSetupEndIndex >= 0 && visualSetupEndIndex < geneStartIndex) {{
+            const geneSteps = rawSteps.splice(geneStartIndex, geneEndIndex - geneStartIndex);
+            const currentVisualSetupEndIndex = rawSteps.findIndex(item => item.title === 'Split expression scales');
+            rawSteps.splice(currentVisualSetupEndIndex + 1, 0, ...geneSteps);
+        }}
+        const umapStartIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+        const umapEndIndex = rawSteps.findIndex(item => item.title === 'Open a section modal');
+        const currentFilterStartIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
+        if (umapStartIndex >= 0 && umapEndIndex > umapStartIndex && currentFilterStartIndex >= 0 && currentFilterStartIndex < umapStartIndex) {{
+            const umapSteps = rawSteps.splice(umapStartIndex, umapEndIndex - umapStartIndex);
+            const currentFilterIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
+            rawSteps.splice(currentFilterIndex, 0, ...umapSteps);
+        }}
+        const selectionStartIndex = rawSteps.findIndex(item => item.title === 'Pan mode');
+        const selectionEndIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
+        const currentUmapStartIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+        if (selectionStartIndex >= 0 && selectionEndIndex > selectionStartIndex && currentUmapStartIndex >= 0 && currentUmapStartIndex < selectionStartIndex) {{
+            const selectionSteps = rawSteps.splice(selectionStartIndex, selectionEndIndex - selectionStartIndex);
+            const insertBeforeUmapIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+            rawSteps.splice(insertBeforeUmapIndex, 0, ...selectionSteps);
+        }}
+        const modalStartIndex = rawSteps.findIndex(item => item.title === 'Open a section modal');
+        const modalEndIndex = rawSteps.findIndex(item => item.title === 'Open Insights');
+        const insertBeforeUmapIndexForModal = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+        if (modalStartIndex >= 0 && modalEndIndex > modalStartIndex && insertBeforeUmapIndexForModal >= 0 && modalStartIndex > insertBeforeUmapIndexForModal) {{
+            const modalSteps = rawSteps.splice(modalStartIndex, modalEndIndex - modalStartIndex);
+            const currentUmapIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+            rawSteps.splice(currentUmapIndex, 0, ...modalSteps);
+        }}
+        const chapterStarts = new Map([
+            ['Welcome the KaroSpace', 'Introduction'],
+            ['Viewer info button', 'Helpers'],
+            ['Theme toggle', 'Session tools'],
+            ['Visual parameters', 'Visual Setup'],
+            ['Switch to Gene source', 'Gene Expression'],
+            ['Pan mode', 'Selection'],
+            ['UMAP toggle', 'UMAP'],
+            ['Visual parameter button', 'Filters and Display'],
+            ['Legend panel toggle', 'Legend'],
+            ['Open a section modal', 'Modal View'],
+            ['Region annotation mode', 'Region Annotation'],
+            ['Open Insights', 'Insights'],
+            ['Compare: Simple design', 'Pseudobulk DE'],
+            ['Pathway Enrichment section', 'Pathway Enrichment'],
+            ['Complex pseudobulk design', 'Compare Workflows'],
+            ['Neighbors overview', 'Neighbors'],
+            ['Panel-specific download buttons', 'Exports and Shortcuts'],
+            ['Recommended first-pass workflow', 'Recommended Workflows'],
+            ['Finish the tutorial', 'Finish']
+        ]);
+        let currentChapter = 'Introduction';
+        return rawSteps.map((tutorialStep) => {{
+            if (chapterStarts.has(tutorialStep.title)) currentChapter = chapterStarts.get(tutorialStep.title);
+            return {{ ...tutorialStep, chapter: currentChapter }};
+        }});
+    }}
+    tutorialSteps.splice(0, tutorialSteps.length, ...buildDetailedTutorialSteps());
+
     function getTutorialStorageKey(suffix) {{
         const base = String(TUTORIAL_CONFIG.storage_key || 'karospace:tutorial:v1');
         return base + ':' + suffix;
@@ -9541,6 +9886,264 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function safeTutorialClick(selector) {{
         const el = document.querySelector(selector);
         if (el && typeof el.click === 'function') el.click();
+    }}
+
+    function setTutorialSelectValue(selector, value) {{
+        const select = document.querySelector(selector);
+        if (!select || value == null) return false;
+        const hasOption = Array.from(select.options || []).some(option => option.value === value);
+        if (!hasOption || select.value === value) return hasOption;
+        select.value = value;
+        select.dispatchEvent(new Event('change', {{ bubbles: true }}));
+        return true;
+    }}
+
+    function ensureTutorialDefaultMode(source = 'color') {{
+        if (typeof closeModal === 'function') closeModal();
+        if (document.getElementById('overview-mode-split')?.classList.contains('active')) {{
+            safeTutorialClick('#overview-mode-default');
+        }}
+        safeTutorialClick(source === 'gene' ? '#default-source-gene' : '#default-source-color');
+    }}
+
+    function ensureTutorialSplitMode(withGeneSide = false) {{
+        if (typeof closeModal === 'function') closeModal();
+        safeTutorialClick('#overview-mode-split');
+        if (withGeneSide) {{
+            setTutorialOverviewSplitExpressionSides();
+            return;
+        }}
+    }}
+
+    function setTutorialSplitGeneDisplay() {{
+        safeTutorialClick('#overview-mode-split');
+        setTutorialOverviewSplitExpressionSides();
+        updateExpressionScaleUI?.();
+        renderAllSections?.();
+        if (umapVisible) renderUMAP?.();
+    }}
+
+    function prepareTutorialGeneExpressionScaleStep() {{
+        setTutorialSplitGeneDisplay();
+        const forceOpen = () => {{
+            updateGeneParamsButtonState?.();
+            document.getElementById('gene-params-toggle')?.classList.remove('hidden');
+            setTutorialToolbarPanel('gene');
+        }};
+        forceOpen();
+        window.setTimeout(forceOpen, 80);
+        window.setTimeout(forceOpen, 220);
+    }}
+
+    function getTutorialExpressionModalityName() {{
+        const modalityNames = MODALITY_DESCRIPTORS.map(m => m.name).filter(Boolean);
+        return modalityNames.find(name => String(name).toLowerCase() === 'rna')
+            || (modalityNames.includes(DEFAULT_MODALITY_NAME) ? DEFAULT_MODALITY_NAME : null)
+            || modalityNames[0]
+            || 'gene';
+    }}
+
+    function getTutorialRandomSplitGenes(modality) {{
+        const features = getFeatureDatalistValuesForModality(modality);
+        if (!features.length) return [];
+        if (
+            tutorialSplitExpressionGenePair
+            && tutorialSplitExpressionGenePair.modality === modality
+            && features.includes(tutorialSplitExpressionGenePair.a)
+            && features.includes(tutorialSplitExpressionGenePair.b)
+        ) {{
+            return [tutorialSplitExpressionGenePair.a, tutorialSplitExpressionGenePair.b];
+        }}
+        const pickIndex = () => Math.floor(Math.random() * features.length);
+        const a = features[pickIndex()];
+        let b = features[pickIndex()];
+        if (features.length > 1) {{
+            let guard = 0;
+            while (b === a && guard < 12) {{
+                b = features[pickIndex()];
+                guard += 1;
+            }}
+        }}
+        tutorialSplitExpressionGenePair = {{ modality, a, b }};
+        return [a, b];
+    }}
+
+    function setTutorialOverviewSplitExpressionSides() {{
+        const modality = getTutorialExpressionModalityName();
+        const [geneA, geneB] = getTutorialRandomSplitGenes(modality);
+        if (!geneA && !geneB) return;
+        overviewBlendEnabled = true;
+        overviewBlendMix = 0.5;
+        [['a', geneA], ['b', geneB || geneA]].forEach(([side, gene]) => {{
+            if (!overviewBlendSpec?.[side] || !gene) return;
+            overviewBlendSpec[side].kind = modality;
+            overviewBlendSpec[side].gene = resolveFeatureTokenForModality(gene, modality) || gene;
+            overviewBlendSpec[side].geneCleared = false;
+            ensureGeneAutoScale?.(overviewBlendSpec[side].gene, modality);
+            setTutorialSelectValue(`#overview-blend-${{side}}-kind`, modality);
+            const geneInput = document.getElementById(`overview-blend-${{side}}-gene`);
+            if (geneInput) {{
+                geneInput.value = getGeneDisplayLabel(overviewBlendSpec[side].gene);
+                geneInput.dispatchEvent(new Event('change', {{ bubbles: true }}));
+            }}
+        }});
+        const mixRange = document.getElementById('overview-blend-mix');
+        if (mixRange) mixRange.value = '50';
+        const mixLabel = document.getElementById('overview-blend-mix-label');
+        if (mixLabel) mixLabel.textContent = 'A left 50% / B right 50%';
+        updateExpressionScaleUI?.();
+        renderAllSections?.();
+        if (umapVisible) renderUMAP?.();
+    }}
+
+    function ensureTutorialFirstGeneSelected() {{
+        const features = getFeatureDatalistValuesForModality(CURRENT_MODALITY);
+        const firstGene = features[0];
+        if (!firstGene) return;
+        const geneInput = document.getElementById('gene-input');
+        if (geneInput) geneInput.value = getGeneDisplayLabel(firstGene);
+        if (typeof activateViewerGene === 'function') {{
+            activateViewerGene(firstGene, {{ showErrors: false }}).catch(error => console.warn('Tutorial first gene selection failed', error));
+        }}
+    }}
+
+    function clearTutorialGeneInput() {{
+        const geneInput = document.getElementById('gene-input');
+        if (geneInput) geneInput.value = '';
+        currentGene = null;
+        invalidateGeneDensityCaches?.();
+        hiddenCategories?.clear?.();
+        document.getElementById('visual-default-controls')?.classList.remove('color-mode');
+        document.getElementById('visual-default-controls')?.classList.add('gene-mode');
+        document.getElementById('default-source-color')?.classList.remove('active');
+        document.getElementById('default-source-gene')?.classList.add('active');
+        updateExpressionScaleUI?.();
+        renderLegend?.('legend');
+        renderAllSections?.();
+        if (modalSection) renderModalSection?.();
+        if (umapVisible) renderUMAP?.();
+        updateSelectionInfo?.();
+        renderGeneDiscoveryPanel?.();
+        renderActiveInsightsPanel?.();
+    }}
+
+    function setTutorialToolbarPanel(panel) {{
+        const toolbar = document.getElementById('grid-side-toolbar');
+        if (!toolbar) return;
+        toolbar.classList.toggle('visual-open', panel === 'visual');
+        toolbar.classList.toggle('gene-open', panel === 'gene');
+        if (panel !== 'neighbor') toolbar.classList.remove('neighbor-open');
+        document.getElementById('visual-params-toggle')?.setAttribute('aria-expanded', panel === 'visual' ? 'true' : 'false');
+        document.getElementById('gene-params-toggle')?.setAttribute('aria-expanded', panel === 'gene' ? 'true' : 'false');
+    }}
+
+    function ensureTutorialGeneParametersOpen() {{
+        updateGeneParamsButtonState?.();
+        const toolbar = document.getElementById('grid-side-toolbar');
+        const toggle = document.getElementById('gene-params-toggle');
+        if (toolbar?.classList.contains('gene-open')) {{
+            toggle?.setAttribute('aria-expanded', 'true');
+            return;
+        }}
+        if (toggle && !toggle.classList.contains('hidden') && typeof toggle.click === 'function') {{
+            toggle.click();
+        }} else {{
+            setTutorialToolbarPanel('gene');
+        }}
+    }}
+
+    function ensureTutorialUMAPOpen() {{
+        if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP();
+    }}
+
+    function setTutorialUMAPPanel(panel) {{
+        ensureTutorialUMAPOpen();
+        const paramsPanel = document.getElementById('umap-params-panel');
+        const paramsToggle = document.getElementById('umap-params-toggle');
+        const queryPanel = document.getElementById('umap-selection-query-panel');
+        const queryToggle = document.getElementById('umap-query-toggle');
+        if (panel === 'params') {{
+            paramsPanel?.classList.add('visible');
+            paramsToggle?.classList.add('active');
+            queryPanel?.classList.remove('visible');
+            queryToggle?.classList.remove('active');
+        }} else if (panel === 'query') {{
+            if (typeof renderUMAPSelectionQueryPanel === 'function') renderUMAPSelectionQueryPanel();
+            queryPanel?.classList.add('visible');
+            queryToggle?.classList.add('active');
+            paramsPanel?.classList.remove('visible');
+            paramsToggle?.classList.remove('active');
+        }}
+    }}
+
+    function ensureTutorialModalOpen() {{
+        if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') {{
+            openModal(DATA.sections[0].id);
+        }}
+        if (typeof setModalControlsCollapsed === 'function') setModalControlsCollapsed(false);
+    }}
+
+    function prepareTutorialStep(step) {{
+        const title = String(step?.title || '');
+        const chapter = String(step?.chapter || '');
+        if (!title) return;
+        const isSplitGeneScaleStep = title === 'Gene expression scale';
+        const isSplitStep = title.startsWith('Open split') || title.startsWith('Split boundary') || title.startsWith('Choose split') || title.startsWith('Split expression') || isSplitGeneScaleStep;
+
+        if (chapter === 'Visual Setup' || isSplitStep || title === 'Recommended first-pass workflow') {{
+            if (isSplitStep) {{
+                ensureTutorialSplitMode(title.startsWith('Split expression') || isSplitGeneScaleStep);
+                if (isSplitGeneScaleStep) prepareTutorialGeneExpressionScaleStep();
+                else if (title.startsWith('Split expression')) ensureTutorialGeneParametersOpen();
+            }} else if (!title.startsWith('Return to Default')) {{
+                ensureTutorialDefaultMode(title.includes('Gene') ? 'gene' : 'color');
+            }}
+        }}
+
+        if (chapter === 'Legend') {{
+            ensureTutorialDefaultMode('color');
+            const legend = document.getElementById('legend');
+            if (legend?.classList.contains('collapsed')) toggleLegendPanel?.();
+            if (typeof renderLegend === 'function') renderLegend('legend');
+        }}
+
+        if (chapter === 'Filters and Display') {{
+            ensureTutorialDefaultMode('color');
+            if (title !== 'Visual parameter button') setTutorialToolbarPanel('visual');
+        }}
+
+        if (chapter === 'UMAP') {{
+            ensureTutorialUMAPOpen();
+        }}
+
+        if (chapter === 'Selection') {{
+            ensureTutorialDefaultMode('color');
+        }}
+
+        if ((chapter === 'Gene Expression' || title === 'Use slash for gene search' || title === 'Recommended expression workflow') && !isSplitStep) {{
+            ensureTutorialDefaultMode('gene');
+            if (title === 'Switch to Gene source') clearTutorialGeneInput();
+            if (title === 'Gene input field') ensureTutorialFirstGeneSelected();
+            if (title === 'Gene expression scale') setTutorialToolbarPanel('gene');
+            if (title === 'Gene discovery panel') {{
+                document.getElementById('gene-input')?.focus();
+                if (typeof setGeneDiscoveryOpen === 'function') setGeneDiscoveryOpen(true);
+                if (typeof renderGeneDiscoveryPanel === 'function') renderGeneDiscoveryPanel();
+            }}
+        }}
+
+        if (chapter === 'Modal View') {{
+            if (title === 'Open a section modal') {{
+                if (typeof closeModal === 'function') closeModal();
+            }} else {{
+                ensureTutorialModalOpen();
+            }}
+        }}
+
+        if (chapter === 'Region Annotation') {{
+            ensureTutorialModalOpen();
+            if (typeof setInsightsMode === 'function') setInsightsMode('annotate');
+        }}
     }}
 
     function tutorialHasPseudobulk() {{
@@ -9582,18 +10185,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return null;
     }}
 
-    function positionTutorialCard(target) {{
+    function positionTutorialCard(target, step = null) {{
         const overlay = document.getElementById('tutorial-overlay');
         const spotlight = document.getElementById('tutorial-spotlight');
         const card = document.getElementById('tutorial-card');
         if (!overlay || !spotlight || !card || !target) return;
         const rect = target.getBoundingClientRect();
+        const positionEl = step?.positionTarget ? document.querySelector(step.positionTarget) : null;
+        const positionRect = positionEl ? positionEl.getBoundingClientRect() : rect;
         const margin = 12;
+        const spotlightPadding = Number.isFinite(step?.spotlightPadding)
+            ? Math.max(0, step.spotlightPadding)
+            : 6;
         const padded = {{
-            left: Math.max(8, rect.left - 6),
-            top: Math.max(8, rect.top - 6),
-            width: Math.min(window.innerWidth - 16, rect.width + 12),
-            height: Math.min(window.innerHeight - 16, rect.height + 12)
+            left: Math.max(8, rect.left - spotlightPadding),
+            top: Math.max(8, rect.top - spotlightPadding),
+            width: Math.min(window.innerWidth - 16, rect.width + spotlightPadding * 2),
+            height: Math.min(window.innerHeight - 16, rect.height + spotlightPadding * 2)
         }};
         spotlight.style.left = padded.left + 'px';
         spotlight.style.top = padded.top + 'px';
@@ -9603,19 +10211,119 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const cardRect = card.getBoundingClientRect();
         const cardW = cardRect.width || Math.min(380, window.innerWidth - 28);
         const cardH = cardRect.height || 220;
-        let left = rect.right + margin;
-        let top = rect.top;
-        if (left + cardW > window.innerWidth - margin) left = rect.left - cardW - margin;
-        if (left < margin) left = Math.min(Math.max(margin, rect.left), window.innerWidth - cardW - margin);
+        let left = positionRect.right + margin;
+        let top = positionRect.top;
+        if (step?.placement === 'below') {{
+            left = positionRect.left;
+            top = positionRect.bottom + margin;
+        }} else if (step?.placement === 'above') {{
+            left = positionRect.left;
+            top = positionRect.top - cardH - margin;
+        }} else if (step?.placement === 'right') {{
+            left = positionRect.right + margin;
+            top = positionRect.top;
+        }}
+        if (left + cardW > window.innerWidth - margin) left = positionRect.left - cardW - margin;
+        if (left < margin) left = Math.min(Math.max(margin, positionRect.left), window.innerWidth - cardW - margin);
         if (top + cardH > window.innerHeight - margin) top = window.innerHeight - cardH - margin;
         if (top < margin) top = margin;
         if (window.innerWidth < 720) {{
             left = Math.max(margin, Math.min(window.innerWidth - cardW - margin, margin));
-            top = rect.bottom + margin;
-            if (top + cardH > window.innerHeight - margin) top = Math.max(margin, rect.top - cardH - margin);
+            top = positionRect.bottom + margin;
+            if (top + cardH > window.innerHeight - margin) top = Math.max(margin, positionRect.top - cardH - margin);
         }}
         card.style.left = Math.round(left) + 'px';
         card.style.top = Math.round(top) + 'px';
+    }}
+
+    function getAvailableTutorialChapters() {{
+        const chapters = [];
+        const seen = new Set();
+        getAvailableTutorialSteps().forEach(step => {{
+            const name = step.chapter || 'Tutorial';
+            if (seen.has(name)) return;
+            seen.add(name);
+            chapters.push({{ name, index: tutorialSteps.indexOf(step) }});
+        }});
+        return chapters;
+    }}
+
+    function getNextTutorialIndex(index, direction = 1, scopeChapter = null) {{
+        const increment = Number(direction) < 0 ? -1 : 1;
+        if (!scopeChapter) return index + increment;
+        const chapterIndexes = tutorialSteps
+            .map((step, stepIndex) => ({{ step, stepIndex }}))
+            .filter(item => (item.step.chapter || 'Tutorial') === scopeChapter)
+            .map(item => item.stepIndex);
+        if (!chapterIndexes.length) return null;
+        const currentPos = chapterIndexes.indexOf(index);
+        if (currentPos < 0) return increment < 0 ? chapterIndexes[chapterIndexes.length - 1] : chapterIndexes[0];
+        const nextPos = currentPos + increment;
+        if (nextPos < 0 || nextPos >= chapterIndexes.length) return null;
+        return chapterIndexes[nextPos];
+    }}
+
+    function jumpTutorialToChapter(chapter) {{
+        if (!tutorialActive || !chapter) return;
+        const target = getAvailableTutorialChapters().find(item => item.name === chapter);
+        if (!target || target.index < 0) return;
+        showTutorialStep(target.index, 1, 0, chapter);
+    }}
+
+    function getTutorialChapterProgress(step) {{
+        const available = getAvailableTutorialSteps();
+        const chapter = step.chapter || 'Tutorial';
+        const chapterSteps = available.filter(item => (item.chapter || 'Tutorial') === chapter);
+        const chapterIndex = Math.max(0, chapterSteps.indexOf(step));
+        const chapterNames = getAvailableTutorialChapters().map(item => item.name);
+        return {{
+            chapter,
+            chapterIndex,
+            chapterTotal: Math.max(1, chapterSteps.length),
+            chapterOrdinal: Math.max(1, chapterNames.indexOf(chapter) + 1),
+            chapterCount: Math.max(1, chapterNames.length)
+        }};
+    }}
+
+    function tutorialStepGateSatisfied(step) {{
+        if (!step) return true;
+        if (step.requiresSelection) return selectedCells.size > 0;
+        if (step.requiresRegionB) return selectedCellsB.size > 0;
+        if (step.requiresRegionBCleared) return !tutorialRegionBClearStepStarted || selectedCellsB.size === 0;
+        if (step.requiresAnnotationCreated) return annotationAlreadyCreatedForCurrentSelection?.() === true;
+        if (step.requiresNoSelection) return selectedCells.size === 0 && selectedCellsB.size === 0;
+        if (step.requiresQuerySelection) return selectedCellsFromQuery && selectedCells.size > 0;
+        if (step.requiresModalOpen) return !!modalSection;
+        return true;
+    }}
+
+    function updateTutorialStepGate() {{
+        if (!tutorialActive) return;
+        const next = document.getElementById('tutorial-next');
+        if (!next) return;
+        const step = tutorialSteps[tutorialStepIndex];
+        const blocked = !tutorialStepGateSatisfied(step);
+        next.disabled = blocked;
+        if (blocked && step?.requiresSelection) next.title = 'Draw a cell selection to continue';
+        else if (blocked && step?.requiresRegionB) next.title = 'Select Region B to continue';
+        else if (blocked && step?.requiresRegionBCleared) next.title = 'Click the blue cross to clear Region B';
+        else if (blocked && step?.requiresAnnotationCreated) next.title = 'Create an annotation from the selection to continue';
+        else if (blocked && step?.requiresNoSelection) next.title = 'Clear the selected cells to continue';
+        else if (blocked && step?.requiresQuerySelection) next.title = 'Select cells with the query to continue';
+        else if (blocked && step?.requiresModalOpen) next.title = 'Click the highlighted section to open the modal view';
+        else next.removeAttribute('title');
+    }}
+
+    function autoAdvanceTutorialAfterModalOpen() {{
+        if (!tutorialActive || !modalSection) return;
+        const step = tutorialSteps[tutorialStepIndex];
+        if (step?.title !== 'Open a section modal') return;
+        window.setTimeout(() => {{
+            if (!tutorialActive || !modalSection) return;
+            if (tutorialSteps[tutorialStepIndex]?.title === 'Open a section modal') {{
+                stepTutorial(1);
+            }}
+        }}, 120);
     }}
 
     function renderTutorialStep(target, step, displayIndex) {{
@@ -9623,20 +10331,53 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const title = document.getElementById('tutorial-title');
         const body = document.getElementById('tutorial-body');
         const progress = document.getElementById('tutorial-progress');
+        const chapterName = document.getElementById('tutorial-chapter-name');
+        const chapterCount = document.getElementById('tutorial-chapter-count');
+        const chapterFill = document.getElementById('tutorial-chapter-fill');
+        const chapterSelect = document.getElementById('tutorial-chapter-select');
         const prev = document.getElementById('tutorial-prev');
         const next = document.getElementById('tutorial-next');
-        const disable = document.getElementById('tutorial-disable-autostart');
         if (!overlay || !title || !body || !progress || !prev || !next) return;
         overlay.classList.add('active');
         overlay.setAttribute('aria-hidden', 'false');
         title.textContent = step.title || 'Tutorial';
         const total = getAvailableTutorialStepCount();
         progress.textContent = 'Step ' + String(displayIndex + 1) + ' of ' + String(total);
-        body.innerHTML = (step.body || []).map(text => '<p>' + escapeHtml(text) + '</p>').join('');
+        const chapter = getTutorialChapterProgress(step);
+        if (chapterName) {{
+            chapterName.textContent = 'Chapter ' + String(chapter.chapterOrdinal) + ' of '
+                + String(chapter.chapterCount) + ': ' + chapter.chapter;
+        }}
+        if (chapterCount) {{
+            chapterCount.textContent = String(chapter.chapterIndex + 1) + '/'
+                + String(chapter.chapterTotal);
+        }}
+        if (chapterFill) {{
+            chapterFill.style.width = String(Math.min(100, Math.max(0,
+                ((chapter.chapterIndex + 1) / chapter.chapterTotal) * 100
+            ))) + '%';
+        }}
+        if (chapterSelect) {{
+            const chapters = getAvailableTutorialChapters();
+            const signature = chapters.map(item => item.name).join('\\u001f');
+            if (chapterSelect.dataset.chapterSignature !== signature) {{
+                chapterSelect.innerHTML = '';
+                chapters.forEach((item, idx) => {{
+                    const option = document.createElement('option');
+                    option.value = item.name;
+                    option.textContent = 'Chapter ' + String(idx + 1) + ': ' + item.name;
+                    chapterSelect.appendChild(option);
+                }});
+                chapterSelect.dataset.chapterSignature = signature;
+            }}
+            chapterSelect.value = chapter.chapter;
+        }}
+        body.innerHTML = (step.body || []).map(text => '<p>' + escapeHtml(text) + '</p>').join('')
+            + (step.task ? '<div class="tutorial-task">' + escapeHtml(step.task) + '</div>' : '');
         prev.disabled = displayIndex <= 0;
         next.textContent = displayIndex >= total - 1 ? 'Finish' : 'Next';
-        if (disable) disable.checked = getTutorialFlag('disabled') || getTutorialFlag('seen');
-        positionTutorialCard(target);
+        updateTutorialStepGate();
+        positionTutorialCard(target, step);
     }}
 
     function getAvailableTutorialSteps() {{
@@ -9654,41 +10395,57 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return found >= 0 ? found : Math.max(0, Math.min(available.length - 1, index));
     }}
 
-    function showTutorialStep(index, direction = 1, attempts = 0) {{
+    function showTutorialStep(index, direction = 1, attempts = 0, scopeChapter = null, renderToken = null) {{
         if (!tutorialActive) return;
-        if (attempts > tutorialSteps.length) {{
+        const activeRenderToken = renderToken == null ? ++tutorialRenderToken : renderToken;
+        const attemptLimit = scopeChapter
+            ? tutorialSteps.filter(step => (step.chapter || 'Tutorial') === scopeChapter).length
+            : tutorialSteps.length;
+        if (attempts > attemptLimit) {{
+            if (scopeChapter) return;
             setTutorialOpen(false, true);
             return;
         }}
         if (index < 0) index = 0;
         if (index >= tutorialSteps.length) {{
+            if (scopeChapter) return;
             setTutorialOpen(false, true);
             return;
         }}
         const step = tutorialSteps[index];
+        if (scopeChapter && (step.chapter || 'Tutorial') !== scopeChapter) return;
         if (step.condition && !step.condition()) {{
-            showTutorialStep(index + direction, direction, attempts + 1);
+            const nextIndex = getNextTutorialIndex(index, direction, scopeChapter);
+            if (nextIndex === null) return;
+            showTutorialStep(nextIndex, direction, attempts + 1, scopeChapter, activeRenderToken);
             return;
         }}
-        tutorialStepIndex = index;
         try {{
+            prepareTutorialStep(step);
             step.action?.();
+            prepareTutorialStep(step);
         }} catch (error) {{
             console.warn('Tutorial step action failed', error);
         }}
         window.setTimeout(() => {{
-            if (!tutorialActive) return;
+            if (!tutorialActive || activeRenderToken !== tutorialRenderToken) return;
             const target = findTutorialTarget(step);
             if (!target) {{
-                showTutorialStep(index + direction, direction, attempts + 1);
+                const nextIndex = getNextTutorialIndex(index, direction, scopeChapter);
+                if (nextIndex === null) return;
+                showTutorialStep(nextIndex, direction, attempts + 1, scopeChapter, activeRenderToken);
                 return;
             }}
-            target.scrollIntoView?.({{ block: 'center', inline: 'center', behavior: 'smooth' }});
+            const shouldScroll = step.scroll !== false;
+            if (shouldScroll) {{
+                target.scrollIntoView?.({{ block: 'center', inline: 'center', behavior: 'smooth' }});
+            }}
             window.setTimeout(() => {{
-                if (!tutorialActive) return;
+                if (!tutorialActive || activeRenderToken !== tutorialRenderToken) return;
+                tutorialStepIndex = index;
                 renderTutorialStep(target, step, getTutorialDisplayIndex(index));
-            }}, 180);
-        }}, 80);
+            }}, shouldScroll ? 180 : 0);
+        }}, Number.isFinite(step.prepareDelay) ? step.prepareDelay : 80);
     }}
 
     function stepTutorial(direction) {{
@@ -9699,10 +10456,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function setTutorialOpen(open, completed = false, force = false) {{
         if (!TUTORIAL_CONFIG.enabled && !force) return;
         const overlay = document.getElementById('tutorial-overlay');
-        const disable = document.getElementById('tutorial-disable-autostart');
         if (!overlay) return;
         if (open) {{
-            setTutorialFlag('disabled', false);
             document.getElementById('shortcuts-overlay')?.classList.remove('active');
             document.getElementById('info-popover')?.classList.remove('active');
             document.getElementById('app-help-popover')?.classList.remove('active');
@@ -9711,41 +10466,37 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             showTutorialStep(0, 1);
         }} else {{
             tutorialActive = false;
+            tutorialRenderToken++;
             overlay.classList.remove('active');
             overlay.setAttribute('aria-hidden', 'true');
-            if (completed || disable?.checked) setTutorialFlag('seen', true);
-            if (disable?.checked) setTutorialFlag('disabled', true);
         }}
     }}
 
     function initTutorialOverlay() {{
         const trigger = document.getElementById('tutorial-trigger');
-        if (!TUTORIAL_CONFIG.enabled) {{
-            if (trigger) trigger.style.display = 'none';
-            return;
-        }}
-        if (trigger) {{
-            trigger.style.display = '';
-            trigger.addEventListener('click', () => setTutorialOpen(true, false, true));
-        }}
+        if (!TUTORIAL_CONFIG.enabled) return;
+        const openTutorial = () => setTutorialOpen(true, false, true);
+        trigger?.addEventListener('click', openTutorial);
         document.getElementById('tutorial-close')?.addEventListener('click', () => setTutorialOpen(false, false));
-        document.getElementById('tutorial-skip')?.addEventListener('click', () => setTutorialOpen(false, true));
         document.getElementById('tutorial-prev')?.addEventListener('click', () => stepTutorial(-1));
         document.getElementById('tutorial-next')?.addEventListener('click', () => {{
+            if (!tutorialStepGateSatisfied(tutorialSteps[tutorialStepIndex])) return;
             const available = getAvailableTutorialSteps();
             const step = tutorialSteps[tutorialStepIndex];
             const displayIndex = available.indexOf(step);
             if (displayIndex >= available.length - 1) setTutorialOpen(false, true);
-            else stepTutorial(1);
+            else {{
+                try {{
+                    step.onNext?.();
+                }} catch (error) {{
+                    console.warn('Tutorial next action failed', error);
+                }}
+                stepTutorial(1);
+            }}
         }});
-        document.getElementById('tutorial-disable-autostart')?.addEventListener('change', (event) => {{
-            const checked = !!event.target.checked;
-            setTutorialFlag('seen', checked);
-            setTutorialFlag('disabled', checked);
+        document.getElementById('tutorial-chapter-select')?.addEventListener('change', (event) => {{
+            jumpTutorialToChapter(String(event.target.value || ''));
         }});
-        if (TUTORIAL_CONFIG.autostart && !getTutorialFlag('seen') && !getTutorialFlag('disabled')) {{
-            window.setTimeout(() => setTutorialOpen(true), 550);
-        }}
     }}
 
     function initKeyboardShortcuts() {{
@@ -10148,8 +10899,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (graphGroup) graphGroup.hidden = !DATA.has_neighbors;
 
         const config = getColorConfig();
-        const blendActive = !!getModalBlendRuntimes(modalSection);
-        const typeSelectionDisabled = !modalSection || config.is_continuous || blendActive;
+        const typeSelectionDisabled = !modalSection || config.is_continuous;
         if (typeSelectionDisabled) {{
             modalSelectedCategory = null;
             modalTypeSelectEnabled = false;
@@ -12228,20 +12978,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 delete geneInput.dataset.prevPlaceholder;
             }}
         }}
-        ['modal-blend-a-gene', 'modal-blend-b-gene'].forEach((id) => {{
-            const control = document.getElementById(id);
-            if (control) control.disabled = !!isLoading;
-        }});
-        const modalBlendLoading = document.getElementById('modal-blend-loading');
-        if (modalBlendLoading) {{
-            if (isLoading) {{
-                modalBlendLoading.textContent = geneAuxLoadingMessage;
-                modalBlendLoading.classList.add('visible');
-            }} else {{
-                modalBlendLoading.textContent = '';
-                modalBlendLoading.classList.remove('visible');
-            }}
-        }}
     }}
 
     function hydrateGeneFromAux(gene, auxData, modality = null) {{
@@ -12772,27 +13508,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             window.__karospaceShowStartupError?.(`${{label}} failed: ${{detail}} (open DevTools console).`);
             return null;
         }}
-    }}
-
-    function requestModalBlendGene(gene, modality = null) {{
-        const targetModality = modality || CURRENT_MODALITY;
-        const token = String(gene || '').trim();
-        const key = `${{targetModality}}::${{token}}`;
-        if (!token || modalBlendGeneLoads.has(key)) return;
-        if (isModuleModality(targetModality)) return;
-        if (isFeatureLoadedForModality(token, targetModality)) return;
-
-        modalBlendGeneLoads.add(key);
-        runAsyncUIAction(`Modal split gene load (${{token}})`, async () => {{
-            const ok = await ensureGeneAvailable(token, {{ showErrors: false, modality: targetModality }});
-            if (ok) {{
-                ensureGeneAutoScale(token, targetModality);
-                renderLegend('modal-legend');
-                if (modalSection) renderModalSection();
-            }}
-        }}).finally(() => {{
-            modalBlendGeneLoads.delete(key);
-        }});
     }}
 
     function setGeneDiscoveryOpen(isOpen) {{
@@ -13486,23 +14201,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             .join(';;');
     }}
 
-    function getModalBlendVariableLabel(spec) {{
-        if (!spec) return 'Unknown';
-        if (spec.kind !== 'cell') {{
-            const modName = spec.kind;
-            const modLabel = getModalityDisplayLabel(modName);
-            const isGene = ['RNA', 'rna', 'Gene', 'gene'].includes(modLabel);
-            const featureLabel = isGene ? 'Gene' : modLabel;
-            const displayLabel = getGeneDisplayLabel(spec.gene);
-            return spec.gene
-                ? (isModuleModality(modName) ? displayLabel : `${{featureLabel}}: ${{displayLabel}}`)
-                : featureLabel;
-        }}
-        const colLabel = spec.color ? formatMetadataLabel(spec.color) : 'Cell type';
-        if (spec.category === BLEND_ALL_CATEGORIES) return `${{colLabel}}: All`;
-        return spec.category ? `${{colLabel}}: ${{formatCategoryLabel(spec.color, spec.category)}}` : colLabel;
-    }}
-
     function getSplitLegendEntry(specSet, side, sideLabels = null, scaleResolver = null) {{
         const spec = specSet?.[side];
         if (!spec) return null;
@@ -13572,10 +14270,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
     }}
 
-    function getModalSplitLegendEntry(side) {{
-        return getSplitLegendEntry(modalBlendSpec, side);
-    }}
-
     function getOverviewSplitLegendEntry(side) {{
         return getSplitLegendEntry(
             overviewBlendSpec,
@@ -13585,7 +14279,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         );
     }}
 
-    function getModalBlendRuntime(section, spec, scaleOverride = null) {{
+    function getOverviewBlendRuntime(section, spec, scaleOverride = null) {{
         if (!section || !spec) return null;
         
         if (spec.kind !== 'cell') {{
@@ -13594,7 +14288,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             
             const modName = spec.kind;
             if (!isFeatureLoadedForModality(gene, modName)) {{
-                requestModalBlendGene(gene, modName);
+                requestOverviewBlendGene(gene, modName);
                 return null;
             }}
             const values = getSectionGeneValues(section, gene, modName);
@@ -13626,18 +14320,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }};
     }}
 
-    function getModalBlendRuntimes(section) {{
-        if (!modalBlendEnabled || !section) return null;
-        const a = getModalBlendRuntime(section, modalBlendSpec.a);
-        const b = getModalBlendRuntime(section, modalBlendSpec.b);
-        if (!a || !b) return null;
-        return {{ a, b }};
-    }}
-
     function getOverviewBlendRuntimes(section) {{
         if (!overviewBlendEnabled || !section) return null;
-        const a = getModalBlendRuntime(section, overviewBlendSpec.a, getOverviewSplitGeneScaleRange('a'));
-        const b = getModalBlendRuntime(section, overviewBlendSpec.b, getOverviewSplitGeneScaleRange('b'));
+        const a = getOverviewBlendRuntime(section, overviewBlendSpec.a, getOverviewSplitGeneScaleRange('a'));
+        const b = getOverviewBlendRuntime(section, overviewBlendSpec.b, getOverviewSplitGeneScaleRange('b'));
         if (!a || !b) return null;
         return {{ a, b }};
     }}
@@ -13645,8 +14331,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function requestOverviewBlendGene(gene, modality = CURRENT_MODALITY) {{
         const token = String(gene || '').trim();
         const key = `${{modality}}::${{token}}`;
-        if (!token || isModuleModality(modality) || isFeatureLoadedForModality(token, modality) || modalBlendGeneLoads.has(key)) return;
-        modalBlendGeneLoads.add(key);
+        if (!token || isModuleModality(modality) || isFeatureLoadedForModality(token, modality) || overviewBlendGeneLoads.has(key)) return;
+        overviewBlendGeneLoads.add(key);
         runAsyncUIAction(`Overview split gene load (${{token}})`, async () => {{
             const ok = await ensureGeneAvailable(token, {{ showErrors: false, modality }});
             if (ok) {{
@@ -13654,11 +14340,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderAllSections();
             }}
         }}).finally(() => {{
-            modalBlendGeneLoads.delete(key);
+            overviewBlendGeneLoads.delete(key);
         }});
     }}
 
-    function getModalBlendCellRgb(runtime, idx) {{
+    function getOverviewBlendCellRgb(runtime, idx) {{
         if (!runtime) return [128, 128, 128];
         const raw = runtime.values?.[idx];
         if (runtime.kind === 'cell-all') {{
@@ -16385,7 +17071,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 let isSpotlightCategory = false;
                 if (ovBlend) {{
                     const runtime = x <= umapSplitX ? ovBlend.a : ovBlend.b;
-                    color = rgbToCss(getModalBlendCellRgb(runtime, i));
+                    color = rgbToCss(getOverviewBlendCellRgb(runtime, i));
                 }} else if (config.is_continuous) {{
                     const t = (val - config.vmin) / (config.vmax - config.vmin);
                     color = magma(Math.max(0, Math.min(1, t)));
@@ -17920,47 +18606,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
-    function scheduleModalBlendRender() {{
-        if (!modalSection) return;
-        if (modalBlendRenderFrame !== null) return;
-        modalBlendRenderFrame = window.requestAnimationFrame(() => {{
-            modalBlendRenderFrame = null;
-            if (!renderModalBlendFromCache()) {{
-                renderModalSection();
-            }}
-        }});
-    }}
-
-    function updateModalBlendLabels() {{
-        if (modalBlendMixLabel) {{
-            const pctA = Math.round(modalBlendMix * 100);
-            const pctB = 100 - pctA;
-            modalBlendMixLabel.textContent = `A left ${{pctA}}% • B right ${{pctB}}%`;
-        }}
-        if (modalBlendMeta) {{
-            const summary = `${{getModalBlendVariableLabel(modalBlendSpec.a)}} \u2194 ${{getModalBlendVariableLabel(modalBlendSpec.b)}}`;
-            const aMarkers = getModalBlendMarkerHtml('a');
-            const bMarkers = getModalBlendMarkerHtml('b');
-            const markerBlocks = [aMarkers, bMarkers].filter(Boolean);
-            const hasMarkers = markerBlocks.length > 0;
-            const toggleLabel = modalBlendMarkersCollapsed ? 'Show DE genes' : 'Hide DE genes';
-            modalBlendMeta.innerHTML = [
-                `<div class="modal-blend-summary">${{escapeHtml(summary)}}</div>`,
-                hasMarkers
-                    ? `<button type="button" class="modal-blend-markers-toggle" id="modal-blend-markers-toggle" aria-expanded="${{modalBlendMarkersCollapsed ? 'false' : 'true'}}">${{toggleLabel}}</button>`
-                    : '',
-                hasMarkers
-                    ? `<div class="modal-blend-markers ${{modalBlendMarkersCollapsed ? 'collapsed' : ''}}">${{markerBlocks.join('')}}</div>`
-                    : '',
-            ].join('');
-            const markersToggle = document.getElementById('modal-blend-markers-toggle');
-            markersToggle?.addEventListener('click', () => {{
-                modalBlendMarkersCollapsed = !modalBlendMarkersCollapsed;
-                updateModalBlendLabels();
-            }});
-        }}
-    }}
-
     function clearModalInteractionPreview() {{
         const canvas = document.getElementById('modal-canvas');
         if (!canvas) return;
@@ -17988,13 +18633,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function invalidateModalRenderedView() {{
         clearModalInteractionCommitTimer();
-        if (modalBlendRenderFrame !== null) {{
-            window.cancelAnimationFrame(modalBlendRenderFrame);
-            modalBlendRenderFrame = null;
-        }}
         clearModalInteractionPreview();
         modalRenderedView = null;
-        modalBlendRenderCache = null;
         modalGeneDensityCache = null;
     }}
 
@@ -20032,6 +20672,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             umapInfo.classList.toggle('visible', hasSelectionState);
             umapInfo.style.display = hasSelectionState ? '' : 'none';
         }}
+        updateTutorialStepGate?.();
         const summary = computeSelectionSummary();
         const umapSummary = document.getElementById('insights-selection-panel');
         if (umapSummary) {{
@@ -20165,7 +20806,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const header = document.querySelector('.header');
         const visualBar = document.getElementById('visual-params-bar');
         const filterBar = document.getElementById('filter-bar');
-        const headerH = header ? Math.ceil(header.getBoundingClientRect().height) : 0;
+        const headerRect = header ? header.getBoundingClientRect() : null;
+        const headerH = headerRect ? Math.max(0, Math.ceil(headerRect.bottom)) : 0;
         const visualH = visualBar ? Math.ceil(visualBar.getBoundingClientRect().height) : 0;
         const filterVisible = filterBar && getComputedStyle(filterBar).display !== 'none';
         const filterH = filterVisible ? Math.ceil(filterBar.getBoundingClientRect().height) : 0;
@@ -20174,6 +20816,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         document.body.style.setProperty('--sticky-filter-height', `${{filterH}}px`);
         document.body.style.setProperty('--sticky-stack-height', `${{headerH + visualH + filterH}}px`);
         updateUMAPPanelPosition();
+    }}
+
+    function initStickyOffsetObservers() {{
+        updateStickyOffsets();
+        if (!window.ResizeObserver) return;
+        const observer = new ResizeObserver(() => requestAnimationFrame(updateStickyOffsets));
+        ['.header', '#visual-params-bar', '#filter-bar'].forEach(selector => {{
+            const el = document.querySelector(selector);
+            if (el) observer.observe(el);
+        }});
     }}
 
     function loadUMAPPanelState() {{
@@ -21216,45 +21868,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
-    function getModalSplitTooltipContent(section, cellIdx, transform) {{
-        const blendRuntimes = getModalBlendRuntimes(section);
-        if (!blendRuntimes) return null;
-
-        const cellX = transform.dataToScreen(section.x[cellIdx], section.y[cellIdx]).x;
-        const splitX = transform.width * modalBlendMix;
-        const side = cellX <= splitX ? 'a' : 'b';
-        const sideLabel = side === 'a' ? 'A (left)' : 'B (right)';
-        const spec = modalBlendSpec[side];
-        const runtime = blendRuntimes[side];
-        if (!runtime || !spec) return null;
-
-        const raw = runtime.values?.[cellIdx];
-        const color = rgbToCss(getModalBlendCellRgb(runtime, cellIdx));
-        const baseLabel = `${{sideLabel}} • ${{getModalBlendVariableLabel(spec)}}`;
-
-        if (runtime.kind === 'gene') {{
-            const valueText = Number.isFinite(raw) ? raw.toFixed(3) : 'n/a';
-            return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
-                    <span class="cell-tooltip-label">${{baseLabel}}:</span>
-                    <span class="cell-tooltip-value">${{valueText}}</span>`;
-        }}
-
-        const categories = getCategoriesForColorColumn(spec.color);
-        const catIdx = Number.isFinite(raw) ? Math.round(raw) : -1;
-        const catName = (catIdx >= 0 && catIdx < categories.length) ? categories[catIdx] : 'unknown';
-        if (runtime.kind === 'cell-all') {{
-            return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
-                    <span class="cell-tooltip-label">${{baseLabel}}:</span>
-                    <span class="cell-tooltip-value">${{catName}}</span>`;
-        }}
-
-        const isMatch = Number.isFinite(raw) && Math.round(raw) === runtime.catIdx;
-        const valueText = Number.isFinite(raw) ? `${{catName}} (${{isMatch ? 'match' : 'other'}})` : 'n/a';
-        return `<span class="cell-tooltip-color" style="background: ${{color}}"></span>
-                <span class="cell-tooltip-label">${{baseLabel}}:</span>
-                <span class="cell-tooltip-value">${{valueText}}</span>`;
-    }}
-
     function drawModalAnnotations(ctx, transform) {{
         if (!modalSection) return;
         const sectionAnnotations = getSectionAnnotations(modalSection.id);
@@ -21296,15 +21909,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ctx.fillText(`${{annotation.label || `region ${{annotation.id}}`}} (${{count}})`, cx + 6, cy - 6);
             ctx.restore();
         }});
-    }}
-
-    function createModalBlendLayerCanvas(width, height, dpr) {{
-        const canvas = document.createElement('canvas');
-        canvas.width = Math.max(1, Math.round(width * dpr));
-        canvas.height = Math.max(1, Math.round(height * dpr));
-        const ctx = canvas.getContext('2d');
-        ctx.scale(dpr, dpr);
-        return {{ canvas, ctx }};
     }}
 
     function updateOverviewGeneViewState() {{
@@ -21565,155 +22169,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return true;
     }}
 
-    function getModalBlendSpecCacheKey(spec, runtime) {{
-        const parts = [
-            spec?.kind || '',
-            spec?.color || '',
-            spec?.category || '',
-            spec?.gene || '',
-            runtime?.kind || '',
-        ];
-        if (runtime?.kind === 'gene') {{
-            parts.push(
-                Number(runtime.vmin || 0).toFixed(6),
-                Number(runtime.vmax || 0).toFixed(6),
-            );
-        }} else if (Number.isFinite(runtime?.catIdx)) {{
-            parts.push(String(runtime.catIdx));
-        }}
-        return parts.join('|');
-    }}
-
-    function getModalBlendRenderCacheKey(section, transform, width, height, dpr, adjustedSpotSize, runtimes) {{
-        return [
-            section?.id || '',
-            width,
-            height,
-            dpr.toFixed(3),
-            transform.centerX.toFixed(3),
-            transform.centerY.toFixed(3),
-            transform.scale.toFixed(6),
-            transform.angleDeg.toFixed(3),
-            adjustedSpotSize.toFixed(4),
-            getModalSubviewRenderToken(),
-            getModalBlendSpecCacheKey(modalBlendSpec.a, runtimes?.a),
-            getModalBlendSpecCacheKey(modalBlendSpec.b, runtimes?.b),
-        ].join('::');
-    }}
-
-    function renderModalBlendRuntimeLayer(ctx, section, runtime, transform, adjustedSpotSize, candidateIndices = null) {{
-        const nCandidates = candidateIndices ? candidateIndices.length : section.x.length;
-        for (let k = 0; k < nCandidates; k++) {{
-            const i = candidateIndices ? candidateIndices[k] : k;
-            const point = transform.dataToScreen(section.x[i], section.y[i]);
-            const x = point.x;
-            const y = point.y;
-            if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
-            ctx.fillStyle = rgbToCss(getModalBlendCellRgb(runtime, i));
-            ctx.beginPath();
-            ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
-            ctx.fill();
-        }}
-    }}
-
-    function ensureModalBlendRenderCache(section, transform, width, height, dpr, adjustedSpotSize, runtimes, candidateIndices = null) {{
-        if (!section || !transform || !runtimes) return null;
-        const cacheKey = getModalBlendRenderCacheKey(section, transform, width, height, dpr, adjustedSpotSize, runtimes);
-        if (modalBlendRenderCache && modalBlendRenderCache.key === cacheKey) {{
-            return modalBlendRenderCache;
-        }}
-
-        const layerA = createModalBlendLayerCanvas(width, height, dpr);
-        const layerB = createModalBlendLayerCanvas(width, height, dpr);
-        renderModalBlendRuntimeLayer(layerA.ctx, section, runtimes.a, transform, adjustedSpotSize, candidateIndices);
-        renderModalBlendRuntimeLayer(layerB.ctx, section, runtimes.b, transform, adjustedSpotSize, candidateIndices);
-
-        modalBlendRenderCache = {{
-            key: cacheKey,
-            width,
-            height,
-            dpr,
-            canvasA: layerA.canvas,
-            canvasB: layerB.canvas,
-        }};
-        return modalBlendRenderCache;
-    }}
-
-    function drawModalBlendCachedLayers(ctx, width, height, cache, splitX) {{
-        if (!ctx || !cache) return false;
-        const clampedSplitX = Math.max(0, Math.min(width, splitX));
-
-        if (clampedSplitX > 0) {{
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(0, 0, clampedSplitX, height);
-            ctx.clip();
-            ctx.drawImage(cache.canvasA, 0, 0, width, height);
-            ctx.restore();
-        }}
-        if (clampedSplitX < width) {{
-            ctx.save();
-            ctx.beginPath();
-            ctx.rect(clampedSplitX, 0, width - clampedSplitX, height);
-            ctx.clip();
-            ctx.drawImage(cache.canvasB, 0, 0, width, height);
-            ctx.restore();
-        }}
-
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 3]);
-        ctx.beginPath();
-        ctx.moveTo(clampedSplitX, 0);
-        ctx.lineTo(clampedSplitX, height);
-        ctx.stroke();
-        ctx.setLineDash([]);
-        return true;
-    }}
-
-    function renderModalBlendFromCache() {{
-        if (!modalSection || !modalBlendEnabled) return false;
-        if (showGraph || hoverNeighbors || isDrawingModalLasso) return false;
-        if (selectedCells.size > 0 && !getModalActiveCellIndexSet(modalSection.id)) return false;
-
-        const canvas = document.getElementById('modal-canvas');
-        const container = document.getElementById('modal-canvas-container');
-        if (!canvas || !container) return false;
-
-        clearModalInteractionPreview();
-        const ctx = canvas.getContext('2d');
-        const dpr = getRenderDpr();
-        const rect = container.getBoundingClientRect();
-        const width = rect.width;
-        const height = rect.height;
-        if (width <= 0 || height <= 0) return false;
-
-        const transform = getModalViewTransform(rect);
-        const runtimes = getModalBlendRuntimes(modalSection);
-        if (!transform || !runtimes || !modalBlendRenderCache) return false;
-
-        const cacheKey = getModalBlendRenderCacheKey(
-            modalSection,
-            transform,
-            width,
-            height,
-            dpr,
-            Math.max(0.25, modalSpotSize * modalZoom * 0.8),
-            runtimes,
-        );
-        if (modalBlendRenderCache.key !== cacheKey) return false;
-
-        canvas.width = width * dpr;
-        canvas.height = height * dpr;
-        ctx.scale(dpr, dpr);
-        ctx.fillStyle = getPanelBg();
-        ctx.fillRect(0, 0, width, height);
-        drawModalBlendCachedLayers(ctx, width, height, modalBlendRenderCache, width * modalBlendMix);
-        cacheModalRenderedView(rect, transform);
-        updateModalViewportInfo(transform);
-        return true;
-    }}
-
     // Modal rendering
     function getHeImgDataScale(state) {{
         return state.imgDataScaleBase * Math.pow(2, state.scaleSlider / 100);
@@ -21959,14 +22414,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         const config = getColorConfig();
         const values = getSectionValues(modalSection);
-        const blendRuntimes = getModalBlendRuntimes(modalSection);
-        const blendActive = !!blendRuntimes;
         const candidateIndices = filterModalCandidateIndices(
             modalSection,
             getSectionVisibleScreenCandidates(modalSection, transform, adjustedSpotSize),
         );
-        const showGeneDensity = !!currentGene && !blendActive && (modalGeneRenderMode === 'density' || modalGeneRenderMode === 'both');
-        const showGeneCells = !currentGene || blendActive || modalGeneRenderMode !== 'density';
+        const showGeneDensity = !!currentGene && (modalGeneRenderMode === 'density' || modalGeneRenderMode === 'both');
+        const showGeneCells = !currentGene || modalGeneRenderMode !== 'density';
         const densityCandidateIndices = showGeneDensity
             ? filterModalCandidateIndices(
                 modalSection,
@@ -22035,7 +22488,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         // First pass: draw grey background for hidden categories
-        const hasHidden = showGeneCells && !blendActive && hiddenCategories.size > 0 && !config.is_continuous;
+        const hasHidden = showGeneCells && hiddenCategories.size > 0 && !config.is_continuous;
         if (hasHidden) {{
             ctx.fillStyle = '#cccccc';
             ctx.globalAlpha = 0.2 * cellOpacity;
@@ -22059,37 +22512,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
 
         // Second pass: draw visible categories on top (with optional selected-category focus)
-        if (blendActive) {{
-            const splitX = width * modalBlendMix;
-            for (let k = 0; k < nCandidates; k++) {{
-                const i = candidateIndices ? candidateIndices[k] : k;
-                const point = transform.dataToScreen(modalSection.x[i], modalSection.y[i]);
-                const x = point.x;
-                const y = point.y;
-                if (!transform.isPointVisible(x, y, adjustedSpotSize)) continue;
-                const runtime = x <= splitX ? blendRuntimes.a : blendRuntimes.b;
-                const isSelectedCell = isCellSelectedAny(modalSection.id, i);
-                if (hasSelectionFocus && !isSelectedCell) {{
-                    ctx.fillStyle = '#bbbbbb';
-                    ctx.globalAlpha = 0.12 * cellOpacity;
-                }} else {{
-                    ctx.fillStyle = rgbToCss(getModalBlendCellRgb(runtime, i));
-                    ctx.globalAlpha = cellOpacity;
-                }}
-                ctx.beginPath();
-                ctx.arc(x, y, adjustedSpotSize, 0, Math.PI * 2);
-                ctx.fill();
-            }}
-            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([5, 3]);
-            ctx.beginPath();
-            ctx.moveTo(splitX, 0);
-            ctx.lineTo(splitX, height);
-            ctx.stroke();
-            ctx.setLineDash([]);
-            ensureModalBlendRenderCache(modalSection, transform, width, height, dpr, adjustedSpotSize, blendRuntimes, candidateIndices);
-        }} else if (showGeneCells && config.is_proportions) {{
+        if (showGeneCells && config.is_proportions) {{
             const propData = getSectionProportions(modalSection, currentColor);
             const k = propData?.k || 0;
             const PIE_MIN_RADIUS = 2.0;
@@ -22204,10 +22627,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 if (!selectionSet.has(`${{modalSection.id}}:${{i}}`)) continue;
 
                 const val = values[i];
-                if (!blendActive && isMissingDisplayValue(val)) continue;
+                if (isMissingDisplayValue(val)) continue;
 
                 // Skip hidden categories
-                if (!blendActive && !config.is_continuous) {{
+                if (!config.is_continuous) {{
                     const catInfo = getCategoricalValueInfo(config, val);
                     if (!catInfo || hiddenCategories.has(catInfo.catName)) continue;
                 }}
@@ -22312,19 +22735,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!legend) return;
         const config = getColorConfig();
         const colorLabel = getGeneDisplayLabel(currentGene) || currentColor;
-        const splitLegendActive = (
-            (targetId === 'modal-legend' && !!getModalBlendRuntimes(modalSection))
-            || (targetId === 'legend' && overviewBlendEnabled)
-        );
+        const splitLegendActive = targetId === 'legend' && overviewBlendEnabled;
         if (targetId === 'modal-legend') {{
             legend.classList.toggle('split-expanded', splitLegendActive);
         }}
 
         if (splitLegendActive) {{
             const splitEntries = ['a', 'b']
-                .map(side => targetId === 'legend'
-                    ? getOverviewSplitLegendEntry(side)
-                    : getModalSplitLegendEntry(side))
+                .map(side => getOverviewSplitLegendEntry(side))
                 .filter(Boolean);
             let html = `
                 <div class="split-legend-list">
@@ -31498,6 +31916,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     async function openModal(sectionId, sourcePanel = null) {{
         modalSection = DATA.sections.find(s => s.id === sectionId);
         if (!modalSection) return;
+        updateTutorialStepGate?.();
         const sourceRect = sourcePanel?.getBoundingClientRect?.() || null;
         modalSubview = null;
         invalidateModalRenderedView();
@@ -31530,6 +31949,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             renderModalSection();
             setHeAlignPanelOpen(false);
             refreshModalHeControls();
+            updateTutorialStepGate?.();
+            autoAdvanceTutorialAfterModalOpen?.();
         }});
     }}
 
@@ -31563,6 +31984,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         updateUMAPCursor();
         updateUMAPLassoButtonState();
         renderAllSections();
+        updateTutorialStepGate?.();
     }}
 
     function layoutModalAnnotationPanel(forceReset = false) {{
@@ -32736,34 +33158,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         const canvas = document.getElementById('modal-canvas');
-        const modalBlendPanel = document.getElementById('modal-blend-panel');
-        const modalBlendMixRange = document.getElementById('modal-blend-mix');
-        const modalBlendMixLabel = document.getElementById('modal-blend-mix-label');
-        const modalBlendMeta = document.getElementById('modal-blend-meta');
         const modalGenePanel = document.getElementById('modal-gene-panel');
         const modalGenePanelCloseBtn = document.getElementById('modal-gene-panel-close');
-        const modalBlendControls = {{
-            a: {{
-                kind: document.getElementById('modal-blend-a-kind'),
-                color: document.getElementById('modal-blend-a-color'),
-                category: document.getElementById('modal-blend-a-category'),
-                gene: document.getElementById('modal-blend-a-gene'),
-                scaleRow: document.getElementById('modal-blend-a-scale-row'),
-                scaleMin: document.getElementById('modal-blend-a-vmin'),
-                scaleMax: document.getElementById('modal-blend-a-vmax'),
-                scaleAuto: document.getElementById('modal-blend-a-auto'),
-            }},
-            b: {{
-                kind: document.getElementById('modal-blend-b-kind'),
-                color: document.getElementById('modal-blend-b-color'),
-                category: document.getElementById('modal-blend-b-category'),
-                gene: document.getElementById('modal-blend-b-gene'),
-                scaleRow: document.getElementById('modal-blend-b-scale-row'),
-                scaleMin: document.getElementById('modal-blend-b-vmin'),
-                scaleMax: document.getElementById('modal-blend-b-vmax'),
-                scaleAuto: document.getElementById('modal-blend-b-auto'),
-            }},
-        }};
         const modalAnnotationCreateGroupBtn = document.getElementById('modal-annotations-create-group');
         const modalAnnotationExportBtn = document.getElementById('modal-annotations-export');
         const modalAnnotationClearAllBtn = document.getElementById('modal-annotations-clear-all');
@@ -32771,9 +33167,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         updateModalCanvasCursor = () => {{
             if (!canvas) return;
-            if (isSplitDragging) {{
-                canvas.style.cursor = 'ew-resize';
-            }} else if (isDragging) {{
+            if (isDragging) {{
                 canvas.style.cursor = 'grabbing';
             }} else if (heIsDragging) {{
                 canvas.style.cursor = 'move';
@@ -32788,282 +33182,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }};
 
-        function ensureModalBlendDefaults() {{
-            const catCols = getCategoricalColorColumns();
-            const preferredCol = catCols.includes(currentColor) ? currentColor : (catCols[0] || null);
-            const modalityNames = MODALITY_DESCRIPTORS.map(m => m.name);
-            const defaultModality = modalityNames.includes(DEFAULT_MODALITY_NAME) ? DEFAULT_MODALITY_NAME : (modalityNames[0] || 'gene');
-
-            const normalize = (entry, preferSecondCategory = false) => {{
-                if (!entry.kind) {{
-                    entry.kind = catCols.length ? 'cell' : defaultModality;
-                }}
-                
-                if (entry.kind === 'cell') {{
-                    if (!catCols.length) {{
-                        entry.kind = defaultModality;
-                    }} else {{
-                        if (!entry.color || !catCols.includes(entry.color)) entry.color = preferredCol;
-                        const cats = getCategoriesForColorColumn(entry.color);
-                        const hasSelectedCategory = entry.category === BLEND_ALL_CATEGORIES || cats.includes(entry.category);
-                        if (!entry.category || !hasSelectedCategory) {{
-                            if (preferSecondCategory && cats.length > 1) entry.category = cats[1];
-                            else entry.category = BLEND_ALL_CATEGORIES;
-                        }}
-                    }}
-                }}
-
-                if (entry.kind !== 'cell') {{
-                    const modName = entry.kind;
-                    const features = getFeatureDatalistValuesForModality(modName);
-
-                    if (!features.length && catCols.length) {{
-                        entry.kind = 'cell';
-                        return normalize(entry, preferSecondCategory);
-                    }}
-                    
-                    if (!entry.gene || !isFeatureLoadedForModality(entry.gene, modName)) {{
-                        const defaultFeature = preferSecondCategory && features.length > 1 ? features[1] : (features[0] || '');
-                        entry.gene = resolveFeatureTokenForModality(defaultFeature, modName) || defaultFeature;
-                    }}
-                }}
-            }};
-
-            normalize(modalBlendSpec.a, false);
-            normalize(modalBlendSpec.b, true);
-        }}
-
-        function getModalBlendMarkerHtml(side) {{
-            const spec = modalBlendSpec?.[side];
-            if (!spec || spec.kind !== 'cell') return '';
-            const sideLabel = side === 'a' ? 'A' : 'B';
-            const colorLabel = spec.color ? formatMetadataLabel(spec.color) : 'Cell type';
-            const byColor = (DATA.marker_genes || {{}})[spec.color];
-            if (!byColor || typeof byColor !== 'object') {{
-                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}}): unavailable`)}}</div>`;
-            }}
-            const category = spec.category;
-            if (category && category !== BLEND_ALL_CATEGORIES) {{
-                const genes = getMarkerGenesForColorCategory(spec.color, category);
-                if (!genes.length) {{
-                    return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}} · ${{category}}): unavailable`)}}</div>`;
-                }}
-                return [
-                    `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}} · ${{category}})`)}}</div>`,
-                    `<div class="modal-blend-marker-row">${{escapeHtml(genes.join(' '))}}</div>`,
-                ].join('');
-            }}
-
-            const categories = getCategoriesForColorColumn(spec.color);
-            const categoryOrder = categories.length ? categories : Object.keys(byColor);
-            const rows = categoryOrder.map(cat => {{
-                const genes = getMarkerGenesForColorCategory(spec.color, cat);
-                if (!genes.length) return '';
-                return `<div class="modal-blend-marker-row"><span class="modal-blend-marker-name">${{escapeHtml(String(cat))}}</span>: ${{escapeHtml(genes.join(' '))}}</div>`;
-            }}).filter(Boolean);
-            if (!rows.length) {{
-                return `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}}): unavailable`)}}</div>`;
-            }}
-            return [
-                `<div class="modal-blend-marker-header">${{escapeHtml(`${{sideLabel}} DE genes (${{colorLabel}} · all categories)`)}}</div>`,
-                ...rows,
-            ].join('');
-        }}
-
-        function updateModalBlendLabels() {{
-            if (modalBlendMixLabel) {{
-                const pctA = Math.round(modalBlendMix * 100);
-                const pctB = 100 - pctA;
-                modalBlendMixLabel.textContent = `A left ${{pctA}}% • B right ${{pctB}}%`;
-            }}
-            if (modalBlendMeta) {{
-                const summary = `${{getModalBlendVariableLabel(modalBlendSpec.a)}} \u2194 ${{getModalBlendVariableLabel(modalBlendSpec.b)}}`;
-                const aMarkers = getModalBlendMarkerHtml('a');
-                const bMarkers = getModalBlendMarkerHtml('b');
-                const markerBlocks = [aMarkers, bMarkers].filter(Boolean);
-                const hasMarkers = markerBlocks.length > 0;
-            const toggleLabel = modalBlendMarkersCollapsed ? 'Show DE genes' : 'Hide DE genes';
-                modalBlendMeta.innerHTML = [
-                    `<div class="modal-blend-summary">${{escapeHtml(summary)}}</div>`,
-                    hasMarkers
-                        ? `<button type="button" class="modal-blend-markers-toggle" id="modal-blend-markers-toggle" aria-expanded="${{modalBlendMarkersCollapsed ? 'false' : 'true'}}">${{toggleLabel}}</button>`
-                        : '',
-                    hasMarkers
-                        ? `<div class="modal-blend-markers ${{modalBlendMarkersCollapsed ? 'collapsed' : ''}}">${{markerBlocks.join('')}}</div>`
-                        : '',
-                ].join('');
-                const markersToggle = document.getElementById('modal-blend-markers-toggle');
-                markersToggle?.addEventListener('click', () => {{
-                    modalBlendMarkersCollapsed = !modalBlendMarkersCollapsed;
-                    updateModalBlendLabels();
-                }});
-            }}
-        }}
-
-        function syncModalBlendSide(side) {{
-            const controls = modalBlendControls[side];
-            const spec = modalBlendSpec[side];
-            if (!controls || !spec) return;
-
-            setSelectOptions(controls.kind, getBlendKindOptions(), spec.kind);
-
-            const isCell = spec.kind === 'cell';
-            controls.color.style.display = isCell ? '' : 'none';
-            controls.category.style.display = isCell ? '' : 'none';
-            controls.gene.style.display = isCell ? 'none' : '';
-            if (controls.scaleRow) controls.scaleRow.style.display = isCell ? 'none' : '';
-            
-            if (isCell) {{
-                const cols = getCategoricalColorColumns();
-                setSelectOptions(controls.color, cols, spec.color);
-                const cats = getCategoriesForColorColumn(spec.color);
-                const catOptions = [{{ value: BLEND_ALL_CATEGORIES, label: 'All categories' }}]
-                    .concat(cats.map(cat => ({{ value: cat, label: cat }})));
-                setSelectOptions(controls.category, catOptions, spec.category);
-            }} else {{
-                const modName = spec.kind;
-                const modLabel = getModalityDisplayLabel(modName);
-                controls.gene.placeholder = `${{modLabel}} feature`;
-                controls.gene.value = getGeneDisplayLabel(spec.gene);
-
-                // Populate side-specific feature datalist
-                const listId = `modal-blend-${{side}}-gene-list`;
-                const listEl = document.getElementById(listId);
-                if (listEl) {{
-                    const features = getFeatureDatalistValuesForModality(modName);
-                    const fragment = document.createDocumentFragment();
-                    for (const f of features) {{
-                        const opt = document.createElement('option');
-                        opt.value = f;
-                        fragment.appendChild(opt);
-                    }}
-                    listEl.replaceChildren(fragment);
-                }}
-                
-                const gene = (spec.gene || '').trim();
-                const hasGene = !!(gene && isFeatureLoadedForModality(gene, modName));
-                
-                if (hasGene) ensureGeneAutoScale(gene, modName);
-                const scale = hasGene ? getGeneScaleRange(gene, modName) : null;
-                if (controls.scaleMin) {{
-                    controls.scaleMin.value = scale ? scale.vmin.toFixed(3) : '';
-                    controls.scaleMin.disabled = !hasGene;
-                }}
-                if (controls.scaleMax) {{
-                    controls.scaleMax.value = scale ? scale.vmax.toFixed(3) : '';
-                    controls.scaleMax.disabled = !hasGene;
-                }}
-                if (controls.scaleAuto) controls.scaleAuto.disabled = !hasGene;
-            }}
-        }}
-
-        function syncModalBlendUI() {{
-            ensureModalBlendDefaults();
-            syncModalBlendSide('a');
-            syncModalBlendSide('b');
-            if (modalBlendPanel) modalBlendPanel.classList.toggle('visible', modalBlendEnabled);
-            if (modalBlendMixRange) modalBlendMixRange.value = String(Math.round(modalBlendMix * 100));
-            updateModalBlendLabels();
-            updateModalToolbarState();
-        }}
-
-        function applyModalBlendControlChange() {{
-            syncModalBlendUI();
-            renderLegend('modal-legend');
-            if (modalSection) renderModalSection();
-        }}
-
-        function applyModalBlendGeneScale(side, useAuto = false) {{
-            const controls = modalBlendControls[side];
-            const spec = modalBlendSpec[side];
-            const isCell = spec.kind === 'cell';
-            if (!controls || !spec || isCell) return;
-            const gene = (spec.gene || '').trim();
-            const modName = spec.kind;
-            if (!gene || !isFeatureLoadedForModality(gene, modName)) return;
-
-            if (useAuto) {{
-                const autoScale = computeGenePercentiles(gene, GENE_SCALE_PMIN, GENE_SCALE_PMAX, modName);
-                if (!autoScale) return;
-                geneScaleAuto[gene] = autoScale;
-                delete geneScaleOverrides[gene];
-            }} else {{
-                const vmin = parseFloat(controls.scaleMin?.value);
-                const vmax = parseFloat(controls.scaleMax?.value);
-                if (!Number.isFinite(vmin) || !Number.isFinite(vmax)) return;
-                let adjMin = vmin;
-                let adjMax = vmax;
-                if (adjMin === adjMax) {{
-                    adjMin -= 1e-6;
-                    adjMax += 1e-6;
-                }} else if (adjMin > adjMax) {{
-                    const tmp = adjMin;
-                    adjMin = adjMax;
-                    adjMax = tmp;
-                }}
-                geneScaleOverrides[gene] = {{ vmin: adjMin, vmax: adjMax }};
-            }}
-
-            syncModalBlendUI();
-            rerenderForExpressionScaleChange();
-        }}
-
-        modalBlendMixRange?.addEventListener('input', (e) => {{
-            modalBlendMix = clamp01(parseFloat(e.target.value) / 100);
-            updateModalBlendLabels();
-            scheduleModalBlendRender();
-        }});
-        ['a', 'b'].forEach((side) => {{
-            const controls = modalBlendControls[side];
-            if (!controls) return;
-            controls.kind?.addEventListener('change', () => {{
-                modalBlendSpec[side].kind = controls.kind.value;
-                applyModalBlendControlChange();
-            }});
-            controls.color?.addEventListener('change', () => {{
-                modalBlendSpec[side].color = controls.color.value;
-                modalBlendSpec[side].category = BLEND_ALL_CATEGORIES;
-                applyModalBlendControlChange();
-            }});
-            controls.category?.addEventListener('change', () => {{
-                modalBlendSpec[side].category = controls.category.value;
-                applyModalBlendControlChange();
-            }});
-            controls.gene?.addEventListener('change', async () => {{
-                await runAsyncUIAction(`Modal gene selection (${{side.toUpperCase()}})`, async () => {{
-                        const modName = modalBlendSpec[side].kind;
-                        const gene = resolveFeatureTokenForModality(controls.gene.value.trim(), modName) || controls.gene.value.trim();
-                        if (!gene) {{
-                            modalBlendSpec[side].gene = '';
-                            applyModalBlendControlChange();
-                            return;
-                        }}
-                        if (!isFeatureLoadedForModality(gene, modName)) {{
-                            controls.gene.value = getGeneDisplayLabel(modalBlendSpec[side].gene);
-                            return;
-                        }}
-                        if (!await ensureGeneAvailable(gene, {{ modality: modName }})) {{
-                            controls.gene.value = getGeneDisplayLabel(modalBlendSpec[side].gene);
-                        return;
-                    }}
-                    modalBlendSpec[side].gene = gene;
-                    ensureGeneAutoScale(gene, modName);
-                    applyModalBlendControlChange();
-                }});
-            }});
-            controls.scaleMin?.addEventListener('change', () => applyModalBlendGeneScale(side));
-            controls.scaleMax?.addEventListener('change', () => applyModalBlendGeneScale(side));
-            controls.scaleAuto?.addEventListener('click', () => applyModalBlendGeneScale(side, true));
-        }});
-        modalBlendPanel?.addEventListener('wheel', (e) => e.stopPropagation());
-        modalBlendPanel?.addEventListener('touchmove', (e) => e.stopPropagation());
         modalGenePanel?.addEventListener('wheel', (e) => e.stopPropagation());
         modalGenePanel?.addEventListener('touchmove', (e) => e.stopPropagation());
         modalGenePanelCloseBtn?.addEventListener('click', () => {{
             hideModalGeneDiscoveryPanel();
             updateSelectionInfo();
         }});
-        syncModalBlendUI();
         renderModalAnnotationPanel();
         layoutModalAnnotationPanel();
         updateModalToolbarState();
@@ -33094,7 +33218,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 return;
             }}
             if (modalSpacePanActive) {{
-                if (isSplitDragging) return;
                 isDragging = true;
                 dragStartX = e.clientX; dragStartY = e.clientY;
                 lastPanX = modalPanX; lastPanY = modalPanY;
@@ -33112,40 +33235,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 renderModalSection();
                 return;
             }}
-            if (isSplitDragging) return;
             isDragging = true;
             dragStartX = e.clientX; dragStartY = e.clientY;
             lastPanX = modalPanX; lastPanY = modalPanY;
             updateModalCanvasCursor();
-        }});
-        canvas.addEventListener('pointerdown', (e) => {{
-            if (modalMagicWandActive) return;
-            const blendActiveNow = !!(modalSection && getModalBlendRuntimes(modalSection));
-            if (!blendActiveNow) return;
-            const rect = container.getBoundingClientRect();
-            const mouseX = e.clientX - rect.left;
-            const splitX = rect.width * modalBlendMix;
-            if (Math.abs(mouseX - splitX) > 12) return;
-            canvas.setPointerCapture(e.pointerId);
-            isSplitDragging = true;
-            modalPointerMoved = true;
-            updateModalCanvasCursor();
-            e.preventDefault();
-        }});
-        canvas.addEventListener('pointermove', (e) => {{
-            if (!isSplitDragging) return;
-            const rect = container.getBoundingClientRect();
-            modalBlendMix = clamp01((e.clientX - rect.left) / rect.width);
-            if (modalBlendMixRange) modalBlendMixRange.value = String(Math.round(modalBlendMix * 100));
-            updateModalBlendLabels();
-            scheduleModalBlendRender();
-            e.preventDefault();
-        }});
-        canvas.addEventListener('pointerup', (e) => {{
-            if (!isSplitDragging) return;
-            isSplitDragging = false;
-            updateModalCanvasCursor();
-            e.preventDefault();
         }});
         document.addEventListener('mousemove', (e) => {{
             if (isDrawingModalLasso) {{
@@ -33213,19 +33306,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const transform = getModalViewTransform(rect);
             if (!transform) return;
 
-            const blendActive = !!getModalBlendRuntimes(modalSection);
             const cellIdx = findNearestCell(
                 modalSection,
                 mouseX,
                 mouseY,
                 rect,
                 transform,
-                blendActive ? {{ ignoreMissing: true, ignoreHidden: true }} : {{}}
+                {{}}
             );
             if (cellIdx >= 0) {{
-                const content = blendActive
-                    ? (getModalSplitTooltipContent(modalSection, cellIdx, transform) || getCellTooltipContent(modalSection, cellIdx))
-                    : getCellTooltipContent(modalSection, cellIdx);
+                const content = getCellTooltipContent(modalSection, cellIdx);
                 showTooltip(e.clientX, e.clientY, content);
                 const changed = updateHoverNeighbors(modalSection, cellIdx);
                 if (changed) renderModalSection();
@@ -33302,7 +33392,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             initHelpTooltips();
             initCalcInfoPopovers();
             updateSectionRotationIndicators();
-            updateStickyOffsets();
+            initStickyOffsetObservers();
             renderLegend('legend');
             updateSelectionInfo();
             initSucceeded = true;
@@ -33333,7 +33423,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (tutorialActive) {{
             const step = tutorialSteps[tutorialStepIndex];
             const target = step ? findTutorialTarget(step) : null;
-            if (target) positionTutorialCard(target);
+            if (target) positionTutorialCard(target, step);
         }}
     }});
     </script>
@@ -33431,8 +33521,7 @@ def export_to_html(
     viewer_info_html : str, optional
         HTML string shown in the Info tab of the color panel.
     tutorial : bool
-        Embed and autostart the guided HTML tutorial on first open. The viewer
-        still includes an in-page control to stop or restart the tutorial.
+        Embed the guided HTML tutorial and show an in-page control to start it.
     cells_annotations : list, optional
         Additional cell obs columns to include for annotation switching.
     genes : list, optional
@@ -33812,7 +33901,7 @@ def export_to_html(
     tutorial_storage_key = re.sub(r"[^A-Za-z0-9_.:-]+", "_", str(tutorial_storage_basis or "viewer"))
     data["tutorial"] = {
         "enabled": bool(tutorial),
-        "autostart": bool(tutorial),
+        "autostart": False,
         "storage_key": f"karospace:tutorial:{tutorial_storage_key}:v1",
     }
 
@@ -33910,7 +33999,7 @@ def export_to_html(
         log_detail(
             f"Running Moran's I for up to {int(spatial_variable_genes_n)} variable genes "
             f"on the full input cell set ({int(dataset.adata.n_obs):,} cells); "
-            "output feeds Insights > Genes."
+            "output feeds Insights > Exploration > Visualization > Genes > Spatial."
         )
         data["spatial_variable_genes"] = _compute_morans_i(
             dataset.adata, list(dataset.var_names), n_genes=int(spatial_variable_genes_n)
@@ -33924,7 +34013,8 @@ def export_to_html(
         log_step("Computing category gene means from pseudobulk DE genes")
         log_detail(
             f"Using up to {int(cluster_means_n_genes)} embedded DE genes from the current "
-            "pseudobulk analysis; output feeds Insights > Genes > Means."
+            "pseudobulk analysis; output feeds Insights > Exploration > Visualization > "
+            "Genes > Distribution > Per sample."
         )
         data["cluster_gene_means"] = _cluster_gene_means_from_pseudobulk_de(
             data.get("pseudobulk_de"),
@@ -33957,7 +34047,8 @@ def export_to_html(
             )
         log_detail(
             f"Keeping top {int(gene_correlation_top_n)} correlated genes per embedded gene "
-            "using pseudobulk-derived category means; output feeds Insights > Genes."
+            "using pseudobulk-derived category means; output feeds gene discovery "
+            "related-gene suggestions."
         )
         data["gene_correlations"] = _compute_gene_correlations_from_category_means(
             cluster_gene_means_for_correlations,
@@ -34027,6 +34118,24 @@ def export_to_html(
 
     data_json_safe, section_data_scripts = _serialize_embedded_viewer_data(data)
 
+    tutorial_trigger_html = ""
+    if bool(tutorial):
+        tutorial_trigger_html = (
+            '<button class="icon-btn" id="tutorial-trigger" type="button" '
+            'title="Start guided tutorial" aria-label="Start guided tutorial" '
+            'data-help="Start the guided walkthrough of the main KaroSpace viewer functions.">'
+            '<svg class="lucide lucide-graduation-cap" viewBox="0 0 24 24" aria-hidden="true" '
+            'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+            '<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"></path>'
+            '<path d="M22 10v6"></path>'
+            '<path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"></path>'
+            '</svg>'
+            '</button>'
+            '<div class="tutorial-start-info">'
+            '← Click to start the <strong>Tutorial</strong>'
+            '</div>'
+        )
+
     html = HTML_TEMPLATE.format(
         title=title,
         min_panel_size=min_panel_size,
@@ -34043,7 +34152,7 @@ def export_to_html(
         outline_by_json=json.dumps(outline_by),
         viewer_info_html_json=json.dumps(viewer_info_html),
         viewer_info_html=viewer_info_html_safe,
-        tutorial_button_style="" if bool(tutorial) else "display:none",
+        tutorial_trigger_html=tutorial_trigger_html,
         theme_icon=theme_icon,
         initial_theme=initial_theme,
         favicon_link=favicon_link,
