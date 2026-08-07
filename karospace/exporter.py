@@ -3236,6 +3236,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             pointer-events: none;
             transition: left 0.18s ease, top 0.18s ease, width 0.18s ease, height 0.18s ease;
         }}
+        .tutorial-multi-shade {{
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            height: 100vh;
+            pointer-events: none;
+        }}
+        .tutorial-spotlight.tutorial-spotlight-multi {{
+            box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.22);
+        }}
         .tutorial-card {{
             position: fixed;
             width: min(380px, calc(100vw - 28px));
@@ -9040,6 +9050,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let tutorialActive = false;
     let tutorialStepIndex = 0;
     let tutorialRenderToken = 0;
+    let tutorialAutoAdvanceTimer = null;
     let tutorialSplitExpressionGenePair = null;
     let tutorialRegionBClearStepStarted = false;
     const tutorialSteps = [
@@ -9280,9 +9291,37 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 'The UMAP panel can be docked to different corners and resized.',
                 'This lets you keep it pinned while browsing the section grid.'
             ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, nextLabel: tryIt }}),
-            step('UMAP selection', ['#umap-lasso-btn', '#umap-panel'], [
+            step('UMAP selection', ['#umap-lasso-btn', '#umap-canvas'], [
                 'Cells selection via the lasso tool is also enabled directly in the UMAP.'
-            ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, task: 'Create a selection on the UMAP with the lasso tool', requiresSelection: true, nextLabel: tryIt }}),
+            ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, task: 'Create a selection on the UMAP with the lasso tool', requiresSelection: true, combineTargets: true, autoNextWhenGateSatisfied: true, nextLabel: tryIt }}),
+            step('Insights panel overview', ['#color-toggle', '#color-panel'], [
+                'Insights is the right-side workspace for selected cells, region annotations, gene modules, and built-in analysis panels.',
+                'Use it when you want to interpret or compare what you selected in the spatial grid or UMAP.'
+            ], {{ action: () => {{ if (typeof closeModal === 'function') closeModal(); if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); }}, nextLabel: tryIt }}),
+            step('Insights Selection mode', ['#insights-mode-selection', '#insights-selection-panel'], [
+                'Selection contains the compact summary for cells selected by lasso, UMAP lasso, or query.',
+                'It shows selected-cell composition and expression context before you open the full comparison tools.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('selection'); updateSelectionInfo?.(); }}, nextLabel: tryIt }}),
+            step('Insights Region mode', ['#insights-annotate-toggle', '#modal-annotation-section'], [
+                'Region stores manual spatial annotations created from selections.',
+                'Use it to organize, group, compare, export, or reuse drawn regions.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); if (typeof setInsightsMode === 'function') setInsightsMode('annotate'); }}, nextLabel: tryIt }}),
+            step('Insights Module mode', ['#insights-mode-module', '#insights-module-panel'], [
+                'Module is where user-defined gene sets are created and managed.',
+                'Use it for signatures, custom marker lists, or repeated gene-set review.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); if (typeof setInsightsMode === 'function') setInsightsMode('module'); }}, nextLabel: tryIt }}),
+            step('Insights Exploration mode', ['#insights-mode-exploration', '#insights-exploration-panel'], [
+                'Exploration is the main navigation mode for built-in summaries.',
+                'It contains overview, gene, compare, pathway, neighborhood, and export-oriented analysis panels.'
+            ], {{ action: () => {{ if (typeof openInsightsMode === 'function') openInsightsMode('exploration'); }}, nextLabel: tryIt }}),
+            step('Insights Selection summary', ['#insights-mode-selection', '#insights-selection-panel'], [
+                'Insights > Selection summarizes the active cells selected by lasso or query.',
+                'Use it to check selected-cell composition and expression before running a broader comparison.'
+            ], {{ action: () => {{ if (typeof closeModal === 'function') closeModal(); if (typeof openInsightsMode === 'function') openInsightsMode('selection'); updateSelectionInfo?.(); }}, task: 'Review the selected-cell summary in Insights > Selection.', nextLabel: tryIt }}),
+            step('Selection Find More', ['[data-selection-find-more]', '#insights-selection-panel'], [
+                'Find More opens Insights > Exploration and jumps to Compare > Per cell > Selections.',
+                'Use it when the compact Selection summary is not enough and you want the full comparison panel.'
+            ], {{ action: () => {{ if (typeof closeModal === 'function') closeModal(); if (typeof openInsightsMode === 'function') openInsightsMode('selection'); updateSelectionInfo?.(); }}, task: 'Click Find More to open the full selection comparison view.', nextLabel: tryIt }}),
             step('Pan mode', ['#umap-pan-btn', '#visual-spatial-tools'], [
                 'Pan mode is the default interaction mode for moving around the spatial view, and navigate without selecting cells.'
             ], {{ nextLabel: tryIt }}),
@@ -9413,10 +9452,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 'Module mode lets users organize groups of genes as reusable modules.',
                 'Modules are useful for signatures or custom marker sets.'
             ], {{ action: () => {{ if (typeof setInsightsMode === 'function') setInsightsMode('module'); }}, task: 'Open Module mode and inspect available module actions.', nextLabel: tryIt }}),
-            step('Selection Insights mode', ['#insights-mode-selection', '#insights-selection-panel'], [
-                'Selection mode summarizes cells selected by lasso or query.',
-                'It is most useful after creating a spatial or UMAP selection.'
-            ], {{ action: () => {{ if (typeof setInsightsMode === 'function') setInsightsMode('selection'); }}, task: 'Open Selection mode. If no cells are selected, select cells later and return.', nextLabel: tryIt }}),
             step('Compare: annotation groups', ['#group-de-panel', '#compare-tab-groups-content'], [
                 'Annotation comparison is an exploratory per-cell comparison between groups or annotations.',
                 'It can scan loaded genes quickly and can use sidecar genes for fuller runs when configured.'
@@ -9616,11 +9651,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
         const regionStartIndex = rawSteps.findIndex(item => item.title === 'Region annotation mode');
         const regionEndIndex = rawSteps.findIndex(item => item.title === 'Open Insights');
-        const umapRegionAnchorTitle = rawSteps.findIndex(item => item.title === 'UMAP selection') >= 0
-            ? 'UMAP selection'
-            : (rawSteps.findIndex(item => item.title === 'UMAP panel position and size') >= 0
-                ? 'UMAP panel position and size'
-                : 'UMAP toggle');
+        const umapRegionAnchorTitle = rawSteps.findIndex(item => item.title === 'Selection Find More') >= 0
+            ? 'Selection Find More'
+            : (rawSteps.findIndex(item => item.title === 'UMAP selection') >= 0
+                ? 'UMAP selection'
+                : (rawSteps.findIndex(item => item.title === 'UMAP panel position and size') >= 0
+                    ? 'UMAP panel position and size'
+                    : 'UMAP toggle'));
         const currentUmapEndIndex = rawSteps.findIndex(item => item.title === umapRegionAnchorTitle);
         if (regionStartIndex >= 0 && regionEndIndex > regionStartIndex && currentUmapEndIndex >= 0 && regionStartIndex !== currentUmapEndIndex + 1) {{
             const regionSteps = rawSteps.splice(regionStartIndex, regionEndIndex - regionStartIndex);
@@ -9633,12 +9670,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ['Theme toggle', 'Session tools'],
             ['Visual parameters', 'Visual Setup'],
             ['Switch to Gene source', 'Gene Expression'],
-            ['Pan mode', 'Selection'],
+            ['Pan mode', 'Spatial Selection'],
             ['UMAP toggle', 'UMAP'],
+            ['Insights panel overview', 'Insights'],
+            ['Insights Selection summary', 'Selection'],
             ['Legend panel toggle', 'Legend'],
             ['Open a section modal', 'Modal View'],
             ['Region annotation mode', 'Region Annotation'],
-            ['Open Insights', 'Insights'],
+            ['Open Insights', 'Exploration'],
             ['Compare: Simple design', 'Pseudobulk DE'],
             ['Pathway Enrichment section', 'Pathway Enrichment'],
             ['Complex pseudobulk design', 'Compare Workflows'],
@@ -9924,7 +9963,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ensureTutorialUMAPOpen();
         }}
 
-        if (chapter === 'Selection') {{
+        if (chapter === 'Spatial Selection') {{
             ensureTutorialDefaultMode('color');
         }}
 
@@ -9982,7 +10021,23 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return rect.width > 2 && rect.height > 2;
     }}
 
+    function getTutorialVisibleTargetElements(step) {{
+        const selectors = Array.isArray(step?.target) ? step.target : [step?.target];
+        return selectors
+            .flatMap(selector => selector ? Array.from(document.querySelectorAll(selector)) : [])
+            .filter(isTutorialElementVisible);
+    }}
+
+    function clearTutorialExtraSpotlights() {{
+        document.getElementById('tutorial-multi-shade')?.remove();
+        document.querySelectorAll('.tutorial-spotlight-extra').forEach(el => el.remove());
+        document.getElementById('tutorial-spotlight')?.classList.remove('tutorial-spotlight-multi');
+    }}
+
     function findTutorialTarget(step) {{
+        if (step?.combineTargets) {{
+            return getTutorialVisibleTargetElements(step)[0] || null;
+        }}
         const selectors = Array.isArray(step.target) ? step.target : [step.target];
         for (const selector of selectors) {{
             if (!selector) continue;
@@ -9997,6 +10052,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const overlay = document.getElementById('tutorial-overlay');
         const spotlight = document.getElementById('tutorial-spotlight');
         const card = document.getElementById('tutorial-card');
+        clearTutorialExtraSpotlights();
         if (!overlay || !spotlight || !card || !target) return;
         const rect = target.getBoundingClientRect();
         const positionEl = step?.positionTarget ? document.querySelector(step.positionTarget) : null;
@@ -10015,6 +10071,42 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         spotlight.style.top = padded.top + 'px';
         spotlight.style.width = Math.max(24, padded.width) + 'px';
         spotlight.style.height = Math.max(24, padded.height) + 'px';
+        if (step?.combineTargets) {{
+            const targets = getTutorialVisibleTargetElements(step);
+            const rects = targets.map(el => {{
+                const targetRect = el.getBoundingClientRect();
+                return {{
+                    left: Math.max(8, targetRect.left - spotlightPadding),
+                    top: Math.max(8, targetRect.top - spotlightPadding),
+                    right: Math.min(window.innerWidth - 8, targetRect.right + spotlightPadding),
+                    bottom: Math.min(window.innerHeight - 8, targetRect.bottom + spotlightPadding),
+                }};
+            }});
+            if (rects.length > 1) {{
+                spotlight.classList.add('tutorial-spotlight-multi');
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('id', 'tutorial-multi-shade');
+                svg.setAttribute('class', 'tutorial-multi-shade');
+                svg.setAttribute('aria-hidden', 'true');
+                svg.setAttribute('viewBox', `0 0 ${{window.innerWidth}} ${{window.innerHeight}}`);
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const holes = rects.map(r => `M${{r.left}} ${{r.top}}H${{r.right}}V${{r.bottom}}H${{r.left}}Z`).join('');
+                path.setAttribute('d', `M0 0H${{window.innerWidth}}V${{window.innerHeight}}H0Z${{holes}}`);
+                path.setAttribute('fill', 'rgba(0, 0, 0, 0.58)');
+                path.setAttribute('fill-rule', 'evenodd');
+                svg.appendChild(path);
+                overlay.insertBefore(svg, spotlight);
+                rects.slice(1).forEach(r => {{
+                    const extra = document.createElement('div');
+                    extra.className = 'tutorial-spotlight tutorial-spotlight-extra tutorial-spotlight-multi';
+                    extra.style.left = r.left + 'px';
+                    extra.style.top = r.top + 'px';
+                    extra.style.width = Math.max(24, r.right - r.left) + 'px';
+                    extra.style.height = Math.max(24, r.bottom - r.top) + 'px';
+                    overlay.insertBefore(extra, card);
+                }});
+            }}
+        }}
 
         const cardRect = card.getBoundingClientRect();
         const cardW = cardRect.width || Math.min(380, window.innerWidth - 28);
@@ -10111,6 +10203,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!next) return;
         const step = tutorialSteps[tutorialStepIndex];
         const blocked = !tutorialStepGateSatisfied(step);
+        if (tutorialAutoAdvanceTimer) {{
+            window.clearTimeout(tutorialAutoAdvanceTimer);
+            tutorialAutoAdvanceTimer = null;
+        }}
         next.disabled = blocked;
         if (blocked && step?.requiresSelection) next.title = 'Draw a cell selection to continue';
         else if (blocked && step?.requiresRegionB) next.title = 'Select Region B to continue';
@@ -10120,6 +10216,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         else if (blocked && step?.requiresQuerySelection) next.title = 'Select cells with the query to continue';
         else if (blocked && step?.requiresModalOpen) next.title = 'Click the highlighted section to open the modal view';
         else next.removeAttribute('title');
+        if (!blocked && step?.autoNextWhenGateSatisfied) {{
+            const stepAtSchedule = step;
+            const indexAtSchedule = tutorialStepIndex;
+            tutorialAutoAdvanceTimer = window.setTimeout(() => {{
+                tutorialAutoAdvanceTimer = null;
+                if (!tutorialActive) return;
+                if (tutorialStepIndex !== indexAtSchedule || tutorialSteps[tutorialStepIndex] !== stepAtSchedule) return;
+                if (!tutorialStepGateSatisfied(stepAtSchedule)) return;
+                stepTutorial(1);
+            }}, Number.isFinite(step.autoNextDelay) ? step.autoNextDelay : 180);
+        }}
     }}
 
     function autoAdvanceTutorialAfterModalOpen() {{
@@ -10275,6 +10382,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }} else {{
             tutorialActive = false;
             tutorialRenderToken++;
+            if (tutorialAutoAdvanceTimer) {{
+                window.clearTimeout(tutorialAutoAdvanceTimer);
+                tutorialAutoAdvanceTimer = null;
+            }}
             overlay.classList.remove('active');
             overlay.setAttribute('aria-hidden', 'true');
         }}
