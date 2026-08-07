@@ -256,12 +256,16 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "async function ensureGeneAvailable" in html_text
     assert "function requestModalBlendGene(gene, modality = null)" in html_text
     assert "requestModalBlendGene(gene, modName);" in html_text
-    assert 'id="modal-controls-toggle"' in html_text
-    assert ".modal-controls.hidden" in html_text
     assert html_text.index('id="zoom-out"') < html_text.index('id="zoom-in"') < html_text.index('id="zoom-info"')
-    assert 'data-modal-group="view"' in html_text
+    assert 'id="focused-modal-neighbor-toggle"' in html_text
+    assert 'id="focused-modal-he-toggle"' in html_text
+    assert 'id="focused-neighbor-panel"' in html_text
+    assert 'id="focused-he-panel"' in html_text
+    assert 'id="modal-controls-toggle"' not in html_text
+    assert ".modal-controls.hidden" not in html_text
+    assert 'data-modal-group="view"' not in html_text
     assert "function updateModalToolbarState()" in html_text
-    assert "function initModalControlsDragging()" in html_text
+    assert "function initModalControlsDragging()" not in html_text
     assert 'id="modal-exit-subview-btn"' in html_text
     assert "function activateModalSubviewFromSelection()" in html_text
     assert "function exitModalSubview()" in html_text
@@ -384,9 +388,10 @@ def test_sidecar_export_writes_aux_and_updates_html_contract(tmp_path):
     assert "function updateModalBlendLabels()" in html_text
     assert "function ensureModalBlendRenderCache(section, transform, width, height, dpr, adjustedSpotSize, runtimes, candidateIndices = null)" in html_text
     assert "function renderModalBlendFromCache()" in html_text
-    assert ".modal-controls button.modal-btn-primary" in html_text
-    assert ".modal-controls button.modal-btn-muted" in html_text
-    assert ".modal-controls button.modal-btn-danger" in html_text
+    assert ".modal-controls button.modal-btn-primary" not in html_text
+    assert ".modal-controls button.modal-btn-muted" not in html_text
+    assert ".modal-controls button.modal-btn-danger" not in html_text
+    assert ".focused-modal-tool-toggle" in html_text
     assert "buildColorPanel();" in html_text
     assert "colorToggle.addEventListener('click', toggleInsightsPanel);" in html_text
     assert "if (key === 'i' || key === 'I')" in html_text

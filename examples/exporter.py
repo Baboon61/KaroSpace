@@ -4866,24 +4866,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--muted-color);
             opacity: 0.6;
         }}
-        .modal-controls-toggle {{
-            display: inline-flex;
-            align-items: center;
-            padding: 4px 8px;
-            border: 1px solid var(--border-color);
-            border-radius: 999px;
-            background: var(--panel-bg);
-            color: var(--text-color);
-            font-size: 10px;
-            letter-spacing: 0.03em;
-            text-transform: uppercase;
-            cursor: pointer;
-            transition: background 0.2s, border-color 0.2s, color 0.2s;
-        }}
-        .modal-controls-toggle:hover {{
-            background: var(--hover-bg);
-            border-color: var(--accent-strong);
-        }}
         .modal-close {{
             background: none;
             border: none;
@@ -4897,110 +4879,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .modal-body {{ flex: 1; display: flex; overflow: hidden; }}
         .modal-canvas-container {{ flex: 1; position: relative; overflow: hidden; background: var(--panel-bg); }}
         .modal-canvas {{ position: absolute; top: 0; left: 0; width: 100%; height: 100%; transform-origin: 0 0; will-change: transform; }}
-        .modal-controls {{
-            position: absolute;
-            bottom: 12px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: flex-start;
-            align-items: stretch;
-            gap: 3px;
-            width: max-content;
-            max-width: min(960px, calc(100% - 72px));
-            padding: 3px 4px;
-            border: 1px solid color-mix(in srgb, var(--border-color) 82%, transparent);
-            border-radius: 12px;
-            background: color-mix(in srgb, var(--header-bg) 90%, transparent);
-            backdrop-filter: blur(12px);
-            box-shadow: 0 10px 28px rgba(0,0,0,0.2);
-            transition: background 0.3s, border-color 0.3s, box-shadow 0.3s;
-        }}
-        .modal-controls.dragging {{
-            box-shadow: 0 14px 34px rgba(0,0,0,0.28);
-        }}
-        .modal-control-group {{
-            display: flex;
-            align-items: center;
-            gap: 3px;
-            padding: 2px 4px;
-            border: 1px solid color-mix(in srgb, var(--border-color) 76%, transparent);
-            border-radius: 8px;
-            background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
-            min-width: 0;
-            cursor: grab;
-        }}
-        .modal-control-group-title {{
-            flex-shrink: 0;
-            font-size: 9px;
-            font-weight: 700;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: var(--muted-color);
-            cursor: inherit;
-            user-select: none;
-        }}
-        .modal-controls.dragging .modal-control-group,
-        .modal-controls.dragging .modal-control-group-title {{ cursor: grabbing; }}
-        .modal-control-group-body {{
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 3px;
-            min-width: 0;
-        }}
-        .modal-controls button {{
-            min-height: 22px;
-            padding: 1px 7px;
-            border: 1px solid var(--border-color);
-            border-radius: 999px;
-            background: var(--input-bg);
-            color: var(--text-color);
-            cursor: pointer;
-            font-size: 11px;
-            font-weight: 600;
-            line-height: 1.4;
-            transition: background 0.3s, border-color 0.3s, color 0.3s, box-shadow 0.3s, opacity 0.3s;
-        }}
-        .modal-controls button:hover {{ background: var(--hover-bg); }}
-        .modal-controls button.modal-btn-primary {{
-            background: color-mix(in srgb, var(--accent-strong) 92%, var(--panel-bg));
-            border-color: color-mix(in srgb, var(--accent-strong) 94%, white 6%);
-            color: white;
-            box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-strong) 24%, transparent);
-        }}
-        .modal-controls button.modal-btn-primary:hover {{
-            background: color-mix(in srgb, var(--accent-strong) 100%, black 0%);
-        }}
-        .modal-controls button.modal-btn-muted {{
-            color: var(--muted-color);
-            border-color: color-mix(in srgb, var(--border-color) 62%, transparent);
-            background: color-mix(in srgb, var(--input-bg) 72%, transparent);
-            opacity: 0.86;
-        }}
-        .modal-controls button.modal-btn-muted:hover {{
-            color: var(--text-color);
-            opacity: 1;
-        }}
-        .modal-controls button.modal-btn-danger {{
-            color: color-mix(in srgb, #ff7b7b 72%, var(--text-color));
-            border-color: color-mix(in srgb, #ff7b7b 35%, var(--border-color));
-            background: color-mix(in srgb, #ff7b7b 10%, var(--input-bg));
-        }}
-        .modal-controls button.modal-btn-danger:hover {{
-            background: color-mix(in srgb, #ff7b7b 16%, var(--hover-bg));
-        }}
-        .modal-controls select {{
-            min-height: 22px;
-            padding: 1px 7px;
-            border: 1px solid var(--border-color);
-            border-radius: 999px;
-            background: var(--input-bg);
-            color: var(--text-color);
-            font-size: 11px;
-            line-height: 1.4;
-        }}
         .modal-size-block {{
             display: flex;
             align-items: center;
@@ -5022,23 +4900,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-size: 10px;
             font-variant-numeric: tabular-nums;
             color: var(--text-color);
-        }}
-        .modal-controls.hidden {{ display: none; }}
-        @media (max-width: 960px) {{
-            .modal-controls {{
-                left: 12px;
-                right: 12px;
-                width: auto;
-                transform: none;
-            }}
-            .modal-control-group {{
-                width: 100%;
-                justify-content: space-between;
-            }}
-            .modal-control-group-body {{
-                justify-content: flex-end;
-                flex: 1;
-            }}
         }}
         .zoom-info {{ font-size: 10px; color: var(--muted-color); margin-left: 6px; }}
         .modal-gene-panel {{
@@ -6955,7 +6816,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <input type="text" id="overview-blend-b-gene" list="overview-blend-b-gene-list" placeholder="Gene symbol" style="display:none;">
                 <datalist id="overview-blend-b-gene-list"></datalist>
             </div>
-            <div class="overview-blend-row">
+            <div class="overview-blend-row" id="overview-blend-row-mix">
                 <svg class="overview-blend-icon" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"></rect><path d="M3 12h18"></path></svg>
                 <span id="overview-blend-mix-label" class="sr-only">A left 50% / B right 50%</span>
                 <input type="range" id="overview-blend-mix" min="0" max="100" step="1" value="50" style="width:100px;">
@@ -7026,8 +6887,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <div class="umap-selection-query-panel" id="umap-selection-query-panel"></div>
                         </div>
                     </div>
-                    <button class="focused-modal-tool-toggle hidden" id="focused-modal-neighbor-toggle" type="button" title="Neighbor hops" aria-label="Neighbor hops" data-modal-control-target="modal-neighbor-hover-toggle">
-                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="bubbles"><path d="M7.2 14.8a2 2 0 0 1 2 2"></path><circle cx="18.5" cy="8.5" r="3.5"></circle><circle cx="7.5" cy="16.5" r="5.5"></circle><circle cx="7.5" cy="4.5" r="2.5"></circle></svg>
+                    <button class="focused-modal-tool-toggle hidden" id="focused-modal-neighbor-toggle" type="button" title="Neighbor hops" aria-label="Neighbor hops">
+                        <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="share-2"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"></line><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"></line></svg>
                     </button>
                     <div class="focused-neighbor-panel" id="focused-neighbor-panel">
                         <div class="visual-params-title">Neighborhood</div>
@@ -7045,7 +6906,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             </select>
                         </div>
                     </div>
-                    <button class="focused-modal-tool-toggle" id="focused-modal-he-toggle" type="button" title="H&amp;E options" aria-label="H&amp;E options" data-modal-control-target="he-overlay">
+                    <button class="focused-modal-tool-toggle" id="focused-modal-he-toggle" type="button" title="H&amp;E options" aria-label="H&amp;E options">
                         <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="image"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"></rect><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
                     </button>
                     <div class="focused-he-panel" id="focused-he-panel">
@@ -7063,8 +6924,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <button class="focused-he-icon-btn" id="focused-he-load-btn" type="button" title="Load image" aria-label="Load image">
                                 <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="image-up"><path d="M10.3 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v10"></path><path d="m14 19 3-3 3 3"></path><path d="M17 16v6"></path><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
                             </button>
+                            <input type="file" id="focused-he-upload-input" accept="image/png,image/jpeg,image/jpg,image/webp,image/tiff,.png,.jpg,.jpeg,.webp,.tif,.tiff" style="display:none">
                             <button class="focused-he-icon-btn" id="focused-he-align-btn" type="button" title="Align image" aria-label="Align image" aria-expanded="false">
-                                <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="image-upscale"><path d="M16 3h5v5"></path><path d="m21 3-7 7"></path><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5"></path><circle cx="9" cy="9" r="2"></circle><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"></path></svg>
+                                <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="sliders-horizontal"><line x1="21" x2="14" y1="4" y2="4"></line><line x1="10" x2="3" y1="4" y2="4"></line><line x1="21" x2="12" y1="12" y2="12"></line><line x1="8" x2="3" y1="12" y2="12"></line><line x1="21" x2="16" y1="20" y2="20"></line><line x1="12" x2="3" y1="20" y2="20"></line><line x1="14" x2="14" y1="2" y2="6"></line><line x1="8" x2="8" y1="10" y2="14"></line><line x1="16" x2="16" y1="18" y2="22"></line></svg>
                             </button>
                         </div>
                         <div class="focused-he-align-panel" id="focused-he-align-panel">
@@ -7081,6 +6943,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                                 <input type="range" id="focused-he-rotation" min="-180" max="180" step="1" value="0">
                             </div>
                             <div class="focused-he-actions">
+                                <button class="focused-he-icon-btn" id="focused-he-autoalign-btn" type="button" title="Automatically align image to cells" aria-label="Automatically align image to cells">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="sparkles"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .962 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.582a.5.5 0 0 1 0 .962L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.962 0z"></path><path d="M20 3v4"></path><path d="M22 5h-4"></path><path d="M4 17v2"></path><path d="M5 18H3"></path></svg>
+                                </button>
                                 <button class="focused-he-icon-btn" id="focused-he-fliph-btn" type="button" title="Flip image horizontally" aria-label="Flip image horizontally">
                                     <svg viewBox="0 0 24 24" aria-hidden="true" data-icon="square-centerline-dashed-horizontal"><path d="M8 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h3"></path><path d="M16 3h3a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-3"></path><path d="M12 20v2"></path><path d="M12 14v2"></path><path d="M12 8v2"></path><path d="M12 2v2"></path></svg>
                                 </button>
@@ -7282,7 +7147,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             </div>
                         </div>
                     </div>
-                    <button class="modal-controls-toggle" id="modal-controls-toggle" type="button">Hide tools</button>
                     <button class="modal-close" id="modal-close">&times;</button>
                 </div>
             </div>
@@ -7296,74 +7160,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <button class="modal-gene-panel-close" id="modal-gene-panel-close" type="button" aria-label="Dismiss selection genes">×</button>
                         </div>
                         <div class="modal-gene-panel-body" id="modal-gene-panel-body"></div>
-                    </div>
-                    <div class="modal-controls">
-                        <div class="modal-control-group" data-modal-group="graph" hidden>
-                            <div class="modal-control-group-title">Graph</div>
-                            <div class="modal-control-group-body">
-                                <button class="graph-toggle" id="modal-graph-toggle" type="button" title="Toggle neighborhood graph">Graph</button>
-                                <button class="graph-toggle" id="modal-neighbor-hover-toggle" type="button" title="Toggle neighbor rings on hover">Neighbors</button>
-                                <select id="modal-neighbor-hop-select" title="Neighbor hop display" hidden>
-                                    <option value="1">1-hop</option>
-                                    <option value="2">2-hop</option>
-                                    <option value="3">3-hop</option>
-                                    <option value="all" selected>All hops</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="modal-control-group" data-modal-group="he-overlay">
-                            <div class="modal-control-group-title">H&amp;E Overlay</div>
-                            <div class="modal-control-group-body" style="flex-direction: column; gap: 5px;">
-                                <!-- Everyday controls: pick a layer, show/hide it, set opacities, load an image. -->
-                                <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-                                    <select class="graph-toggle" id="modal-he-layer-select" title="Switch overlay image (e.g. DAPI / H&amp;E)" style="display:none; padding: 2px 4px;"></select>
-                                    <button class="graph-toggle" id="modal-he-eye-btn" type="button" title="Show or hide this overlay layer" style="display:none;">👁</button>
-                                    <div style="display: flex; gap: 3px; align-items: center;">
-                                        <label style="font-size: 10px; color: var(--muted-color);">Image</label>
-                                        <div class="size-control">
-                                            <button class="size-step" id="modal-he-opacity-dec" type="button">−</button>
-                                            <input type="range" id="modal-he-opacity" min="0" max="100" step="1" value="50" style="width: 60px;">
-                                            <button class="size-step" id="modal-he-opacity-inc" type="button">+</button>
-                                        </div>
-                                        <input type="number" id="modal-he-opacity-num" min="0" max="100" step="1" value="50" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
-                                    </div>
-                                    <button class="graph-toggle" id="modal-he-load-btn" type="button" title="Load an H&amp;E / histology image for this section">Load image</button>
-                                    <button class="graph-toggle" id="modal-he-align-btn" type="button" title="Show alignment tools: drag to reposition, scale, rotate, flip" aria-expanded="false">Align ▾</button>
-                                    <input type="file" id="modal-he-upload-input" accept="image/png,image/jpeg,image/jpg,image/webp,image/tiff,.png,.jpg,.jpeg,.webp,.tif,.tiff" style="display:none">
-                                </div>
-                                <!-- Collapsible alignment panel: only shown while aligning. Opening it
-                                     enables drag-to-reposition; closing it leaves align mode. -->
-                                <div id="modal-he-align-panel" style="display:none; flex-direction: column; gap: 6px; padding: 7px 9px; border: 1px dashed var(--border-color); border-radius: 5px; background: var(--input-bg);">
-                                    <div style="font-size: 10px; color: var(--muted-color);">Drag the image in the view to reposition it, then fine-tune below — or let it snap to the cells automatically.</div>
-                                    <div style="display: flex; gap: 4px; align-items: center; flex-wrap: wrap;">
-                                        <button class="graph-toggle" id="modal-he-autoalign-btn" type="button" title="Automatically align this overlay to the cell positions (translation, rotation, scale). Works best on a nuclear stain like DAPI.">✨ Auto-align</button>
-                                    </div>
-                                    <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                                        <div style="display: flex; gap: 3px; align-items: center;">
-                                            <label style="font-size: 10px; color: var(--muted-color);">Scale</label>
-                                            <div class="size-control">
-                                                <button class="size-step" id="modal-he-scale-dec" type="button">−</button>
-                                                <input type="range" id="modal-he-scale" min="-100" max="100" step="1" value="0" style="width: 60px;">
-                                                <button class="size-step" id="modal-he-scale-inc" type="button">+</button>
-                                            </div>
-                                            <input type="number" id="modal-he-scale-num" min="-100" max="100" step="1" value="0" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
-                                        </div>
-                                        <div style="display: flex; gap: 3px; align-items: center;">
-                                            <label style="font-size: 10px; color: var(--muted-color);">Rotate</label>
-                                            <div class="size-control">
-                                                <button class="size-step" id="modal-he-rotation-dec" type="button">−</button>
-                                                <input type="range" id="modal-he-rotation" min="-180" max="180" step="1" value="0" style="width: 60px;">
-                                                <button class="size-step" id="modal-he-rotation-inc" type="button">+</button>
-                                            </div>
-                                            <input type="number" id="modal-he-rotation-num" min="-180" max="180" step="1" value="0" style="width: 38px; font-size: 10px; padding: 1px 3px; border: 1px solid var(--border-color); border-radius: 3px; background: var(--input-bg); color: var(--text-color);">
-                                        </div>
-                                        <button class="graph-toggle" id="modal-he-fliph-btn" type="button" title="Flip image horizontally">Flip H</button>
-                                        <button class="graph-toggle" id="modal-he-export-btn" type="button" title="Export alignment transform as JSON">Export JSON</button>
-                                    </div>
-                                </div>
-                                <div id="modal-he-status" style="font-size: 10px; color: var(--muted-color);"></div>
-                            </div>
-                        </div>
                     </div>
                 </div>
             </div>
@@ -8318,11 +8114,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     let draggedModalAnnotationId = null;
     let modalNextAnnotationId = 1;
     let updateModalCanvasCursor = () => {{}};
-    let modalControlsCollapsed = false;
-    let modalControlsCustomPosition = null;
-    let isDraggingModalControls = false;
-    let modalControlsDragOffsetX = 0;
-    let modalControlsDragOffsetY = 0;
     let modalRenderedView = null;
     let modalInteractionCommitTimer = null;
     let modalResizeObserver = null;
@@ -9151,10 +8942,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 'Layer B is the comparison layer paired with layer A.',
                 'Pick a meaningful counterpart, such as another gene or the same annotation under a different category view.'
             ], {{ action: () => safeTutorialClick('#overview-mode-split'), nextLabel: tryIt }}),
-            step('Split expression scales', ['#split-expression-scale-section', '#split-a-vmin', '#split-b-vmin'], [
-                'When split layers use expression, each side can have its own scale.',
-                'Propagate is useful when both sides should share a comparable range.'
-            ], {{ action: () => safeTutorialClick('#overview-mode-split'), task: 'Inspect the A and B scale controls. Try Auto or Propagate if they are active.', nextLabel: tryIt }}),
+            step('Split boundary slider', ['#overview-blend-row-mix', '#overview-blend-mix'], [
+                'The slider controls where layer A ends and layer B begins inside each spatial panel.',
+                'Move it left or right to give one layer more visible space while keeping both layers aligned on the same cells.'
+            ], {{ action: () => {{ safeTutorialClick('#overview-mode-split'); const slider = document.getElementById('overview-blend-mix'); if (slider) {{ slider.value = '50'; slider.dispatchEvent(new Event('input', {{ bubbles: true }})); }} }}, nextLabel: tryIt }}),
             step('Legend panel toggle', ['#legend-toggle'], [
                 'The Legend button shows or hides the category legend.'
             ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
@@ -9174,25 +8965,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             step('Legend import controls', ['#legend-import-toggle', '#legend-import-menu'], [
                 'Legend import restores a previously exported palette or category label file.'
             ], {{ action: ensureLegendOpen, nextLabel: tryIt }}),
-            step('Visual parameter button', ['#visual-params-toggle', '#visual-params-panel'], [
-                'The visual-parameters button opens spatial display controls for the current grid view.'
-            ], {{ task: 'Open the visual parameters panel.', nextLabel: tryIt }}),
-            step('Tweak cell size', ['#spot-size', '#visual-params-panel'], [
-                'The Size slider changes how large cells or spots are drawn.',
-                'Increase it for sparse sections; decrease it for dense areas where cells overlap.'
-            ], {{ task: 'Drag the Size slider a little, observe the grid, then put it near a comfortable value.', nextLabel: tryIt }}),
-            step('Tweak cell opacity', ['#cell-opacity', '#visual-params-panel'], [
-                'Opacity controls how strongly cells cover the background and image overlays.',
-                'Lower opacity can reveal histology or dense overlapping regions.'
-            ], {{ task: 'Move opacity down and back up once.', nextLabel: tryIt }}),
             step('UMAP toggle', ['#umap-toggle', '#umap-panel'], [
-                'If a UMAP embedding was exported, this button opens a global embedding panel linked to the spatial view.',
-                'Cells selection via the lasso tool is also enabled directly in the UMAP.'
+                'If a UMAP embedding was exported, this button opens a global embedding panel linked to the spatial view.'
             ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, nextLabel: tryIt }}),
             step('UMAP panel position and size', ['#umap-panel', '#umap-dock-btn'], [
                 'The UMAP panel can be docked to different corners and resized.',
                 'This lets you keep it pinned while browsing the section grid.'
             ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, nextLabel: tryIt }}),
+            step('UMAP selection', ['#umap-lasso-btn', '#umap-panel'], [
+                'Cells selection via the lasso tool is also enabled directly in the UMAP.'
+            ], {{ condition: () => !!DATA.has_umap, action: () => {{ if (DATA.has_umap && !umapVisible && typeof toggleUMAP === 'function') toggleUMAP(); }}, task: 'Create a selection on the UMAP with the lasso tool', requiresSelection: true, nextLabel: tryIt }}),
             step('Pan mode', ['#umap-pan-btn', '#visual-spatial-tools'], [
                 'Pan mode is the default interaction mode for moving around the spatial view, and navigate without selecting cells.'
             ], {{ nextLabel: tryIt }}),
@@ -9243,10 +9025,18 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ], {{ action: () => {{ if (typeof closeModal === 'function') closeModal(); }}, task: 'Click the highlighted section to open the modal view.', requiresModalOpen: true, nextLabel: tryIt }}),
             step('Modal zoom controls', ['#modal-zoom-controls'], [
                 'Zoom in and zoom out change the modal magnification.'
-            ], {{ action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); }}, spotlightPadding: 2, nextLabel: tryIt }}),
+            ], {{ action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); }}, prepareDelay: 1100, spotlightPadding: 0, nextLabel: tryIt }}),
             step('Modal rotation controls', ['#modal-rotation-controls', '#modal-rotate-left', '#modal-rotate-right'], [
                 'Rotation helps align sections visually when coordinates or images need manual orientation.'
             ], {{ action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); }}, nextLabel: tryIt }}),
+            step('Modal neighbor controls', ['#focused-neighbor-panel', '#focused-modal-neighbor-toggle'], [
+                'The neighbor button opens modal-specific graph and hover-neighbor controls.',
+                'Graph displays the stored neighbor edges. Neighbors highlights one-hop or two-hop neighbors around the cell under the cursor.'
+            ], {{ condition: () => !!DATA.has_neighbors, action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); const toolbar = document.getElementById('grid-side-toolbar'); toolbar?.classList.add('neighbor-open'); toolbar?.classList.remove('visual-open', 'gene-open', 'he-open'); setModalHeOptionsVisible(false); updateModalToolbarState?.(); refreshFocusedModalToolPanels?.(); }}, prepareDelay: 220, nextLabel: tryIt }}),
+            step('Modal H&E overlay controls', ['#focused-he-panel', '#focused-modal-he-toggle'], [
+                'The image button opens H&E or image-overlay controls for the focused section.',
+                'Load adds an image layer. The parameter controls adjust how the overlay is drawn on top of cells.'
+            ], {{ action: () => {{ if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') openModal(DATA.sections[0].id); const toolbar = document.getElementById('grid-side-toolbar'); toolbar?.classList.remove('visual-open', 'gene-open', 'neighbor-open'); resetFocusedModalTools?.('he'); setModalHeOptionsVisible(true); updateModalToolbarState?.(); refreshFocusedModalToolPanels?.(); }}, prepareDelay: 220, nextLabel: tryIt }}),
             step('Region annotation mode', ['#insights-annotate-toggle', '#modal-annotation-section'], [
                 'Region mode organizes user-created spatial annotations.',
                 'Annotations can be drawn from lasso selections and later compared.'
@@ -9484,32 +9274,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 'Restart the tutorial from the graduation-cap button if you want to revisit any workflow.'
             ], {{ task: 'Decide which steps felt unnecessary; those can be removed from future versions.', nextLabel: 'Finish' }})
         ];
-        const filterStartIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
-        const filterEndIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
-        const legendStartIndex = rawSteps.findIndex(item => item.title === 'Legend panel toggle');
-        if (filterStartIndex >= 0 && filterEndIndex > filterStartIndex && legendStartIndex >= 0 && legendStartIndex < filterStartIndex) {{
-            const filterSteps = rawSteps.splice(filterStartIndex, filterEndIndex - filterStartIndex);
-            const currentLegendStartIndex = rawSteps.findIndex(item => item.title === 'Legend panel toggle');
-            rawSteps.splice(currentLegendStartIndex, 0, ...filterSteps);
-        }}
         const geneStartIndex = rawSteps.findIndex(item => item.title === 'Switch to Gene source');
         const geneEndIndex = rawSteps.findIndex(item => item.title === 'Open a section modal');
-        const visualSetupEndIndex = rawSteps.findIndex(item => item.title === 'Split expression scales');
+        const visualSetupEndIndex = rawSteps.findIndex(item => item.title === 'Split boundary slider');
         if (geneStartIndex >= 0 && geneEndIndex > geneStartIndex && visualSetupEndIndex >= 0 && visualSetupEndIndex < geneStartIndex) {{
             const geneSteps = rawSteps.splice(geneStartIndex, geneEndIndex - geneStartIndex);
-            const currentVisualSetupEndIndex = rawSteps.findIndex(item => item.title === 'Split expression scales');
+            const currentVisualSetupEndIndex = rawSteps.findIndex(item => item.title === 'Split boundary slider');
             rawSteps.splice(currentVisualSetupEndIndex + 1, 0, ...geneSteps);
         }}
-        const umapStartIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
-        const umapEndIndex = rawSteps.findIndex(item => item.title === 'Open a section modal');
-        const currentFilterStartIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
-        if (umapStartIndex >= 0 && umapEndIndex > umapStartIndex && currentFilterStartIndex >= 0 && currentFilterStartIndex < umapStartIndex) {{
-            const umapSteps = rawSteps.splice(umapStartIndex, umapEndIndex - umapStartIndex);
-            const currentFilterIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
-            rawSteps.splice(currentFilterIndex, 0, ...umapSteps);
-        }}
         const selectionStartIndex = rawSteps.findIndex(item => item.title === 'Pan mode');
-        const selectionEndIndex = rawSteps.findIndex(item => item.title === 'Visual parameter button');
+        const selectionEndIndex = rawSteps.findIndex(item => item.title === 'Open a section modal');
         const currentUmapStartIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
         if (selectionStartIndex >= 0 && selectionEndIndex > selectionStartIndex && currentUmapStartIndex >= 0 && currentUmapStartIndex < selectionStartIndex) {{
             const selectionSteps = rawSteps.splice(selectionStartIndex, selectionEndIndex - selectionStartIndex);
@@ -9517,12 +9291,33 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             rawSteps.splice(insertBeforeUmapIndex, 0, ...selectionSteps);
         }}
         const modalStartIndex = rawSteps.findIndex(item => item.title === 'Open a section modal');
-        const modalEndIndex = rawSteps.findIndex(item => item.title === 'Open Insights');
+        const modalEndIndex = rawSteps.findIndex(item => item.title === 'Region annotation mode');
         const insertBeforeUmapIndexForModal = rawSteps.findIndex(item => item.title === 'UMAP toggle');
         if (modalStartIndex >= 0 && modalEndIndex > modalStartIndex && insertBeforeUmapIndexForModal >= 0 && modalStartIndex > insertBeforeUmapIndexForModal) {{
             const modalSteps = rawSteps.splice(modalStartIndex, modalEndIndex - modalStartIndex);
             const currentUmapIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
             rawSteps.splice(currentUmapIndex, 0, ...modalSteps);
+        }}
+        const legendStartIndex = rawSteps.findIndex(item => item.title === 'Legend panel toggle');
+        const legendEndIndex = rawSteps.findIndex(item => item.title === 'Legend import controls');
+        const currentUmapStartIndexForLegend = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+        if (legendStartIndex >= 0 && legendEndIndex >= legendStartIndex && currentUmapStartIndexForLegend >= 0 && (legendStartIndex > currentUmapStartIndexForLegend || legendEndIndex + 1 < currentUmapStartIndexForLegend)) {{
+            const legendSteps = rawSteps.splice(legendStartIndex, legendEndIndex - legendStartIndex + 1);
+            const insertBeforeUmapIndex = rawSteps.findIndex(item => item.title === 'UMAP toggle');
+            rawSteps.splice(insertBeforeUmapIndex, 0, ...legendSteps);
+        }}
+        const regionStartIndex = rawSteps.findIndex(item => item.title === 'Region annotation mode');
+        const regionEndIndex = rawSteps.findIndex(item => item.title === 'Open Insights');
+        const umapRegionAnchorTitle = rawSteps.findIndex(item => item.title === 'UMAP selection') >= 0
+            ? 'UMAP selection'
+            : (rawSteps.findIndex(item => item.title === 'UMAP panel position and size') >= 0
+                ? 'UMAP panel position and size'
+                : 'UMAP toggle');
+        const currentUmapEndIndex = rawSteps.findIndex(item => item.title === umapRegionAnchorTitle);
+        if (regionStartIndex >= 0 && regionEndIndex > regionStartIndex && currentUmapEndIndex >= 0 && regionStartIndex !== currentUmapEndIndex + 1) {{
+            const regionSteps = rawSteps.splice(regionStartIndex, regionEndIndex - regionStartIndex);
+            const updatedUmapEndIndex = rawSteps.findIndex(item => item.title === umapRegionAnchorTitle);
+            rawSteps.splice(updatedUmapEndIndex + 1, 0, ...regionSteps);
         }}
         const chapterStarts = new Map([
             ['Welcome the KaroSpace', 'Introduction'],
@@ -9532,7 +9327,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ['Switch to Gene source', 'Gene Expression'],
             ['Pan mode', 'Selection'],
             ['UMAP toggle', 'UMAP'],
-            ['Visual parameter button', 'Filters and Display'],
             ['Legend panel toggle', 'Legend'],
             ['Open a section modal', 'Modal View'],
             ['Region annotation mode', 'Region Annotation'],
@@ -9629,14 +9423,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function getTutorialExpressionModalityName() {{
         const modalityNames = MODALITY_DESCRIPTORS.map(m => m.name).filter(Boolean);
-        return modalityNames.find(name => String(name).toLowerCase() === 'rna')
-            || (modalityNames.includes(DEFAULT_MODALITY_NAME) ? DEFAULT_MODALITY_NAME : null)
-            || modalityNames[0]
-            || 'gene';
+        if (!modalityNames.length && getLoadedFeaturesForModality('gene').length) return 'gene';
+        const preferred = [
+            CURRENT_MODALITY,
+            DEFAULT_MODALITY_NAME,
+            ...modalityNames.filter(name => String(name).toLowerCase() === 'rna'),
+            ...modalityNames,
+            'gene',
+        ].filter(Boolean);
+        const seen = new Set();
+        for (const name of preferred) {{
+            if (seen.has(name)) continue;
+            seen.add(name);
+            if (getLoadedFeaturesForModality(name).length) return name;
+        }}
+        return preferred[0] || 'gene';
     }}
 
     function getTutorialRandomSplitGenes(modality) {{
-        const features = getFeatureDatalistValuesForModality(modality);
+        const features = getFeatureDatalistValuesForModality(modality)
+            .map(feature => resolveFeatureTokenForModality(feature, modality) || feature)
+            .filter((feature, index, arr) => feature && arr.indexOf(feature) === index)
+            .filter(feature => isFeatureLoadedForModality(feature, modality));
         if (!features.length) return [];
         if (
             tutorialSplitExpressionGenePair
@@ -9772,7 +9580,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!modalSection && Array.isArray(DATA.sections) && DATA.sections.length && typeof openModal === 'function') {{
             openModal(DATA.sections[0].id);
         }}
-        if (typeof setModalControlsCollapsed === 'function') setModalControlsCollapsed(false);
     }}
 
     function prepareTutorialStep(step) {{
@@ -9787,21 +9594,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 ensureTutorialSplitMode(title.startsWith('Split expression') || isSplitGeneScaleStep);
                 if (isSplitGeneScaleStep) prepareTutorialGeneExpressionScaleStep();
                 else if (title.startsWith('Split expression')) ensureTutorialGeneParametersOpen();
-            }} else if (!title.startsWith('Return to Default')) {{
+            }} else {{
                 ensureTutorialDefaultMode(title.includes('Gene') ? 'gene' : 'color');
             }}
         }}
 
         if (chapter === 'Legend') {{
+            if (typeof closeModal === 'function') closeModal();
+            if (typeof clearSelection === 'function') clearSelection();
+            const colorPanel = document.getElementById('color-panel');
+            const colorToggle = document.getElementById('color-toggle');
+            colorPanel?.classList.add('collapsed');
+            colorToggle?.classList.remove('active');
             ensureTutorialDefaultMode('color');
             const legend = document.getElementById('legend');
             if (legend?.classList.contains('collapsed')) toggleLegendPanel?.();
             if (typeof renderLegend === 'function') renderLegend('legend');
-        }}
-
-        if (chapter === 'Filters and Display') {{
-            ensureTutorialDefaultMode('color');
-            if (title !== 'Visual parameter button') setTutorialToolbarPanel('visual');
         }}
 
         if (chapter === 'UMAP') {{
@@ -10347,133 +10155,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }}
     }}
 
-    function getModalControlsElement() {{
-        return document.querySelector('#modal .modal-controls, #grid > .modal-content .modal-controls');
-    }}
-
-    function setModalControlsCollapsed(collapsed) {{
-        modalControlsCollapsed = !!collapsed;
-        const controls = getModalControlsElement();
-        if (controls) controls.classList.toggle('hidden', modalControlsCollapsed);
-        const toggle = document.getElementById('modal-controls-toggle');
-        if (toggle) toggle.textContent = modalControlsCollapsed ? 'Show tools' : 'Hide tools';
-        if (modalSection) {{
-            layoutModalControls();
-            layoutModalAnnotationPanel();
-        }}
-    }}
-
-    function getModalControlsBounds() {{
-        const container = document.getElementById('modal-canvas-container');
-        const controls = container?.querySelector('.modal-controls');
-        if (!container || !controls) return null;
-        const containerRect = container.getBoundingClientRect();
-        if (containerRect.width <= 0 || containerRect.height <= 0) return null;
-        const margin = 8;
-        const controlsWidth = controls.offsetWidth || Math.min(920, Math.max(220, containerRect.width - margin * 2));
-        const controlsHeight = controls.offsetHeight || 72;
-        return {{
-            minX: margin,
-            maxX: Math.max(margin, containerRect.width - controlsWidth - margin),
-            minY: margin,
-            maxY: Math.max(margin, containerRect.height - controlsHeight - margin),
-        }};
-    }}
-
-    function clampModalControlsPosition(x, y) {{
-        const bounds = getModalControlsBounds();
-        if (!bounds) return {{ x, y }};
-        return {{
-            x: Math.min(bounds.maxX, Math.max(bounds.minX, x)),
-            y: Math.min(bounds.maxY, Math.max(bounds.minY, y)),
-        }};
-    }}
-
-    function applyModalControlsPosition(position) {{
-        const controls = getModalControlsElement();
-        if (!controls) return;
-        if (!position) {{
-            controls.style.left = '50%';
-            controls.style.right = '';
-            controls.style.top = '';
-            controls.style.bottom = '12px';
-            controls.style.transform = 'translateX(-50%)';
-            return;
-        }}
-        controls.style.left = `${{position.x}}px`;
-        controls.style.top = `${{position.y}}px`;
-        controls.style.right = 'auto';
-        controls.style.bottom = 'auto';
-        controls.style.transform = 'none';
-    }}
-
-    function layoutModalControls(forceReset = false) {{
-        const controls = getModalControlsElement();
-        if (!controls) return;
-        if (forceReset) modalControlsCustomPosition = null;
-        const bounds = getModalControlsBounds();
-        if (!bounds) return;
-        if (modalControlsCollapsed) return;
-        if (modalControlsCustomPosition) {{
-            modalControlsCustomPosition = clampModalControlsPosition(
-                modalControlsCustomPosition.x,
-                modalControlsCustomPosition.y
-            );
-            applyModalControlsPosition(modalControlsCustomPosition);
-            return;
-        }}
-        applyModalControlsPosition(null);
-    }}
-
-    function initModalControlsDragging() {{
-        const controls = getModalControlsElement();
-        const container = document.getElementById('modal-canvas-container');
-        if (!controls || !container) return;
-
-        const stopDragging = () => {{
-            if (!isDraggingModalControls) return;
-            isDraggingModalControls = false;
-            controls.classList.remove('dragging');
-        }};
-
-        controls.addEventListener('mousedown', (e) => {{
-            if (e.button !== 0 || modalControlsCollapsed) return;
-            const target = e.target;
-            if (!target || !(target instanceof Element)) return;
-            if (target.closest('button, select, input, option, .size-control')) return;
-            const group = target.closest('.modal-control-group');
-            if (!group) return;
-            const containerRect = container.getBoundingClientRect();
-            const controlsRect = controls.getBoundingClientRect();
-            const next = clampModalControlsPosition(
-                controlsRect.left - containerRect.left,
-                controlsRect.top - containerRect.top
-            );
-            modalControlsCustomPosition = next;
-            applyModalControlsPosition(next);
-            modalControlsDragOffsetX = e.clientX - controlsRect.left;
-            modalControlsDragOffsetY = e.clientY - controlsRect.top;
-            isDraggingModalControls = true;
-            controls.classList.add('dragging');
-            e.preventDefault();
-        }});
-
-        document.addEventListener('mousemove', (e) => {{
-            if (!isDraggingModalControls) return;
-            const containerRect = container.getBoundingClientRect();
-            const next = clampModalControlsPosition(
-                e.clientX - containerRect.left - modalControlsDragOffsetX,
-                e.clientY - containerRect.top - modalControlsDragOffsetY
-            );
-            modalControlsCustomPosition = next;
-            applyModalControlsPosition(next);
-            layoutModalAnnotationPanel();
-        }});
-
-        document.addEventListener('mouseup', stopDragging);
-        window.addEventListener('blur', stopDragging);
-    }}
-
     function updateFocusedNeighborPanelState() {{
         const graphBtn = document.getElementById('focused-neighbor-panel-graph');
         const neighborBtn = document.getElementById('focused-neighbor-panel-neighbors');
@@ -10499,20 +10180,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return icons[icon] || '';
     }}
 
-    function syncFocusedInputPair(sourceId, targetRangeId, targetNumId = null) {{
-        const source = document.getElementById(sourceId);
-        const targetRange = document.getElementById(targetRangeId);
-        const targetNum = targetNumId ? document.getElementById(targetNumId) : null;
-        if (!source || !targetRange) return;
-        targetRange.value = source.value;
-        targetRange.dispatchEvent(new Event('input', {{ bubbles: true }}));
-        if (targetNum) {{
-            targetNum.value = source.value;
-            targetNum.dispatchEvent(new Event('input', {{ bubbles: true }}));
-        }}
-        updateFocusedHePanelState();
-    }}
-
     function updateFocusedHePanelState() {{
         const panel = document.getElementById('focused-he-panel');
         const toggle = document.getElementById('focused-modal-he-toggle');
@@ -10520,34 +10187,38 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const heState = modalSection ? sectionImageStates[modalSection.id] : null;
         const hasHeImage = !!(heState && heState.layers && heState.layers.length);
 
-        const layerSource = document.getElementById('modal-he-layer-select');
         const layerTarget = document.getElementById('focused-he-layer-select');
         const layerRow = document.getElementById('focused-he-layer-row');
-        if (layerTarget && layerSource) {{
-            layerTarget.innerHTML = layerSource.innerHTML;
-            layerTarget.value = layerSource.value;
-            const visible = layerSource.style.display !== 'none' && layerSource.options.length > 0;
-            if (layerRow) layerRow.style.display = visible ? 'grid' : 'none';
+        if (layerTarget) {{
+            if (hasHeImage) {{
+                layerTarget.innerHTML = heState.layers.map((layer, i) =>
+                    `<option value="${{i}}" ${{i === heState.activeLayer ? 'selected' : ''}}>${{escapeHtml(layer.name)}}</option>`
+                ).join('');
+                layerTarget.value = String(heState.activeLayer || 0);
+            }} else {{
+                layerTarget.innerHTML = '';
+            }}
+            if (layerRow) layerRow.style.display = hasHeImage && heState.layers.length > 1 ? 'grid' : 'none';
         }}
 
-        const copyVal = (fromId, toId) => {{
-            const from = document.getElementById(fromId);
+        const setVal = (toId, value) => {{
             const to = document.getElementById(toId);
-            if (from && to) to.value = from.value;
+            if (to) to.value = String(value);
         }};
-        copyVal('modal-he-opacity', 'focused-he-opacity');
-        copyVal('modal-he-scale', 'focused-he-scale');
-        copyVal('modal-he-rotation', 'focused-he-rotation');
+        if (heState) {{
+            setVal('focused-he-opacity', Math.round((heState.opacity != null ? heState.opacity : 0.5) * 100));
+            setVal('focused-he-scale', heState.scaleSlider || 0);
+            setVal('focused-he-rotation', Math.round((heState.rotation || 0) * 180 / Math.PI));
+        }}
 
-        const eyeSource = document.getElementById('modal-he-eye-btn');
         const eyeTarget = document.getElementById('focused-he-eye-btn');
-        if (eyeTarget && eyeSource) {{
-            const visible = eyeSource.style.display !== 'none';
-            const shown = eyeSource.classList.contains('active');
-            eyeTarget.style.display = visible ? '' : 'none';
+        if (eyeTarget) {{
+            const layer = hasHeImage ? heState.layers[heState.activeLayer] : null;
+            const shown = layer ? layer.visible !== false : false;
+            eyeTarget.style.display = layer ? '' : 'none';
             eyeTarget.innerHTML = getLucideInlineSvg(shown ? 'eye' : 'eyeOff');
             eyeTarget.classList.toggle('active', shown);
-            const title = eyeSource.title || (shown ? 'Hide image' : 'Show image');
+            const title = shown ? 'Hide image' : 'Show image';
             eyeTarget.title = title;
             eyeTarget.setAttribute('aria-label', title);
         }}
@@ -10567,22 +10238,24 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             alignBtn.setAttribute('aria-expanded', hasHeImage && heAlignModeActive ? 'true' : 'false');
         }}
 
-        const statusSource = document.getElementById('modal-he-status');
         const statusTarget = document.getElementById('focused-he-status');
-        if (statusTarget) statusTarget.textContent = statusSource?.textContent || 'No image loaded';
+        if (statusTarget) {{
+            statusTarget.textContent = heState?.img
+                ? `${{heState.img.naturalWidth}}×${{heState.img.naturalHeight}}px — drag in Align mode to reposition`
+                : 'No image loaded';
+        }}
+    }}
+
+    function refreshFocusedModalToolPanels() {{
+        updateFocusedNeighborPanelState();
+        updateFocusedHePanelState();
     }}
 
     function updateModalToolbarState() {{
-        const controls = getModalControlsElement();
-        if (!controls) return;
-
         const zoomInBtn = document.getElementById('zoom-in');
         const zoomOutBtn = document.getElementById('zoom-out');
         const rotateLeftBtn = document.getElementById('modal-rotate-left');
         const rotateRightBtn = document.getElementById('modal-rotate-right');
-
-        const graphGroup = controls.querySelector('[data-modal-group="graph"]');
-        if (graphGroup) graphGroup.hidden = !DATA.has_neighbors;
 
         const config = getColorConfig();
         const typeSelectionDisabled = !modalSection || config.is_continuous;
@@ -10593,46 +10266,31 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             modalSelectedCategory = null;
         }}
 
-        const modalGraphBtn = document.getElementById('modal-graph-toggle');
-        const modalNeighborBtn = document.getElementById('modal-neighbor-hover-toggle');
+        const focusedGraphBtn = document.getElementById('focused-neighbor-panel-graph');
+        const focusedNeighborModeBtn = document.getElementById('focused-neighbor-panel-neighbors');
         const focusedNeighborBtn = document.getElementById('focused-modal-neighbor-toggle');
         const focusedHeBtn = document.getElementById('focused-modal-he-toggle');
-        const heGroup = controls.querySelector('[data-modal-group="he-overlay"]');
-        const modalHopSelect = document.getElementById('modal-neighbor-hop-select');
-        if (modalGraphBtn) modalGraphBtn.hidden = !DATA.has_neighbors;
-        if (modalNeighborBtn) modalNeighborBtn.hidden = !DATA.has_neighbors;
         if (focusedNeighborBtn) {{
             focusedNeighborBtn.classList.toggle('hidden', !DATA.has_neighbors || !modalInlineActive);
             focusedNeighborBtn.classList.toggle('active', !!neighborHoverEnabled || !!showGraph || document.getElementById('grid-side-toolbar')?.classList.contains('neighbor-open'));
         }}
         if (focusedHeBtn) focusedHeBtn.classList.toggle('active', !!modalHeOptionsVisible);
-        if (heGroup) heGroup.hidden = !modalHeOptionsVisible;
-        if (modalHopSelect) {{
-            const showHopSelect = DATA.has_neighbors && neighborHoverEnabled;
-            modalHopSelect.hidden = !showHopSelect;
-            modalHopSelect.disabled = !showHopSelect;
-        }}
-        updateFocusedNeighborPanelState();
-        updateFocusedHePanelState();
-        const hasVisibleModalGroup = Array.from(controls.querySelectorAll('.modal-control-group'))
-            .some((group) => !group.hidden);
-        controls.classList.toggle('hidden', modalControlsCollapsed || !hasVisibleModalGroup);
+        refreshFocusedModalToolPanels();
 
         [
             zoomInBtn,
             zoomOutBtn,
             rotateLeftBtn,
             rotateRightBtn,
-            modalGraphBtn,
-            modalNeighborBtn,
+            focusedGraphBtn,
+            focusedNeighborModeBtn,
         ].forEach((btn) => setModalButtonPriority(btn));
 
-        [rotateLeftBtn, rotateRightBtn, modalGraphBtn, modalNeighborBtn].forEach((btn) => {{
+        [rotateLeftBtn, rotateRightBtn, focusedGraphBtn, focusedNeighborModeBtn].forEach((btn) => {{
             setModalButtonPriority(btn, 'muted');
         }});
 
         if (modalSection) {{
-            layoutModalControls();
             layoutModalAnnotationPanel();
         }}
     }}
@@ -15950,6 +15608,46 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         return JSON.stringify(text);
     }}
 
+    function formatSelectionQueryFieldCall(fnName, fieldName) {{
+        return `${{fnName}}(${{JSON.stringify(String(fieldName ?? ''))}})`;
+    }}
+
+    function getSelectionQueryExampleAnnotation() {{
+        const candidateColumns = [
+            currentColor,
+            explorationColorCol,
+            ...(DATA.available_colors || []),
+        ].filter(Boolean);
+        const seenColumns = new Set();
+        for (const colorName of candidateColumns) {{
+            const column = String(colorName || '');
+            if (!column || seenColumns.has(column)) continue;
+            seenColumns.add(column);
+            const meta = DATA.colors_meta?.[column];
+            if (!meta || meta.is_continuous || !Array.isArray(meta.categories) || !meta.categories.length) continue;
+            const firstCategory = meta.categories.find((value) => String(value ?? '').trim().length > 0);
+            if (firstCategory === undefined) continue;
+            return {{ column, value: firstCategory }};
+        }}
+        return null;
+    }}
+
+    function getSelectionQueryExampleGene() {{
+        const loadedGenes = Object.keys(DATA.genes_meta || {{}})
+            .filter((gene) => String(gene || '').trim().length > 0)
+            .sort((a, b) => a.localeCompare(b));
+        const preferred = [
+            currentGene,
+            ...(DATA.available_genes || []),
+            ...loadedGenes,
+        ];
+        for (const rawGene of preferred) {{
+            const gene = String(rawGene || '').trim();
+            if (gene && DATA.genes_meta?.[gene]) return gene;
+        }}
+        return loadedGenes[0] || '';
+    }}
+
     function getSelectionQueryPreviewText(maxLength = 72) {{
         const text = String(selectionQueryText || '').trim();
         if (!text) return '';
@@ -15967,19 +15665,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             examples.push(text);
         }};
 
-        let categoryColumn = '';
-        let categoryValue = null;
-        for (const colorName of (DATA.available_colors || [])) {{
-            const meta = DATA.colors_meta?.[colorName];
-            if (!meta || meta.is_continuous || !Array.isArray(meta.categories) || !meta.categories.length) continue;
-            const firstCategory = meta.categories.find((value) => String(value ?? '').trim().length > 0);
-            if (firstCategory === undefined) continue;
-            categoryColumn = colorName;
-            categoryValue = firstCategory;
-            break;
-        }}
+        const annotationExample = getSelectionQueryExampleAnnotation();
+        const categoryColumn = annotationExample?.column || '';
+        const categoryValue = annotationExample ? annotationExample.value : null;
+        const annotationRef = categoryColumn ? formatSelectionQueryFieldCall('obs', categoryColumn) : '';
 
-        const firstGene = getActiveFeatureList().find((gene) => String(gene || '').trim().length > 0) || '';
+        const firstGene = getSelectionQueryExampleGene();
+        const geneRef = firstGene ? formatSelectionQueryFieldCall('gene', firstGene) : '';
         let geneThreshold = 1;
         if (firstGene) {{
             const vmax = Number(DATA.genes_meta?.[firstGene]?.vmax);
@@ -16002,30 +15694,27 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
         if (categoryColumn && categoryValue !== null && firstGene) {{
             addExample(
-                `${{categoryColumn}} == ${{formatSelectionQueryLiteral(categoryValue)}} and ` +
-                `${{firstGene}} > ${{formatSelectionQueryLiteral(geneThreshold)}}`
+                `${{annotationRef}} == ${{formatSelectionQueryLiteral(categoryValue)}} and ` +
+                `${{geneRef}} > ${{formatSelectionQueryLiteral(geneThreshold)}}`
             );
         }}
         if (categoryColumn && categoryValue !== null) {{
-            addExample(`${{categoryColumn}} == ${{formatSelectionQueryLiteral(categoryValue)}}`);
+            addExample(`${{annotationRef}} == ${{formatSelectionQueryLiteral(categoryValue)}}`);
         }}
         if (firstGene) {{
-            addExample(`${{firstGene}} > ${{formatSelectionQueryLiteral(geneThreshold)}}`);
+            addExample(`${{geneRef}} > ${{formatSelectionQueryLiteral(geneThreshold)}}`);
         }}
         if (sectionKey && sectionValue !== null) {{
             addExample(
-                `section(${{formatSelectionQueryLiteral(sectionKey)}}) == ` +
+                `${{formatSelectionQueryFieldCall('section', sectionKey)}} == ` +
                 `${{formatSelectionQueryLiteral(sectionValue)}}`
             );
-        }}
-        if (!examples.length) {{
-            addExample('cell_type == astrocyte and Gfap > 2');
         }}
         return examples.slice(0, 3);
     }}
 
     function getSelectionQueryPlaceholder() {{
-        return getSelectionQueryExamplePresets()[0] || 'cell_type == astrocyte and Gfap > 2';
+        return getSelectionQueryExamplePresets()[0] || 'Use obs("annotation"), gene("gene"), or section("metadata")';
     }}
 
     function renderSelectionQueryPanelHtml(options = {{}}) {{
@@ -16099,10 +15788,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                         </div>
                         <div class="${{getSelectionQueryStatusClassName()}}" data-selection-query-status${{selectionQueryStatus ? '' : ' hidden'}}>
                             ${{escapeHtml(selectionQueryStatus || '')}}
-                        </div>
-                        <div class="selection-summary-meta">
-                            Most columns and genes work as bare names. Use <code>obs(...)</code>, <code>gene(...)</code>,
-                            or <code>section(...)</code> only when needed. Press Ctrl/Cmd+Enter to run.
                         </div>
                     </div>
                 ` : ''}}
@@ -20527,7 +20212,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     function refreshModalAfterLayoutChange() {{
         if (!modalSection) return;
         renderModalSection();
-        layoutModalControls();
+        refreshFocusedModalToolPanels();
         layoutModalAnnotationPanel();
     }}
 
@@ -21918,7 +21603,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (!st || !layer || !layer.img) {{ alert('No overlay image to align.'); return; }}
         if (!modalSection.x || modalSection.x.length === 0) {{ alert('No cells to align against.'); return; }}
 
-        const statusEl = document.getElementById('modal-he-status');
+        const statusEl = document.getElementById('focused-he-status');
         if (statusEl) statusEl.textContent = 'Auto-aligning…';
 
         const G = 80;
@@ -30930,12 +30615,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     // in lockstep is what makes the overlay controls feel tidy.
     function setHeAlignPanelOpen(open) {{
         heAlignModeActive = !!open;
-        const panel = document.getElementById('modal-he-align-panel');
-        if (panel) panel.style.display = heAlignModeActive ? 'flex' : 'none';
-        const btn = document.getElementById('modal-he-align-btn');
+        const panel = document.getElementById('focused-he-align-panel');
+        if (panel) panel.classList.toggle('visible', heAlignModeActive);
+        const btn = document.getElementById('focused-he-align-btn');
         if (btn) {{
             btn.classList.toggle('active', heAlignModeActive);
-            btn.textContent = heAlignModeActive ? 'Align ▴' : 'Align ▾';
             btn.setAttribute('aria-expanded', heAlignModeActive ? 'true' : 'false');
         }}
         updateFocusedHePanelState();
@@ -30944,15 +30628,12 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function setModalHeOptionsVisible(visible) {{
         modalHeOptionsVisible = !!visible;
-        const group = document.querySelector('[data-modal-group="he-overlay"]');
-        if (group) group.hidden = !modalHeOptionsVisible;
         const btn = document.getElementById('focused-modal-he-toggle');
         if (btn) btn.classList.toggle('active', modalHeOptionsVisible);
         document.getElementById('grid-side-toolbar')?.classList.toggle('he-open', modalHeOptionsVisible);
         if (!modalHeOptionsVisible) setHeAlignPanelOpen(false);
         updateFocusedHePanelState();
         if (modalSection) {{
-            layoutModalControls();
             layoutModalAnnotationPanel();
         }}
     }}
@@ -30968,12 +30649,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (except !== 'graph') {{
             graphChanged = graphChanged || showGraph;
             showGraph = false;
-            document.getElementById('modal-graph-toggle')?.classList.remove('active');
         }}
         if (except !== 'neighbors') {{
             neighborHoverEnabled = false;
             hoverNeighbors = null;
-            document.getElementById('modal-neighbor-hover-toggle')?.classList.remove('active');
         }}
         if (except !== 'graph' && except !== 'neighbors') {{
             document.getElementById('grid-side-toolbar')?.classList.remove('neighbor-open');
@@ -30991,28 +30670,30 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function refreshModalHeControls() {{
         const st = modalSection ? sectionImageStates[modalSection.id] : null;
-        const sel = document.getElementById('modal-he-layer-select');
+        const sel = document.getElementById('focused-he-layer-select');
+        const layerRow = document.getElementById('focused-he-layer-row');
         if (sel) {{
             if (st && st.layers && st.layers.length) {{
                 sel.innerHTML = st.layers.map((l, i) =>
                     `<option value="${{i}}" ${{i === st.activeLayer ? 'selected' : ''}}>${{escapeHtml(l.name)}}</option>`
                 ).join('');
-                sel.style.display = st.layers.length > 1 ? '' : 'none';
+                if (layerRow) layerRow.style.display = st.layers.length > 1 ? 'grid' : 'none';
             }} else {{
                 sel.innerHTML = '';
-                sel.style.display = 'none';
+                if (layerRow) layerRow.style.display = 'none';
             }}
         }}
-        const eyeBtn = document.getElementById('modal-he-eye-btn');
+        const eyeBtn = document.getElementById('focused-he-eye-btn');
         if (eyeBtn) {{
             const layer = (st && st.layers && st.layers[st.activeLayer]) || null;
             if (layer) {{
                 const shown = (layer.visible !== false);
                 eyeBtn.style.display = '';
-                eyeBtn.textContent = shown ? '👁' : '🚫';
+                eyeBtn.innerHTML = getLucideInlineSvg(shown ? 'eye' : 'eyeOff');
                 eyeBtn.classList.toggle('active', shown);
                 const label = st.layers.length > 1 ? `“${{layer.name}}” layer` : 'overlay';
                 eyeBtn.title = (shown ? 'Hide ' : 'Show ') + label;
+                eyeBtn.setAttribute('aria-label', eyeBtn.title);
             }} else {{
                 eyeBtn.style.display = 'none';
             }}
@@ -31021,11 +30702,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (st) {{
             const opPct = Math.round((st.opacity != null ? st.opacity : 0.5) * 100);
             const rotDeg = Math.round((st.rotation || 0) * 180 / Math.PI);
-            setVal('modal-he-opacity', opPct); setVal('modal-he-opacity-num', opPct);
-            setVal('modal-he-scale', st.scaleSlider || 0); setVal('modal-he-scale-num', st.scaleSlider || 0);
-            setVal('modal-he-rotation', rotDeg); setVal('modal-he-rotation-num', rotDeg);
+            setVal('focused-he-opacity', opPct);
+            setVal('focused-he-scale', st.scaleSlider || 0);
+            setVal('focused-he-rotation', rotDeg);
         }}
-        const statusEl = document.getElementById('modal-he-status');
+        const statusEl = document.getElementById('focused-he-status');
         if (statusEl) {{
             statusEl.textContent = (st && st.img)
                 ? `${{st.img.naturalWidth}}×${{st.img.naturalHeight}}px — drag in Align mode to reposition`
@@ -31231,7 +30912,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             content.classList.remove('is-expanding');
             requestAnimationFrame(() => {{
                 renderModalSection();
-                layoutModalControls();
+                refreshFocusedModalToolPanels();
                 layoutModalAnnotationPanel();
             }});
         }};
@@ -31295,9 +30976,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         requestAnimationFrame(() => {{
             const canvas = document.getElementById('modal-canvas');
             if (canvas) canvas.style.cursor = 'grab';
-            setModalControlsCollapsed(modalControlsCollapsed);
             updateModalToolbarState();
-            layoutModalControls();
+            refreshFocusedModalToolPanels();
             layoutModalAnnotationPanel();
             renderModalAnnotationPanel();
             renderModalSection();
@@ -31328,7 +31008,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         modalLassoPath = [];
         setModalAnnotationPanelOpen(false);
         modalPointerMoved = false;
-        getModalControlsElement()?.classList.remove('dragging');
         modalSubview = null;
         modalSection = null;
         updateModalHeader();
@@ -31646,23 +31325,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             updateModalToolbarState();
         }});
         document.getElementById('focused-neighbor-panel-graph')?.addEventListener('click', () => {{
-            document.getElementById('modal-graph-toggle')?.click();
-            updateFocusedNeighborPanelState();
+            if (!modalSection || !DATA.has_neighbors) return;
+            const enable = !showGraph;
+            if (enable) resetFocusedModalTools('graph');
+            showGraph = enable;
+            updateModalToolbarState();
+            renderAllSections();
+            if (modalSection) renderModalSection();
         }});
         document.getElementById('focused-neighbor-panel-neighbors')?.addEventListener('click', () => {{
-            document.getElementById('modal-neighbor-hover-toggle')?.click();
-            updateFocusedNeighborPanelState();
-        }});
-        document.getElementById('focused-neighbor-hop-select')?.addEventListener('change', (event) => {{
-            const value = event.target.value;
-            const modalHopSelect = document.getElementById('modal-neighbor-hop-select');
-            if (modalHopSelect) {{
-                modalHopSelect.value = value;
-                modalHopSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            }} else {{
-                neighborHopMode = value;
+            if (!modalSection || !DATA.has_neighbors) return;
+            const enable = !neighborHoverEnabled;
+            if (enable) resetFocusedModalTools('neighbors');
+            neighborHoverEnabled = enable;
+            updateModalToolbarState();
+            if (!neighborHoverEnabled) {{
+                hoverNeighbors = null;
                 if (modalSection) renderModalSection();
             }}
+        }});
+        document.getElementById('focused-neighbor-hop-select')?.addEventListener('change', (event) => {{
+            neighborHopMode = event.target.value;
+            if (modalSection) renderModalSection();
             updateFocusedNeighborPanelState();
         }});
         document.getElementById('focused-modal-he-toggle')?.addEventListener('click', () => {{
@@ -31671,42 +31355,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             resetFocusedModalTools(enable ? 'he' : null);
             setModalHeOptionsVisible(enable);
             updateModalToolbarState();
-        }});
-        document.getElementById('focused-he-layer-select')?.addEventListener('change', (event) => {{
-            const modalLayerSelect = document.getElementById('modal-he-layer-select');
-            if (!modalLayerSelect) return;
-            modalLayerSelect.value = event.target.value;
-            modalLayerSelect.dispatchEvent(new Event('change', {{ bubbles: true }}));
-            updateFocusedHePanelState();
-        }});
-        document.getElementById('focused-he-eye-btn')?.addEventListener('click', () => {{
-            document.getElementById('modal-he-eye-btn')?.click();
-            updateFocusedHePanelState();
-        }});
-        document.getElementById('focused-he-load-btn')?.addEventListener('click', () => {{
-            document.getElementById('modal-he-load-btn')?.click();
-            updateFocusedHePanelState();
-        }});
-        document.getElementById('focused-he-align-btn')?.addEventListener('click', () => {{
-            document.getElementById('modal-he-align-btn')?.click();
-            updateFocusedHePanelState();
-        }});
-        document.getElementById('focused-he-fliph-btn')?.addEventListener('click', () => {{
-            document.getElementById('modal-he-fliph-btn')?.click();
-            updateFocusedHePanelState();
-        }});
-        document.getElementById('focused-he-export-btn')?.addEventListener('click', () => {{
-            document.getElementById('modal-he-export-btn')?.click();
-            updateFocusedHePanelState();
-        }});
-        [
-            ['focused-he-opacity', 'modal-he-opacity', 'modal-he-opacity-num'],
-            ['focused-he-scale', 'modal-he-scale', 'modal-he-scale-num'],
-            ['focused-he-rotation', 'modal-he-rotation', 'modal-he-rotation-num'],
-        ].forEach(([sourceId, targetRangeId, targetNumId]) => {{
-            document.getElementById(sourceId)?.addEventListener('input', () => {{
-                syncFocusedInputPair(sourceId, targetRangeId, targetNumId);
-            }});
         }});
 
         const visualDefaultControls = document.getElementById('visual-default-controls');
@@ -32268,9 +31916,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 
     function initModal() {{
         document.getElementById('modal-close').addEventListener('click', closeModal);
-        document.getElementById('modal-controls-toggle')?.addEventListener('click', () => {{
-            setModalControlsCollapsed(!modalControlsCollapsed);
-        }});
         document.getElementById('modal').addEventListener('click', (e) => {{
             if (e.target.id === 'modal') closeModal();
         }});
@@ -32313,89 +31958,50 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }});
 
         // H&E overlay controls
-        function updateHeSliderLabels() {{
-            if (!modalSection) return;
-            const state = sectionImageStates[modalSection.id];
-            const opNum = document.getElementById('modal-he-opacity-num');
-            const scNum = document.getElementById('modal-he-scale-num');
-            const rtNum = document.getElementById('modal-he-rotation-num');
-            if (opNum && state) opNum.value = String(Math.round(state.opacity * 100));
-            if (scNum && state) scNum.value = String(state.scaleSlider);
-            if (rtNum && state) rtNum.value = String(Math.round(state.rotation * 180 / Math.PI));
-        }}
-
-        function updateHeStatus() {{
-            const el = document.getElementById('modal-he-status');
-            if (!el) return;
-            if (!modalSection || !sectionImageStates[modalSection.id]?.img) {{
-                el.textContent = 'No image loaded';
-                return;
-            }}
-            const img = sectionImageStates[modalSection.id].img;
-            el.textContent = `${{img.naturalWidth}}×${{img.naturalHeight}}px — drag in Align mode to reposition`;
-        }}
-
-        function syncHeNum(numId, rangeId, apply) {{
-            const num = document.getElementById(numId);
+        function syncHeRange(rangeId, apply) {{
             const range = document.getElementById(rangeId);
             range?.addEventListener('input', (e) => {{
-                if (num) num.value = e.target.value;
                 if (!modalSection || !sectionImageStates[modalSection.id]) return;
                 apply(sectionImageStates[modalSection.id], parseFloat(e.target.value));
                 renderModalSection();
                 rerenderSectionPanel(modalSection.id);
-            }});
-            num?.addEventListener('input', (e) => {{
-                const v = Math.max(parseFloat(num.min || '-Infinity'), Math.min(parseFloat(num.max || 'Infinity'), parseFloat(e.target.value) || 0));
-                if (range) range.value = String(v);
-                if (!modalSection || !sectionImageStates[modalSection.id]) return;
-                apply(sectionImageStates[modalSection.id], v);
-                renderModalSection();
-                rerenderSectionPanel(modalSection.id);
+                updateFocusedHePanelState();
             }});
         }}
 
-        syncHeNum('modal-he-opacity-num', 'modal-he-opacity', (s, v) => s.opacity = v / 100);
-        syncHeNum('modal-he-scale-num',   'modal-he-scale',   (s, v) => s.scaleSlider = v);
-        syncHeNum('modal-he-rotation-num','modal-he-rotation',(s, v) => s.rotation = v * Math.PI / 180);
+        syncHeRange('focused-he-opacity', (s, v) => s.opacity = v / 100);
+        syncHeRange('focused-he-scale', (s, v) => s.scaleSlider = v);
+        syncHeRange('focused-he-rotation', (s, v) => s.rotation = v * Math.PI / 180);
 
-        const heOpacityRange = document.getElementById('modal-he-opacity');
-        const heScaleRange = document.getElementById('modal-he-scale');
-        const heRotationRange = document.getElementById('modal-he-rotation');
         const cellOpacityRange = document.getElementById('modal-cell-opacity');
-        document.getElementById('modal-he-opacity-dec')?.addEventListener('click', () => stepRange(heOpacityRange, -10));
-        document.getElementById('modal-he-opacity-inc')?.addEventListener('click', () => stepRange(heOpacityRange, 10));
-        document.getElementById('modal-he-scale-dec')?.addEventListener('click', () => stepRange(heScaleRange, -10));
-        document.getElementById('modal-he-scale-inc')?.addEventListener('click', () => stepRange(heScaleRange, 10));
-        document.getElementById('modal-he-rotation-dec')?.addEventListener('click', () => stepRange(heRotationRange, -5));
-        document.getElementById('modal-he-rotation-inc')?.addEventListener('click', () => stepRange(heRotationRange, 5));
         cellOpacityRange?.addEventListener('input', (e) => {{
             setCellOpacity(parseInt(e.target.value, 10) / 100, {{ skip: e.target }});
         }});
 
-        document.getElementById('modal-he-align-btn')?.addEventListener('click', () => {{
+        document.getElementById('focused-he-align-btn')?.addEventListener('click', () => {{
             setHeAlignPanelOpen(!heAlignModeActive);
         }});
 
-        document.getElementById('modal-he-autoalign-btn')?.addEventListener('click', () => {{
-            const btn = document.getElementById('modal-he-autoalign-btn');
-            if (btn) {{ btn.disabled = true; btn.textContent = '✨ Aligning…'; }}
+        document.getElementById('focused-he-autoalign-btn')?.addEventListener('click', () => {{
+            const btn = document.getElementById('focused-he-autoalign-btn');
+            if (btn) btn.disabled = true;
             // Defer so the button label repaints before the (synchronous) search.
             requestAnimationFrame(() => requestAnimationFrame(() => {{
                 try {{ autoAlignHeOverlay(); }}
-                finally {{ if (btn) {{ btn.disabled = false; btn.textContent = '✨ Auto-align'; }} }}
+                finally {{ if (btn) btn.disabled = false; }}
             }}));
         }});
 
-        document.getElementById('modal-he-fliph-btn')?.addEventListener('click', () => {{
+        document.getElementById('focused-he-fliph-btn')?.addEventListener('click', () => {{
             if (!modalSection || !sectionImageStates[modalSection.id]) return;
             sectionImageStates[modalSection.id].flipH = !sectionImageStates[modalSection.id].flipH;
             renderModalSection();
             renderAllSections();
+            updateFocusedHePanelState();
         }});
 
-        const heUploadInput = document.getElementById('modal-he-upload-input');
-        document.getElementById('modal-he-load-btn')?.addEventListener('click', () => {{
+        const heUploadInput = document.getElementById('focused-he-upload-input');
+        document.getElementById('focused-he-load-btn')?.addEventListener('click', () => {{
             if (!modalSection) {{ alert('Open a section first.'); return; }}
             heUploadInput?.click();
         }});
@@ -32419,7 +32025,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             e.target.value = '';
         }});
 
-        document.getElementById('modal-he-layer-select')?.addEventListener('change', (e) => {{
+        document.getElementById('focused-he-layer-select')?.addEventListener('change', (e) => {{
             if (!modalSection) return;
             const st = sectionImageStates[modalSection.id];
             if (!st || !st.layers) return;
@@ -32429,7 +32035,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             refreshModalHeControls();
         }});
 
-        document.getElementById('modal-he-eye-btn')?.addEventListener('click', () => {{
+        document.getElementById('focused-he-eye-btn')?.addEventListener('click', () => {{
             if (!modalSection) return;
             const st = sectionImageStates[modalSection.id];
             const layer = st && st.layers && st.layers[st.activeLayer];
@@ -32442,7 +32048,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             refreshModalHeControls();
         }});
 
-        document.getElementById('modal-he-export-btn')?.addEventListener('click', () => {{
+        document.getElementById('focused-he-export-btn')?.addEventListener('click', () => {{
             if (!modalSection) return;
             const state = sectionImageStates[modalSection.id];
             if (!state?.img) {{ alert('No image loaded for this section.'); return; }}
@@ -32481,7 +32087,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     modalResizeRenderFrame = null;
                     invalidateModalRenderedView();
                     renderModalSection();
-                    layoutModalControls();
+                    refreshFocusedModalToolPanels();
                     layoutModalAnnotationPanel();
                 }});
             }});
@@ -32517,7 +32123,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const modalAnnotationCreateGroupBtn = document.getElementById('modal-annotations-create-group');
         const modalAnnotationExportBtn = document.getElementById('modal-annotations-export');
         const modalAnnotationClearAllBtn = document.getElementById('modal-annotations-clear-all');
-        initModalControlsDragging();
 
         updateModalCanvasCursor = () => {{
             if (!canvas) return;
@@ -32690,43 +32295,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }}
         }});
 
-        if (DATA.has_neighbors) {{
-            const modalGraphBtn = document.getElementById('modal-graph-toggle');
-            modalGraphBtn.classList.toggle('active', showGraph);
-            modalGraphBtn.addEventListener('click', () => {{
-                const enable = !showGraph;
-                if (enable) resetFocusedModalTools('graph');
-                showGraph = enable;
-                modalGraphBtn.classList.toggle('active', showGraph);
-                updateModalToolbarState();
-                renderAllSections();
-                if (modalSection) renderModalSection();
-            }});
-
-            const modalNeighborBtn = document.getElementById('modal-neighbor-hover-toggle');
-            modalNeighborBtn.classList.toggle('active', neighborHoverEnabled);
-            modalNeighborBtn.addEventListener('click', () => {{
-                const enable = !neighborHoverEnabled;
-                if (enable) resetFocusedModalTools('neighbors');
-                neighborHoverEnabled = enable;
-                modalNeighborBtn.classList.toggle('active', neighborHoverEnabled);
-                updateModalToolbarState();
-                if (!neighborHoverEnabled) {{
-                    hoverNeighbors = null;
-                    if (modalSection) renderModalSection();
-                }}
-            }});
-
-            const modalHopSelect = document.getElementById('modal-neighbor-hop-select');
-            modalHopSelect.value = neighborHopMode;
-            modalHopSelect.addEventListener('change', () => {{
-                neighborHopMode = modalHopSelect.value;
-                if (modalSection) renderModalSection();
-            }});
-        }}
-
         updateModalToolbarState();
-        layoutModalControls();
+        refreshFocusedModalToolPanels();
         layoutModalAnnotationPanel();
     }}
 
@@ -32769,7 +32339,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         if (DATA.has_umap) applyUMAPPanelState();
         renderAllSections();
         if (modalSection) {{
-            layoutModalControls();
+            refreshFocusedModalToolPanels();
             layoutModalAnnotationPanel();
             renderModalSection();
         }}
