@@ -3,9 +3,9 @@ Export a KaroSpace viewer for the annotated P1 skin Xenium dataset, Lesional (L)
 and Non-lesional (NL) combined into one object (two sections, by sample_id).
 
 This dataset has NO embedded morphology images (no uns/spatial), so there is no
-DAPI/H&E overlay — it's a straight spatial cell map coloured by the Seurat
+DAPI/H&E overlay — it's a straight spatial cell map shown by the Seurat
 annotations:
-  - predicted.celltype (19 skin cell types) — default colouring
+  - predicted.celltype (19 skin cell types) — default annotation
   - niches (5 spatial niches)
   - seurat_clusters / Xenium_snn_res.0.2
   - an IFN-alpha REACTOME signature score (continuous)
@@ -38,10 +38,10 @@ H5AD_PATH = os.environ.get(
 OUTPUT_DIR = REPO_ROOT
 SIDECAR_OUTPUT = str(OUTPUT_DIR / "xenium_P1_L_NL_combined.html")
 PACKAGE_OUTPUT = str(OUTPUT_DIR / "xenium_P1_L_NL_combined.karospace")
-GENE_AUX_PATH = str(OUTPUT_DIR / "xenium_P1_L_NL_combined.genes.json")
+FEATURE_MANIFEST_PATH = str(OUTPUT_DIR / "xenium_P1_L_NL_combined.features.json")
 
-PRIMARY_COLOR = "predicted.celltype"
-ADDITIONAL_COLORS = [
+PRIMARY_ANNOTATION = "predicted.celltype"
+ADDITIONAL_ANNOTATIONS = [
     "predicted.celltype",
     "niches",
     "seurat_clusters",
@@ -63,51 +63,49 @@ def main() -> None:
     print("Loading spatial data...")
     dataset = load_spatial_data(
         H5AD_PATH,
-        groupby="sample_id",
+        section_key="sample_id",
         spatial_key="spatial",
-        metadata_columns=["sample_id", "condition", "sample_batch"],
+        section_metadata=["sample_id", "condition", "sample_batch"],
     )
     print(f"  {dataset.n_sections} section(s), {dataset.n_cells:,} cells")
     print(f"  section IDs: {[s.section_id for s in dataset.sections]}")
 
     common_kwargs = dict(
-        color=PRIMARY_COLOR,
+        main_cell_annotation=PRIMARY_ANNOTATION,
         title="Xenium P1 Skin — Lesional + Non-lesional (annotated)",
         min_panel_size=140,
         spot_size="auto",
-        theme="light",
         outline_by=None,
-        additional_colors=ADDITIONAL_COLORS,
-        genes=[],
+        cell_annotations=ADDITIONAL_ANNOTATIONS,
+        features=[],
         use_hvgs=False,
-        gene_storage="sidecar",
-        gene_sidecar_format="binary-v1",
-        gene_encoding="auto",
-        gene_value_encoding="uint8",
-        gene_sidecar_shard_size=128,
-        marker_genes_groupby=CLUSTER_COLUMNS,
+        feature_storage="sidecar",
+        feature_encoding="auto",
+        feature_value_encoding="uint8",
+        feature_sidecar_shard_size=128,
+        marker_gene_annotations=CLUSTER_COLUMNS,
         marker_genes_top_n=30,
-        neighbor_stats_groupby=CLUSTER_COLUMNS,
+        neighbor_stats_annotations=CLUSTER_COLUMNS,
         neighbor_stats_permutations=0,
-        cluster_de_groupby=CLUSTER_COLUMNS,
-        cluster_de_top_n=20,
-        cluster_de_method="t-test",
-        cluster_de_layer=None,
-        interaction_markers_groupby=None,
+        pseudobulk_de_annotations=CLUSTER_COLUMNS,
+        pseudobulk_de_top_n=20,
+        pseudobulk_de_method="t-test",
+        pseudobulk_de_layer=None,
+        interaction_marker_annotations=None,
     )
 
-    # The sidecar writes its gene manifest next to the HTML (full path is fine);
+    # The sidecar writes its feature manifest next to the HTML (full path is fine);
     # the .karospace packager requires a bare filename (it lives inside the archive).
     print("Exporting sidecar HTML...")
     export_to_html(
-        dataset, output_path=SIDECAR_OUTPUT, gene_aux_path=GENE_AUX_PATH, **common_kwargs
+        dataset, output_path=SIDECAR_OUTPUT, feature_manifest_path=FEATURE_MANIFEST_PATH, **common_kwargs
     )
 
     print("Packaging .karospace archive...")
     export_to_html(
         dataset,
         output_path=PACKAGE_OUTPUT,
-        gene_aux_path=Path(GENE_AUX_PATH).name,
+        feature_manifest_path=Path(FEATURE_MANIFEST_PATH).name,
         **common_kwargs,
     )
 

@@ -1,70 +1,43 @@
 # KaroSpace
 
-**KaroSpace** is an interactive HTML viewer for exploring spatial transcriptomics data. It generates standalone HTML files from h5ad files that can be shared and viewed in any web browser — no server or Python installation required.
+**KaroSpace** is an interactive HTML viewer for exploring spatial transcriptomics data. It generates standalone HTML files from AnnData/H5AD or SpatialData inputs that can be shared and viewed in any web browser — no server or Python installation required.
 
 Originally developed at Karolinska Institutet for visualizing Xenium spatial transcriptomics data across multiple tissue sections.
 
-## Live Demo
-- [KaroSpace website](https://karospace.se/)
-- **Pancreas viewer**: [Open hosted demo](https://christoffermattssonlangseth.github.io/KaroSpace/pancreas.html)
+Visit [KaroSpace Website](https://karospace.se/).
+
+![KaroSpace viewer showing a multi-section spatial transcriptomics grid](assets/karospace-readme-visual.png)
+
+> [!NOTE]
+> Live Demo ! **Pancreas viewer**: [Open hosted demo](https://christoffermattssonlangseth.github.io/KaroSpace/pancreas.html).
 
 ## Features
 
-- **Grid + modal exploration** — Browse many sections in a responsive grid, then zoom and pan any section in detail
-- **Per-section rotation** — Set exact initial section angles at export time and adjust them interactively
-- **Linked UMAP + section selection** — Magic Wand lasso works in UMAP and modal view with synced highlights
-- **Selection summaries** — Selected-cell totals and per-type counts with expandable scrollable lists; minimize the panel to a compact header to keep the view clear
-- **Polygon annotation workflow** — Draw persistent polygons, manage labels, and export JSON for downstream `adata` integration
-- **Region-to-region DE** — Compare drawn annotations directly in the viewer, export JSON/CSV reports, and search top hits
-- **Split compare slider** — Compare two variables side-by-side in the modal (`Cell type` or `Gene`, including `All categories`), draggable directly on the canvas
-- **Legend controls + spotlight** — Toggle/hide categories and spotlight one class across grid and UMAP
-- **Flexible coloring + gene discovery** — Switch between annotation columns, fuzzy-search genes, and reuse recent or saved gene panels
-- **Insights panel** — `Summary`, `Compare`, `Genes`, `Neighborhood`, and `Regions` tabs with marker genes, pairwise cluster DE, neighbor composition, interaction markers, and region comparison
-- **Marker-gene CSV export** — Download the top marker genes for every cluster of the current color as a tidy CSV
-- **Annotation river plot** — `Insights → Compare → River` draws a Sankey of how two annotations correspond (e.g. `leiden_1` ↔ `leiden_2`); click a node to recolor and spotlight it, or export the crosstab as CSV
-- **Numeric category ordering** — Numeric cluster labels sort naturally (`2` before `10`) in legends, dropdowns, and plots, with `adata.uns` palettes kept aligned
-- **Modal selection workflow** — Lasso in the sample view, open a focused subview, browse `Genes in selection`, and use `Space` + drag to pan while Select or Annotate is active
-- **Shareable packages** — Export as `.karospace` bundles (ZIP + viewer HTML) for offline sharing; open via the hosted loader at [karospace.se/open](https://karospace.se/open) or a local `loader.html`. See [KAROSPACE_PACKAGE_FORMAT_SPEC.md](KAROSPACE_PACKAGE_FORMAT_SPEC.md)
-- **Compact sidecar options** — JSON and binary shard formats, sparse-first encoding, and optional `uint16`/`uint8` quantization for large datasets
-- **Metadata-aware browsing** — Filter sections by metadata and outline by course or another column
-- **Neighbor graph tools** — Graph overlay and hover rings (1–3 hops) when `adata.obsp` contains a spatial graph
-- **Quality-of-life controls** — Hideable toolbar, screenshots, theme toggle, keyboard shortcuts, and adjustable spot size
-- **Standalone export** — One self-contained HTML file, no backend required
-
-## Browser Considerations
-
-KaroSpace is canvas-heavy. Chrome/Chromium is generally fastest; Safari can be noticeably slower on large datasets. The viewer caps canvas DPR at `1.0` in Safari by default to reduce pixel work on Retina displays.
-
-For large datasets:
-- Use `downsample` to limit cells per section
-- Lower `min_panel_size` to reduce pixels drawn per thumbnail
-- Keep the neighbor graph toggle off unless needed
-
-## Installation
-
-### From source
-
-```bash
-git clone https://github.com/christoffermattssonlangseth/karospace.git
-cd karospace
-pip install -e .
-```
-
-### Dependencies
-
-- Python >= 3.9
-- scanpy >= 1.9.0
-- anndata >= 0.8.0
-- numpy >= 1.20.0
-- pandas >= 1.3.0
-- scipy >= 1.7.0
+- [x] **Modal interaction** — Browse many sections in a responsive grid, then zoom and pan any section in detail
+- [x] **Section filters** — Filter visible sections by exported metadata such as stage, condition, region, sex, model, sample, or batch
+- [x] **UMAP to sections connection** — Lasso selection works in UMAP and modal view with synced highlights
+- [x] **Cells selection composition** — Selected-cell totals and per-type counts with expandable scrollable lists
+- [x] **Polygon regions** — Save lasso selections as persistent regions, reorder labels, and export JSON for downstream integration
+- [x] **Region-to-region comparison** — Compare saved regions directly in the viewer, export JSON/CSV reports, and search top hits
+- [x] **Cell search** — Select cells with query syntax based on annotations, genes, or section metadata, then reuse the selection in summaries and comparisons
+- [x] **Split screen** — Compare two variables side-by-side in the modal (`Annotation`, `Modality` or `Module`)
+- [x] **Gene modules** — Build custom gene sets, compute averaged module scores, display them like expression layers, and import/export module definitions
+- [x] **Legend controls** — Toggle/hide categories and spotlight one class across grid and UMAP
+- [x] **Gene exploration** — Search genes, inspect expression distributions, review marker genes, spatial genes, category means, and related-gene suggestions
+- [x] **Per cell comparison** — Live comparison of cell selections or regions with table and graphs visualization (Welch test scores, log2FC, mean, expression percentage)
+- [x] **Per sample comparison** — Precomputed pseudobulk differential gene expression using DESeq2 (PCA, distance matrices, volcano plots) and pathway enrichments.
+- [x] **Neighbor graph tools** — Graph overlay, hover rings (1–3 hops), enrichment, interactions, and dispersion summaries when `adata.obsp` contains a spatial graph
+- [x] **Quality-of-life controls** — Hideable toolbar, screenshots, light/dark theme toggle, buttons explanation, keyboard shortcuts, and adjustable spot size
+- [x] **Standalone export** — One self-contained HTML file, no backend required
+- [x] **Compact sidecar** — Keep large gene matrices outside the HTML with lazy-loaded sidecar manifests and binary shards for lighter initial viewer files
+- [x] **Shareable packages** — Export as `.karospace` bundles (ZIP + viewer HTML)
 
 ## Quick Start
 
-### Desktop GUI (KaroSpaceBuilder)
+A GUI version of KaroSpace (`KaroSpaceBuilder`) has been developed to allow researchers with moderate computational skills to create HTML file.
 
 Prebuilt executables are available from the
-[`KaroSpaceBuilder` Releases](https://github.com/christoffermattssonlangseth/KaroSpaceBuilder/releases) page:
+[KaroSpaceBuilder Releases](https://github.com/christoffermattssonlangseth/KaroSpaceBuilder/releases) page:
 - Apple Silicon: `KaroSpaceBuilder-macos-arm64.zip`
 - Windows: `KaroSpaceBuilder-windows.zip`
 - Linux: `KaroSpaceBuilder-linux.zip`
@@ -87,22 +60,64 @@ If KaroSpaceBuilder is already installed, launch with:
 karospacebuilder   # or: karospace-gui
 ```
 
-**Workflow:**
-1. Launch the app and pick a preset (`Default`, `Pancreas`, or `Lightweight`)
-2. In `Basic`, set input `.h5ad` and output path, then click `Inspect`
-3. In `Colors & Genes`, build color columns and gene lists with the searchable editors
-4. Open `Advanced` only if needed, then export
+## Installation
 
-Output is written to `<output_dir>/index.html`.
+```bash
+git clone https://github.com/christoffermattssonlangseth/karospace.git
+cd karospace
+pip install -e .
+```
+
+> [!WARNING]
+> Dependencies :
+> ```bash
+> - Python >= 3.9
+> - scanpy >= 1.9.0
+> - anndata >= 0.8.0
+> - numpy >= 1.20.0
+> - pandas >= 1.3.0
+> - pydeseq2 >= 0.5.0
+> - scipy >= 1.7.0
+> - gseapy >= 1.1.0
+> - tqdm >= 4.66.0
+> ```
+
+SpatialData input is optional. Install only when you want to load SpatialData `.zarr` :
+
+```bash
+pip install -e ".[spatialdata]"
+```
+
+If KaroSpace is already installed and you want to reinstall the local checkout after editing the source:
+
+```bash
+python -m pip uninstall karospace -y
+python -m pip install -e .
+```
+
+Install the SpatialData extra in the same environment if `import spatialdata` fails:
+
+```bash
+python -m pip install -e ".[spatialdata]"
+```
+
+## Usage
 
 ### Python API
 
 ```python
-from karospace import load_spatial_data, export_to_html
+from karospace import inspect_input_file, load_spatial_data, export_to_html
+
+# Optional: inspect obs metadata first without exporting HTML or running analytics.
+report = inspect_input_file("your_data.h5ad")
+for column in report["metadata"]:
+    print(column["name"], column["type"], column["examples"][:3])
 
 dataset = load_spatial_data(
     "your_data.h5ad",
-    groupby="sample_id",  # Column identifying each section
+    section_key="sample_id",  # Column identifying each section
+    section_metadata=["course", "region", "condition"],  # Section metadata shown in the visual params bar/filter chips
+    section_metadata_extra=["patient_id", "slide_id"],  # Section metadata stored without visual params bar chips
     metadata_value_order={
         "course": ["naive", "peak_I", "peak_II", "peak_III"],
     },
@@ -111,36 +126,44 @@ dataset = load_spatial_data(
 export_to_html(
     dataset,
     output_path="viewer.html",
-    color="cell_type",           # Initial color column
+    main_cell_annotation="cell_type",    # Main cell-annotation column shown first
     title="KaroSpace",
     min_panel_size=150,          # Min panel width (responsive autoscaling)
     spot_size="auto",            # Adaptive by section density (or set a fixed number)
     downsample=30000,            # Max cells per section
-    theme="light",               # "light" or "dark"
-    additional_colors=[          # Extra columns for color dropdown
+    cell_annotations=[          # Extra cell obs annotation columns for annotation dropdowns
         "leiden",
-        "condition",
+        "niche",
     ],
-    genes=[                      # Pre-load genes for expression view
+    features=[                      # Pre-load genes for expression view
         "Cd4",
         "Cd8a",
         "Gfap",
     ],
-    gene_encoding="auto",        # "auto" | "dense" | "sparse"
-    gene_storage="embedded",     # "embedded" | "sidecar"
-    gene_aux_path=None,          # Optional manifest path; defaults to viewer.genes.json
-    gene_sparse_zero_threshold=0.8,
-    pack_arrays=True,
-    use_hvgs=True,
-    hvg_limit=20,
-    marker_genes_groupby=None,
-    marker_genes_top_n=30,
-    neighbor_stats_groupby=["cell_type"],
+    features_list=None,             # Optional text file with one gene per line
+    feature_encoding="auto",        # "auto" | "dense" | "sparse"
+    feature_storage="embedded",     # "embedded" | "sidecar"
+    feature_manifest_path=None,          # Optional manifest path; defaults to viewer.features.json
+    feature_sparse_zero_threshold=0.8,
+    neighbor_stats_annotations=["cell_type"],
     neighbor_stats_permutations=20,
-    interaction_markers_groupby=None,
-    cluster_de_groupby=["cell_type"],
-    cluster_de_top_n=20,
-    cluster_de_method="wilcoxon",
+    pseudobulk="auto",           # Use None to disable category pseudobulk DE
+    pseudobulk_additional_annotations=["niche"],
+    pseudobulk_counts_layer="counts",
+    pseudobulk_min_cells_per_pseudobulk=20,
+    pseudobulk_min_pct_expressed=0.2,
+    pseudobulk_p_adjust_method="fdr_bh",
+    pseudobulk_padj_cutoff=0.05,
+    pseudobulk_log2fc_cutoff=1,
+    pseudobulk_deseq2_fit_type="parametric",
+    pseudobulk_n_cpus=1,
+    pseudobulk_embed_top_n_per_comparison=2,
+    pathway_gmt=None,            # default Reactome via GSEApy; or "reactome.gmt"
+    pathway_organism="Mouse",
+    pathway_top_n=10,
+    pathway_min_overlap=3,
+    pathway_gsea_permutations=100,
+    interaction_markers="auto",  # Use None to disable contact-conditioned marker DE
     section_rotations={
         "sample_a": 37.5,
         "sample_b": -90,
@@ -148,10 +171,85 @@ export_to_html(
 )
 ```
 
+You can also pass an already-loaded `AnnData` object:
+
+```python
+dataset = load_spatial_data(
+    adata,
+    section_key="sample_id",
+)
+```
+
+For SpatialData, pass either the object or a `.zarr` store. If the SpatialData object has multiple AnnData tables, select the table explicitly:
+
+```python
+import spatialdata as sd
+from karospace import inspect_input_file, load_spatial_data, export_to_html
+
+sdata = sd.read_zarr("your_spatialdata.zarr")
+
+report = inspect_input_file(sdata, spatialdata_table="table")
+
+dataset = load_spatial_data(
+    sdata,
+    spatialdata_table="table",  # or "cells", depending on your object
+    section_key="sample_id",
+)
+
+export_to_html(dataset, "viewer.html", main_cell_annotation="cell_type")
+```
+
 ### Command Line
 
+Inspect an `.h5ad` without generating HTML or running analytics:
+
 ```bash
-karospace your_data.h5ad -o viewer.html --color leiden
+karospace your_data.h5ad --inspect-input
+```
+
+SpatialData `.zarr` stores are also supported:
+
+```bash
+karospace your_spatialdata.zarr -o viewer.html --main-cell-annotation cell_type --spatialdata-table table
+```
+
+```bash
+karospace your_data.h5ad \
+  -o viewer.html \
+  --section-key sample_id \
+  --section-metadata course,region,condition \
+  --section-metadata-extra patient_id,slide_id \
+  --metadata-value-order '{"course":["naive","peak_I","peak_II","peak_III"]}' \
+  --main-cell-annotation cell_type \
+  --title "KaroSpace" \
+  --min-panel-size 150 \
+  --spot-size auto \
+  --downsample 30000 \
+  --cell-annotations leiden, niche \
+  --features Cd4,Cd8a,Gfap \
+  --features-list genes.txt \
+  --feature-encoding auto \
+  --feature-storage embedded \
+  --feature-sparse-zero-threshold 0.8 \
+  --neighbor-stats-annotations cell_type \
+  --neighbor-permutations 20 \
+  --pseudobulk auto \
+  --pseudobulk-additional-annotations niche \
+  --pseudobulk-counts-layer counts \
+  --pseudobulk-min-cells-per-pseudobulk 20 \
+  --pseudobulk-min-pct-expressed 0.2 \
+  --pseudobulk-p-adjust-method fdr_bh \
+  --pseudobulk-padj-cutoff 0.05 \
+  --pseudobulk-log2fc-cutoff 1 \
+  --pseudobulk-deseq2-fit-type parametric \
+  --pseudobulk-n-cpus 1 \
+  --pseudobulk-embed-top-n-per-comparison 2 \
+  --pathway-organism Mouse \
+  --pathway-top-n 10 \
+  --pathway-min-overlap 3 \
+  --pathway-gsea-permutations 100 \
+  --interaction-markers auto \
+  --section-rotations sample_a:37.5,sample_b:-90
 ```
 
 #### CLI Options
@@ -159,50 +257,128 @@ karospace your_data.h5ad -o viewer.html --color leiden
 | Option | Description | Default |
 |--------|-------------|---------|
 | `-o, --output` | Output HTML file path | `karospace.html` |
-| `-c, --color` | Initial color column | `leiden` |
-| `--additional-colors` | Comma-separated extra obs columns to embed as selectable colors (needed to compare two annotations in the River plot) | empty |
+| `--inspect-input` | Read input metadata and exit without building sections, downsampling, exporting HTML, or running analytics | off |
+| `--main-cell-annotation` | Main cell-annotation column shown first in the viewer | `leiden` |
+| `--cell-annotations` | Comma-separated extra cell obs annotation columns to embed as selectable cell annotations | empty |
+| `--features` | Comma-separated features or genes to preload; significant pseudobulk DE genes are embedded automatically up to the per-comparison cap | empty |
+| `--features-list` | Text file with one feature/gene per line; combined with `--features` and deduplicated | empty |
+| `--section-metadata` | Comma-separated obs columns to use as section metadata shown in the visual params bar/filter chips | loader defaults |
+| `--section-metadata-extra` | Comma-separated obs columns to store as section metadata without visual params bar/filter chips | empty |
+| `--metadata-value-order` | JSON object mapping metadata columns to ordered value lists | empty |
+| `--metadata-max-columns` | Limit metadata columns used, preserving order | empty |
 | `--metadata-labels` | JSON object mapping metadata/obs column keys to display labels in the viewer UI | empty |
-| `-g, --groupby` | Column to group sections by | `sample_id` |
+| `-g, --section-key` | Column to identify sections | `sample_id` |
+| `--section-order` | Comma-separated section IDs to control section order | empty |
+| `--spatial-key` | Key in `adata.obsm` containing spatial coordinates, or target key created from `--spatial-x/--spatial-y` | `spatial` |
+| `--spatial-x` | Obs/metadata column to use as X coordinates; requires `--spatial-y` | empty |
+| `--spatial-y` | Obs/metadata column to use as Y coordinates; requires `--spatial-x` | empty |
+| `--spatialdata-table` | AnnData table key to use when the input is a SpatialData object/store; required when multiple tables are present and no table named `table` exists | empty |
 | `--min-panel-size` | Minimum panel width in pixels | `150` |
 | `--spot-size` | Cell/spot size (`auto` or positive number) | `auto` |
 | `--downsample` | Max cells per section | None |
-| `--theme` | Color theme (`light` or `dark`) | `light` |
 | `--title` | Page title | `KaroSpace` |
-| `--gene-encoding` | Gene vector encoding (`auto`, `dense`, `sparse`) | `auto` |
-| `--gene-storage` | Gene storage mode (`embedded`, `sidecar`) | `embedded` |
-| `--gene-aux-path` | Path for the gene sidecar manifest JSON | auto |
-| `--gene-sparse-zero-threshold` | Zero fraction threshold for `auto` sparse encoding | `0.8` |
-| `--no-pack-arrays` | Disable base64 packing of large per-section arrays | off |
-| `--pack-arrays-min-len` | Only pack arrays when section cell count ≥ this value | `1024` |
+| `--outlineby` | Metadata column used to paint panel outlines; use `None` to disable | None |
+| `--viewer-info-html` | HTML string shown in the viewer Info tab | default info |
+| `--viewer-info-html-file` | Path to an HTML fragment shown in the viewer Info tab | empty |
+| `--tutorial` | (in development) Embed the static Story Mode HTML tutorial; users start it from the graduation-cap control and move through prepared viewer states with Next/Back | off |
+| `--feature-encoding` | Gene vector encoding (`auto`, `dense`, `sparse`) | `auto` |
+| `--feature-value-encoding` | Sidecar/package gene value encoding for binary shards (`uint16`, `uint8`) | `uint16` |
+| `--feature-storage` | Feature storage mode: `embedded` stores requested/top DE expression vectors in the HTML; `sidecar` stores all gene expression vectors outside the HTML | `embedded` |
+| `--feature-manifest-path` | Path for the feature sidecar manifest JSON | auto |
+| `--feature-sidecar-shard-size` | Genes/features per sidecar shard | `256` |
+| `--feature-sparse-zero-threshold` | Zero fraction threshold for `auto` sparse encoding | `0.8` |
+| `--modalities` | Comma-separated modalities to export | all detected |
 | `--neighbor-permutations` | Permutations for neighbor enrichment z-scores | `auto` |
-| `--neighbor-stats-groupby` | Obs columns for neighbor composition stats (`auto` or comma-separated) | `auto` |
-| `--marker-genes-groupby` | Obs columns to compute marker genes for | empty |
-| `--interaction-markers-groupby` | Obs columns to compute contact-conditioned markers for | empty |
-| `--cluster-de-groupby` | Categorical obs columns for pairwise cluster DE (`Insights → Compare`) | empty |
-| `--cluster-de-top-n` | Top genes kept per cluster pair | `20` |
-| `--cluster-de-method` | `scanpy.tl.rank_genes_groups` method | `wilcoxon` |
-| `--cluster-de-layer` | AnnData layer for pairwise cluster DE | `normalized` |
-| `--cluster-de-min-cells` | Minimum cells required in both clusters | `20` |
+| `--neighbor-stats-annotations` | Obs columns for neighbor composition stats (`auto` or comma-separated) | `auto` |
+| `--neighbor-stats-seed` | Random seed for neighbor enrichment permutations | `0` |
+| `--interaction-markers` | Contact-conditioned pseudobulk marker mode (`auto`, `None`) | `auto` |
+| `--interaction-markers-top-targets` | Target categories evaluated per source for contact-conditioned markers | `5` |
+| `--interaction-markers-top-genes` | Top DE genes kept per source-target interaction | `20` |
+| `--interaction-markers-min-cells` | Minimum cells per replicate contact+ and contact- pseudobulk sample | `30` |
+| `--interaction-markers-min-neighbors` | Minimum target neighbors to classify contact+ source cells | `1` |
+| `--pseudobulk` | Category pseudobulk DE mode (`auto`, `None`) | `auto` |
+| `--pseudobulk-additional-annotations` | Additional annotation columns to analyze when pseudobulk or interaction markers are enabled. `--main-cell-annotation` is included automatically | empty |
+| `--pseudobulk-replicate-annotation` | Obs annotation to use as the biological replicate for pseudobulk analyses; defaults to `--section-key` | `--section-key` |
+| `--pseudobulk-counts-layer` | Raw-count AnnData layer for pseudobulk aggregation; use `None` for `adata.X` | `counts` |
+| `--pseudobulk-simple-constrast-categories` | Categories to report in category-versus-category contrasts. With `--pseudobulk-additional-annotations`, use annotation-specific JSON wrapped in single quotes, such as `'{"cell_type":["Astrocyte","B cell"],"region":["Cortex"]}'`, or a nested list matching `[main-cell-annotation, additional...]` | empty |
+| `--pseudobulk-min-cell-counts` | Exclude cells with fewer than this many total raw counts before pseudobulk aggregation; use `0` to disable | `0` |
+| `--pseudobulk-min-gene-counts` | Exclude genes with fewer than this many total raw pseudobulk counts in the shared DESeq2 fit; use `0` to disable | `0` |
+| `--pseudobulk-min-cells-per-pseudobulk` | Minimum cells required in each replicate × annotation pseudobulk sample before it can enter the shared DESeq2 fit | `20` |
+| `--pseudobulk-min-replicates` | Minimum paired replicates required for each reported contrast | `2` |
+| `--pseudobulk-min-pct-expressed` | Minimum fraction of cells expressing a gene required in at least one compared group before `DeseqStats`; values >1 are interpreted as percentages | `0` |
+| `--pseudobulk-p-adjust-method` | Multiple-testing correction method (`fdr_bh`, `bonferroni`, `holm`, `none`) | `fdr_bh` |
+| `--pseudobulk-padj-cutoff` | Adjusted p-value threshold for DE calls and plot coloring; DE genes must pass `padj < cutoff` | `0.05` |
+| `--pseudobulk-log2fc-cutoff` | Absolute log2FC cutoff for volcano highlighting and DE table inclusion | `1` |
+| `--pseudobulk-deseq2-fit-type` | PyDESeq2 dispersion trend fit type; use `mean` to avoid parametric trend fallback warnings | `parametric` |
+| `--pseudobulk-n-cpus` | CPU workers for the shared DESeq2 fit and maximum parallel shared-fit contrasts | `1` |
+| `--pseudobulk-embed-top-n-per-comparison` | Significant DE genes to auto-embed per category/contact comparison in embedded mode; ignored by sidecar mode because all gene expression vectors are sidecar-loaded | `2` |
+| `--pathway-gmt` | GMT pathway file(s) for ORA/GSEA after Simple design DE; omitted uses Reactome via GSEApy | Reactome |
+| `--pathway-organism` | Organism passed to GSEApy for default Reactome loading, e.g. `Human` or `Mouse` | `Mouse` |
+| `--pathway-top-n` | Maximum ORA/GSEA pathways stored per direction and comparison | `10` |
+| `--pathway-min-overlap` | Minimum pathway/query gene overlap for ORA/GSEA reporting | `3` |
+| `--pathway-gsea-permutations` | Permutations for compact preranked GSEA p-values | `100` |
 | `--section-rotations` | Comma-separated `section_id:angle` pairs | empty |
-| `--gene-correlation-top-n` | Correlated genes shown per embedded gene in discovery panel | `10` |
+| `--gene-correlation-top-n` | Correlated genes shown per embedded gene in discovery panel | `5` |
+| `--category-means-n-genes` | Maximum embedded pseudobulk-DE genes used for category mean summaries; use `0` to disable | `500` |
+| `--spatial-variable-genes-n` | Top variable genes scored with Moran's I; use `0` to disable | `20` |
+| `--deconvolutions` | JSON object mapping deconvolution labels to obs/obsm keys | empty |
+| `--section-images` | JSON object mapping section IDs to image paths/specs | empty |
+| `--section-images-max-px` | Maximum image dimension when embedding section images | `4096` |
+| `--scalebar-unit` | Unit label for the scalebar | `μm` |
+
+> [!NOTE]
+> See [FEATURES_SUMMARY.md](FEATURES_SUMMARY.md) for a guided overview of the main HTML viewer features.
 
 ## Data Requirements
 
+KaroSpace accepts:
+
+- An `.h5ad` file path
+- An `AnnData` object passed through the Python API
+- A SpatialData `.zarr` store path
+- A SpatialData object passed through the Python API
+
+Use `inspect_input_file(...)` in Python or `--inspect-input` on the CLI to list available `adata.obs` metadata, value types, example values, and missing-value counts before choosing annotation, section metadata, and pseudobulk arguments. This inspect path only reads the AnnData table and does not validate coordinates or run the export pipeline.
+
+Internally, SpatialData input is normalized to one AnnData table before export. The selected table must satisfy the same requirements as a regular AnnData input:
+
 - **`adata.obsm['spatial']`** — 2D coordinates for each cell (x, y)
-- **`adata.obs[groupby]`** — Column identifying which section each cell belongs to
-- **Categorical or numeric columns in `adata.obs`** — For coloring cells
+- **`adata.obs[section_key]`** — Column identifying which section each cell belongs to
+- **Categorical or numeric columns in `adata.obs`** — For assigning cell annotations and visualizing cells
+
+For SpatialData tables, use `spatialdata_table="..."` / `--spatialdata-table ...` when the object contains more than one table. If the default `section_key="sample_id"` is missing, KaroSpace uses the table's SpatialData `region_key` automatically when available. If no per-cell region key exists, the table is exported as one section.
+
+If a SpatialData `.zarr` store contains invalid non-table elements, such as images with missing transformations, KaroSpace falls back to reading the selected AnnData table directly from `tables/<table>` instead of failing the whole export. The image/label elements are ignored by this fallback; pass separate section images with `--section-images` if you want image overlays in the viewer.
+
+If coordinates are stored as separate obs columns instead of an `obsm` matrix,
+pass them on the CLI:
+
+```bash
+karospace your_data.h5ad -o viewer.html --spatial-x x_centroid --spatial-y y_centroid
+```
+
+This creates `adata.obsm["spatial"]` during loading. Use `--spatial-key` to pick
+a different target key.
+
+> [!TIP]
+> See [`examples/`](examples/) for complete dataset-specific export scripts.
 
 ### Optional metadata
 
-- `course` — Experimental phase (e.g., `"naive"`, `"peak_I"`); sections are outlined by this column when present
-- `region`, `condition`, `timepoint` — Used for filter chips
+Use `section_metadata=[...]` / `--section-metadata ...` for section-level obs columns that should appear in the visual params bar and filter chips. Use `section_metadata_extra=[...]` / `--section-metadata-extra ...` for section-level metadata that should be stored in the viewer payload but not shown as filter chips.
+
+- `course` — Experimental phase (e.g., `"naive"`, `"peak_I"`); sections are outlined by this column when `outlineby="course"` / `--outlineby course` is used
+- `region`, `condition`, `timepoint` — Typical section metadata shown as filter chips
+
+Use `cell_annotations=[...]` / `--cell-annotations ...` for additional cell-level annotation columns that should be available in annotation dropdowns and comparison panels.
 
 Control display order of metadata values and section ordering via `metadata_value_order`:
 
 ```python
 dataset = load_spatial_data(
     "your_data.h5ad",
-    groupby="sample_id",
+    section_key="sample_id",
+    section_metadata="course,
     metadata_value_order={
         "course": ["naive", "peak_I", "peak_II", "peak_III"],
     },
@@ -217,67 +393,162 @@ If `adata.uns["{col}_colors"]` exists (scanpy convention — list of hex aligned
 
 If `adata.obsp` contains a neighbor graph (`spatial_connectivities`, `connectivities`, `neighbors`, or `neighbor_graph`), KaroSpace exposes graph overlay and neighbor-hover controls.
 
-To enable contact-conditioned interaction markers, pass `interaction_markers_groupby=[...]` (typically the same categorical column used for coloring).
+If the export is downsampled, the visible graph overlay and neighbor-hover controls are downsampled with the displayed cells, so edges to cells that were not exported are not shown.
 
-To enable pairwise cluster DE in `Insights → Genes → Compare`, pass `cluster_de_groupby=[...]`.
+`Insights → Neighbors → Enrichment` and `Interactions` use neighbor composition statistics for the selected Exploration annotation. If no graph or no stats exist for that annotation, the viewer shows a yellow warning and lists the annotations that do have neighbor stats. `Insights → Neighbors → Dispersion` is computed from all cells before HTML downsampling for the main cells annotation and any requested `cell_annotations`, then summarizes whether each category is clustered, random, or dispersed relative to the observed all-cell layout.
 
-## Examples
+### Optional pseudobulk category selection
 
-See [`examples/`](examples/) for complete dataset-specific export scripts.
+Pseudobulk category DE is precomputed automatically for the initial `main cells annotation` column unless `pseudobulk=None` / `--pseudobulk None` is used, and shown in `Insights → Compare → Per sample → Simple design`. KaroSpace aggregates raw counts by replicate and annotation, keeps replicate × annotation pseudobulk samples with at least `pseudobulk_min_cells_per_pseudobulk` / `--pseudobulk-min-cells-per-pseudobulk` cells, fits one shared `~ replicate + annotation` DESeq2 model per annotation column, then extracts category-versus-category contrasts. It also extracts a balanced-rest contrast for every category: the category minus the equally weighted mean of all other retained annotation categories. Genes that do not reach `pseudobulk_min_pct_expressed` / `--pseudobulk-min-pct-expressed` in at least one compared group are removed before `DeseqStats`, so they do not enter the contrast-level multiple-testing correction. Pairwise PCA/distance diagnostics are generated automatically for selected category pairs.
 
-## Viewer Controls
+When selecting specific pairwise categories from the command line, wrap listed values in single quotes:
 
-### Grid View
-- **Click a section** — Open detailed modal view
-- **Color dropdown** — Switch between annotation columns
-- **Gene input** — Fuzzy search with keyboard navigation, recent genes, saved panels, and marker suggestions
-- **Size slider** — Adjust spot size
-- **Filter chips** — Filter sections by metadata
-- **Legend items** — Toggle categories; spotlight one across grid and UMAP
-- **Insights button** — Toggle the insights panel (`Summary`, `Compare`, `Genes`, `Neighborhood`, `Regions`)
-- **Screenshot / Theme** — Download snapshot or toggle dark/light mode
-
-### Modal View
-- **Scroll** — Zoom in/out
-- **Drag** — Pan; `Space` + drag to pan while Select or Annotate is active
-- **Split button** — Open the A/B comparison panel; drag the divider line directly on the canvas
-- **Magic Wand** — Draw lasso selection; opens `Genes in selection` ranked gene panel
-- **Annotate** — Draw persistent polygons; export as JSON with cell indices
-- **Pick type** — Click a cell to spotlight its category
-- **Focused view** — Open the current selection as a filtered subview
-- **Hide tools** — Collapse the toolbar for an unobstructed canvas
-- **Escape or click outside** — Close modal
-
-### UMAP View
-- **UMAP button** — Toggle panel; dock to any corner
-- **Magic Wand** — Lasso selection synced to spatial views
-- **Scroll / drag** — Zoom and pan the embedding
+```bash
+--main-cell-annotation cell_type \
+--pseudobulk-additional-annotations region \
+--pseudobulk-simple-constrast-categories '{"cell_type":["Astrocyte","B cell"],"region":["Cortex"]}'
+```
 
 ## Deployment and Sharing
 
-- **Single-file HTML** — Default `gene_storage="embedded"` writes one standalone file; works offline
-- **Sidecar mode** — `gene_storage="sidecar"` writes HTML + `<name>.genes.json` + `<name>.genes/` shards; requires HTTP(S) serving
-- **`.karospace` packages** — Self-contained ZIP bundles combining the viewer HTML and all sidecar assets; open via the hosted loader or a local `loader.html`. All processing happens in the browser — data never leaves the user's machine
-- **Static hosting** — Both embedded and sidecar modes work on GitHub Pages, S3, or any lab intranet
-- **Sharing** — Send the HTML directly (embedded), or share HTML + manifest + shard directory via a hosted location (sidecar)
+KaroSpace has three practical export modes:
+
+| Mode | Output | Best for | How to open |
+| --- | --- | --- | --- |
+| Embedded HTML | `viewer.html` | Small to medium gene payloads, easiest sharing | Double-click or open the file in a browser |
+| Sidecar viewer | `viewer.html` + `viewer.features.json` + `viewer.features/` | Large gene payloads with lazy gene loading | Serve the directory over HTTP(S), then open the HTML URL |
+| `.karospace` package | `viewer.karospace` + optional `viewer.loader.html` | One-file sharing of a sidecar viewer | Drop the package into the hosted loader or the generated local loader |
+
+Sidecar mode keeps the initial HTML smaller by moving all gene expression vectors into a manifest and binary shard files. The viewer fetches those shards only when a gene is needed. This is useful when many genes or modalities would make a single HTML file too large.
+
+### Create a sidecar viewer
+
+CLI:
+
+```bash
+karospace your_data.h5ad \
+  -o viewer.html \
+  --main-cell-annotation cell_type \
+  --features Cd4,Cd8a,Gfap \
+  --feature-storage sidecar \
+  --feature-manifest-path viewer.features.json
+```
+
+Python API:
+
+```python
+from karospace import load_spatial_data, export_to_html
+
+dataset = load_spatial_data("your_data.h5ad", section_key="sample_id")
+
+export_to_html(
+    dataset,
+    output_path="viewer.html",
+    main_cell_annotation="cell_type",
+    features=["Cd4", "Cd8a", "Gfap"],
+    features_list="genes.txt",
+    feature_storage="sidecar",
+    feature_manifest_path="viewer.features.json"
+)
+```
+
+This writes:
+
+```text
+viewer.html
+viewer.features.json
+viewer.features/
+  000.bin
+  001.bin
+  ...
+```
+
+> [!IMPORTANT]
+> Keep all three elements together. The HTML contains the viewer and embedded summary data, but no gene expression vectors in sidecar mode; `viewer.features.json` is the sidecar manifest; `viewer.features/` contains the binary feature shards.
+
+### Open a sidecar viewer
+
+> [!CAUTION]
+> Do not open sidecar HTML directly with `file://`; browsers block local shard loading.
+
+Serve the output directory instead:
+
+```bash
+python -m http.server --directory /path/to/output-dir 8000
+```
+
+Then open:
+
+```text
+http://localhost:8000/viewer.html
+```
+
+> [!TIP]
+> For deployment, upload the HTML, manifest, and shard directory with the same relative paths to GitHub Pages, S3, an institutional web server, or a lab intranet. If `viewer.html` references `viewer.features.json`, then `viewer.features.json` must be next to the HTML and its `viewer.features/` shard directory must also be next to the HTML unless you intentionally used matching custom paths.
+
+### Create a `.karospace` package directly
+
+Use `.karospace` output when you want sidecar loading with a more compact shareable file:
+
+CLI :
+
+```bash
+karospace your_data.h5ad \
+  -o viewer.karospace \
+  --main-cell-annotation cell_type \
+  --feature-storage sidecar \
+  --feature-manifest-path viewer.features.json
+```
+
+Python API:
+
+```python
+export_to_html(
+    dataset,
+    output_path="viewer.karospace",
+    main_cell_annotation="cell_type",
+    feature_storage="sidecar",
+    feature_manifest_path="viewer.features.json",
+)
+```
+
+Direct package export writes:
+
+```text
+viewer.karospace
+viewer.loader.html
+```
+
+The `.karospace` file is a ZIP-based package containing `index.html`, `karospace-package.json`, the sidecar manifest, and the binary shard directory. The sibling `viewer.loader.html` is a local opener; it is not part of the package itself.
+
+> [!NOTE]
+> Open the package by visiting the hosted loader at [karospace.se/open](https://karospace.se/open) or by opening `viewer.loader.html` and dropping/selecting `viewer.karospace`. Package loading happens in the browser; the package is read locally by the browser and is not uploaded by the local loader.
 
 ### Package an existing sidecar into `.karospace`
 
-```bash
-# Short form (auto-detects sidecar paths from the HTML)
-karospace package-sidecar BALO.html --output BALO.karospace
+If you already have an unpacked sidecar viewer, package it without recomputing analytics:
 
-# Explicit form
-karospace package-sidecar BALO.html \
-  --output BALO.karospace \
-  --gene-aux-path BALO.genes.json \
-  --gene-shard-dir BALO.genes \
-  --loader-output BALO.loader.html
+```bash
+# Short form: auto-detect sidecar paths from the HTML.
+karospace package-sidecar viewer.html --output viewer.karospace
+
+# Explicit form: use this when the manifest or shard directory is not next to the HTML.
+karospace package-sidecar viewer.html \
+  --output viewer.karospace \
+  --feature-manifest-path viewer.features.json \
+  --feature-shard-dir viewer.features \
+  --loader-output viewer.loader.html
 ```
 
-This wraps existing sidecar assets into a `.karospace` archive without recomputing analytics or rewriting the viewer HTML.
+### Sidecar troubleshooting
 
-### Integrate polygon annotations back into AnnData
+> [!TIP]
+> - **The viewer opens but genes do not load**: check that the HTML is served over HTTP(S), not opened with `file://`.
+> - **404 for `viewer.features.json` or `.bin` shards**: keep `viewer.html`, `viewer.features.json`, and `viewer.features/` in the same relative layout used at export time.
+> - **Custom `--feature-manifest-path`**: for normal sidecar HTML it may be a path; for direct `.karospace` export it must be a filename inside the package.
+> - **Large packages**: increase `--feature-sidecar-shard-size` for fewer shard files, decrease it for smaller individual requests.
+
+## Integrate polygon regions back into AnnData
 
 ```python
 import scanpy as sc
@@ -293,6 +564,15 @@ integrate_polygon_annotations(
 )
 adata.write_h5ad("your_data_with_polygons.h5ad")
 ```
+
+## Browser Considerations
+
+> [!WARNING]
+> KaroSpace is canvas-heavy. Chrome/Chromium is generally fastest; Safari can be noticeably slower on large datasets. The viewer caps canvas DPR at `1.0` in Safari by default to reduce pixel work on Retina displays.
+> For large datasets:
+> - Use `downsample` to limit cells per section
+> - Lower `min_panel_size` to reduce pixels drawn per thumbnail
+> - Keep the neighbor graph toggle off unless needed
 
 ## License
 

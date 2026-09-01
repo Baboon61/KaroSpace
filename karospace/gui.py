@@ -81,8 +81,8 @@ FIELD_HELP_TEXT = """Input / Output
 
 Core Options
 - Group by: Column in adata.obs that identifies sections (for example sample_id).
-- Initial color: Starting color variable (obs column or a pre-loaded gene).
-- Outline by: Optional obs/metadata column used for panel outline colors. Leave blank to disable.
+- Main cells annotation: Starting cell annotation variable (obs column or a pre-loaded gene).
+- Outline by: Optional obs/metadata column used to paint panel outlines. Leave blank to disable.
 - Theme: light or dark.
 - Title: Viewer page title shown in header/browser tab.
 - Min panel size: Integer > 0 (typical 100-200).
@@ -90,7 +90,7 @@ Core Options
 - Downsample: Empty (disabled) or integer > 0 (max cells per section).
 
 Dataset Loading Options
-- Metadata columns: Comma/newline-separated obs columns used as metadata/filter chips.
+- Metadata section: Comma/newline-separated obs columns used as section metadata/filter chips.
   Empty uses defaults (course, region, condition, timepoint, ...).
 - Metadata max columns: Empty or integer >= 0.
 - Metadata value order (JSON): Dict mapping metadata column -> ordered values.
@@ -100,31 +100,25 @@ Dataset Loading Options
   Example:
   {"sample_id": "Sample", "last_score": "Disease score"}
 
-Color & Gene Content
-- Additional colors: Comma/newline-separated obs columns to include in color dropdown.
+Annotation & Gene Content
+- Cells annotations: Comma/newline-separated obs columns to include in the annotation dropdown.
 - Genes: Hand-picked gene symbols (comma/newline-separated) to pre-load for expression view.
-- Use HVGs if available: If checked and adata.var['highly_variable'] exists, HVGs are used.
-- HVG limit: Integer >= 0 controlling maximum included HVGs.
+- In embedded mode, significant shared-fit pseudobulk DE genes are embedded automatically up to the per-comparison cap.
 
 Advanced Options
 - Gene encoding: auto | dense | sparse.
-- Gene storage: embedded keeps genes in the HTML; sidecar writes extra genes to a separate JSON file.
-- Gene aux path: Optional override for the sidecar JSON path. Leave blank to place it next to the HTML.
-- Gene sparse threshold: Number between 0 and 1 (used when encoding=auto).
-- Enable packed arrays: Pack large arrays for smaller/faster HTML load.
-- Pack arrays min len: Integer > 0.
+- Feature storage: embedded keeps requested/top DE genes in the HTML; sidecar writes all gene expression vectors to separate sidecar files.
+- Feature manifest path: Optional override for the sidecar JSON path. Leave blank to place it next to the HTML.
+- Feature sparse threshold: Number between 0 and 1 (used when encoding=auto).
 - Neighbor permutations: "auto" or integer >= 0.
-- Neighbor stats groupby: "auto" or comma/newline-separated obs columns.
+- Neighbor stats annotations: "auto" or comma/newline-separated obs columns.
 - Neighbor stats seed: Integer random seed.
-- Marker genes groupby: Comma/newline-separated categorical obs columns.
-- Marker genes top N: Integer > 0.
-- Interaction markers groupby: Comma/newline-separated categorical obs columns.
 - Interaction top targets: Integer > 0.
 - Interaction top genes: Integer > 0.
 - Interaction min cells: Integer > 0.
 - Interaction min neighbors: Integer > 0.
-- Interaction method: Differential expression method (for example wilcoxon, t-test).
-- Interaction layer: AnnData layer name (for example normalized). Leave blank to fallback.
+- Pseudobulk DE uses one shared replicate + annotation fit for each selected annotation, with category-versus-category and balanced-rest contrasts. Non-embedded DE genes remain visible but cannot be clicked for expression.
+- Interaction markers use the same pseudobulk counts layer and section replicate.
 """
 
 UI_COLORS = {
@@ -282,37 +276,29 @@ class KaroSpaceExportGUI:
 
         self.input_path = tk.StringVar(value=initial_input or "")
         self.output_path = tk.StringVar(value=initial_output or "karospace.html")
-        self.groupby = tk.StringVar(value="sample_id")
+        self.section_key = tk.StringVar(value="sample_id")
         self.spatial_key = tk.StringVar(value="spatial")
-        self.color = tk.StringVar(value="leiden")
+        self.annotation = tk.StringVar(value="leiden")
         self.outline_by = tk.StringVar(value="condition")
         self.title = tk.StringVar(value="KaroSpace")
-        self.theme = tk.StringVar(value="light")
-        self.metadata_columns = tk.StringVar(value="condition")
+        self.section_metadata = tk.StringVar(value="condition")
         self.metadata_max_columns = tk.StringVar(value="")
         self.metadata_labels = tk.StringVar(value='{\n  "condition": "Condition"\n}')
         self.min_panel_size = tk.StringVar(value="150")
         self.spot_size = tk.StringVar(value="auto")
         self.downsample = tk.StringVar(value="")
-        self.use_hvgs = tk.BooleanVar(value=True)
-        self.hvg_limit = tk.StringVar(value="20")
-        self.gene_correlation_top_n = tk.StringVar(value="10")
-        self.spatial_variable_genes_n = tk.StringVar(value="200")
-        self.gene_encoding = tk.StringVar(value="auto")
-        self.gene_storage = tk.StringVar(value="embedded")
-        self.gene_aux_path = tk.StringVar(value="")
-        self.gene_sparse_zero_threshold = tk.StringVar(value="0.8")
-        self.pack_arrays = tk.BooleanVar(value=True)
-        self.pack_arrays_min_len = tk.StringVar(value="1024")
+        self.gene_correlation_top_n = tk.StringVar(value="5")
+        self.spatial_variable_genes_n = tk.StringVar(value="20")
+        self.feature_encoding = tk.StringVar(value="auto")
+        self.feature_storage = tk.StringVar(value="embedded")
+        self.feature_manifest_path = tk.StringVar(value="")
+        self.feature_sparse_zero_threshold = tk.StringVar(value="0.8")
         self.neighbor_permutations = tk.StringVar(value="auto")
         self.neighbor_stats_seed = tk.StringVar(value="0")
-        self.marker_genes_top_n = tk.StringVar(value="30")
-        self.interaction_markers_top_targets = tk.StringVar(value="8")
+        self.interaction_markers_top_targets = tk.StringVar(value="5")
         self.interaction_markers_top_genes = tk.StringVar(value="20")
         self.interaction_markers_min_cells = tk.StringVar(value="30")
         self.interaction_markers_min_neighbors = tk.StringVar(value="1")
-        self.interaction_markers_method = tk.StringVar(value="wilcoxon")
-        self.interaction_markers_layer = tk.StringVar(value="normalized")
         self.status_text = tk.StringVar(value="Ready.")
         self.advanced_expanded = tk.BooleanVar(value=False)
         self.neighbor_stats_auto = tk.BooleanVar(value=True)
@@ -504,7 +490,7 @@ class KaroSpaceExportGUI:
         ttk.Label(header, text="KaroSpaceBuilder", style="AppTitle.TLabel").pack(anchor="w")
         ttk.Label(
             header,
-            text="Build and export shareable KaroSpace viewers with full control over colors, genes, and analytics.",
+            text="Build and export shareable KaroSpace viewers with full control over annotations, genes, and analytics.",
             style="Subtitle.TLabel",
         ).pack(anchor="w", pady=(4, 0))
 
@@ -544,7 +530,7 @@ class KaroSpaceExportGUI:
         advanced_tab = ttk.Frame(self.tabs, style="App.TFrame", padding=4)
         help_tab = ttk.Frame(self.tabs, style="App.TFrame", padding=4)
         self.tabs.add(basic_tab, text="Basic")
-        self.tabs.add(colors_tab, text="Colors & Genes")
+        self.tabs.add(colors_tab, text="Annotations & Genes")
         self.tabs.add(advanced_tab, text="Advanced")
         self.tabs.add(help_tab, text="Help")
 
@@ -569,34 +555,30 @@ class KaroSpaceExportGUI:
         core_group.pack(fill="x", pady=(0, 10))
         core_group.columnconfigure(1, weight=1)
         core_group.columnconfigure(3, weight=1)
-        ttk.Label(core_group, text="Group by").grid(row=0, column=0, sticky="w", pady=4)
-        self.groupby_combo = ttk.Combobox(core_group, textvariable=self.groupby, state="normal")
-        self.groupby_combo.grid(row=0, column=1, sticky="ew", padx=(8, 16), pady=4)
-        ttk.Label(core_group, text="Initial color").grid(row=0, column=2, sticky="w", pady=4)
-        self.color_combo = ttk.Combobox(core_group, textvariable=self.color, state="normal")
+        ttk.Label(core_group, text="Section key").grid(row=0, column=0, sticky="w", pady=4)
+        self.section_key_combo = ttk.Combobox(core_group, textvariable=self.section_key, state="normal")
+        self.section_key_combo.grid(row=0, column=1, sticky="ew", padx=(8, 16), pady=4)
+        ttk.Label(core_group, text="Main cells annotation").grid(row=0, column=2, sticky="w", pady=4)
+        self.color_combo = ttk.Combobox(core_group, textvariable=self.annotation, state="normal")
         self.color_combo.grid(row=0, column=3, sticky="ew", pady=4)
         ttk.Label(core_group, text="Outline by").grid(row=1, column=0, sticky="w", pady=4)
         self.outline_combo = ttk.Combobox(core_group, textvariable=self.outline_by, state="normal")
         self.outline_combo.grid(row=1, column=1, sticky="ew", padx=(8, 16), pady=4)
-        ttk.Label(core_group, text="Theme").grid(row=1, column=2, sticky="w", pady=4)
-        ttk.Combobox(core_group, textvariable=self.theme, values=["light", "dark"], state="readonly").grid(
-            row=1, column=3, sticky="ew", pady=4
-        )
-        ttk.Label(core_group, text="Title").grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Entry(core_group, textvariable=self.title).grid(row=2, column=1, sticky="ew", padx=(8, 16), pady=4)
-        ttk.Label(core_group, text="Min panel size").grid(row=2, column=2, sticky="w", pady=4)
-        ttk.Entry(core_group, textvariable=self.min_panel_size).grid(row=2, column=3, sticky="ew", pady=4)
-        ttk.Label(core_group, text="Spot size").grid(row=3, column=0, sticky="w", pady=4)
-        ttk.Entry(core_group, textvariable=self.spot_size).grid(row=3, column=1, sticky="ew", padx=(8, 16), pady=4)
-        ttk.Label(core_group, text="Downsample").grid(row=3, column=2, sticky="w", pady=4)
-        ttk.Entry(core_group, textvariable=self.downsample).grid(row=3, column=3, sticky="ew", pady=4)
+        ttk.Label(core_group, text="Title").grid(row=1, column=2, sticky="w", pady=4)
+        ttk.Entry(core_group, textvariable=self.title).grid(row=1, column=3, sticky="ew", pady=4)
+        ttk.Label(core_group, text="Min panel size").grid(row=2, column=0, sticky="w", pady=4)
+        ttk.Entry(core_group, textvariable=self.min_panel_size).grid(row=2, column=1, sticky="ew", padx=(8, 16), pady=4)
+        ttk.Label(core_group, text="Spot size").grid(row=2, column=2, sticky="w", pady=4)
+        ttk.Entry(core_group, textvariable=self.spot_size).grid(row=2, column=3, sticky="ew", pady=4)
+        ttk.Label(core_group, text="Downsample").grid(row=3, column=0, sticky="w", pady=4)
+        ttk.Entry(core_group, textvariable=self.downsample).grid(row=3, column=1, sticky="ew", padx=(8, 16), pady=4)
 
         dataset_group = ttk.LabelFrame(basic_tab, text="Dataset Loading Options", padding=12, style="Card.TLabelframe")
         dataset_group.pack(fill="x", pady=(0, 10))
         dataset_group.columnconfigure(1, weight=1)
         dataset_group.columnconfigure(3, weight=1)
-        ttk.Label(dataset_group, text="Metadata columns").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(dataset_group, textvariable=self.metadata_columns).grid(row=0, column=1, sticky="ew", padx=(8, 16), pady=4)
+        ttk.Label(dataset_group, text="Metadata section").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Entry(dataset_group, textvariable=self.section_metadata).grid(row=0, column=1, sticky="ew", padx=(8, 16), pady=4)
         ttk.Label(dataset_group, text="Metadata max columns").grid(row=0, column=2, sticky="w", pady=4)
         ttk.Entry(dataset_group, textvariable=self.metadata_max_columns).grid(row=0, column=3, sticky="ew", pady=4)
         ttk.Label(dataset_group, text="Metadata value order (JSON)").grid(row=1, column=0, sticky="nw", pady=4)
@@ -636,15 +618,15 @@ class KaroSpaceExportGUI:
         self.spatial_key_combo.grid(row=3, column=1, sticky="ew", padx=(8, 16), pady=4)
 
 
-        colors_group = ttk.LabelFrame(colors_tab, text="Color Layers", padding=12, style="Card.TLabelframe")
+        colors_group = ttk.LabelFrame(colors_tab, text="Annotation Layers", padding=12, style="Card.TLabelframe")
         colors_group.pack(fill="x", pady=(0, 10))
-        self.additional_colors_editor = SearchableListEditor(
+        self.cell_annotations_editor = SearchableListEditor(
             colors_group,
-            "Additional colors",
+            "Cells annotations",
             height=6,
-            help_text="Search obs columns, then click + Add. This controls extra items in the viewer color dropdown.",
+            help_text="Search obs columns, then click + Add. This controls extra items in the viewer annotation dropdown.",
         )
-        self.additional_colors_editor.pack(fill="x")
+        self.cell_annotations_editor.pack(fill="x")
 
         genes_group = ttk.LabelFrame(colors_tab, text="Gene Layers", padding=12, style="Card.TLabelframe")
         genes_group.pack(fill="x", pady=(0, 10))
@@ -658,12 +640,9 @@ class KaroSpaceExportGUI:
 
         genes_opts = ttk.Frame(genes_group, style="Card.TFrame")
         genes_opts.pack(fill="x", pady=(10, 0))
-        ttk.Checkbutton(genes_opts, text="Use HVGs if available", variable=self.use_hvgs).pack(side="left")
-        ttk.Label(genes_opts, text="HVG limit").pack(side="left", padx=(12, 4))
-        ttk.Entry(genes_opts, textvariable=self.hvg_limit, width=8).pack(side="left")
-        ttk.Label(genes_opts, text="Corr. top N").pack(side="left", padx=(12, 4))
+        ttk.Label(genes_opts, text="Corr. top N").pack(side="left", padx=(0, 4))
         ttk.Entry(genes_opts, textvariable=self.gene_correlation_top_n, width=6).pack(side="left")
-        ttk.Label(genes_opts, text="SVG n").pack(side="left", padx=(12, 4))
+        ttk.Label(genes_opts, text="Moran genes N").pack(side="left", padx=(12, 4))
         ttk.Entry(genes_opts, textvariable=self.spatial_variable_genes_n, width=6).pack(side="left")
 
         advanced_group = ttk.LabelFrame(advanced_tab, text="Advanced Options", padding=12, style="Card.TLabelframe")
@@ -680,34 +659,29 @@ class KaroSpaceExportGUI:
         self.advanced_toggle_btn.pack(anchor="w")
         ttk.Label(
             advanced_header,
-            text="Expand to tune encoding, packing, neighbor stats, and interaction marker settings.",
+            text="Expand to tune encoding, neighbor stats, and interaction marker settings.",
             style="Muted.TLabel",
         ).pack(anchor="w", pady=(6, 0))
 
         self.advanced_content = ttk.Frame(advanced_group, style="Card.TFrame")
         self.advanced_content.grid(row=1, column=0, sticky="ew", pady=(10, 0))
 
-        encoding_group = ttk.LabelFrame(self.advanced_content, text="Encoding & Packing", padding=10, style="Card.TLabelframe")
+        encoding_group = ttk.LabelFrame(self.advanced_content, text="Encoding", padding=10, style="Card.TLabelframe")
         encoding_group.pack(fill="x", pady=(0, 10))
         encoding_group.columnconfigure(1, weight=1)
         encoding_group.columnconfigure(3, weight=1)
         ttk.Label(encoding_group, text="Gene encoding").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Combobox(encoding_group, textvariable=self.gene_encoding, values=["auto", "dense", "sparse"], state="readonly").grid(
+        ttk.Combobox(encoding_group, textvariable=self.feature_encoding, values=["auto", "dense", "sparse"], state="readonly").grid(
             row=0, column=1, sticky="ew", padx=(8, 16), pady=4
         )
-        ttk.Label(encoding_group, text="Gene storage").grid(row=0, column=2, sticky="w", pady=4)
-        ttk.Combobox(encoding_group, textvariable=self.gene_storage, values=["embedded", "sidecar"], state="readonly").grid(
+        ttk.Label(encoding_group, text="Feature storage").grid(row=0, column=2, sticky="w", pady=4)
+        ttk.Combobox(encoding_group, textvariable=self.feature_storage, values=["embedded", "sidecar"], state="readonly").grid(
             row=0, column=3, sticky="ew", pady=4
         )
-        ttk.Label(encoding_group, text="Gene sparse threshold").grid(row=1, column=0, sticky="w", pady=4)
-        ttk.Entry(encoding_group, textvariable=self.gene_sparse_zero_threshold).grid(row=1, column=1, sticky="ew", padx=(8, 16), pady=4)
-        ttk.Label(encoding_group, text="Gene aux path").grid(row=1, column=2, sticky="w", pady=4)
-        ttk.Entry(encoding_group, textvariable=self.gene_aux_path).grid(row=1, column=3, sticky="ew", pady=4)
-        ttk.Label(encoding_group, text="Pack arrays min len").grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Entry(encoding_group, textvariable=self.pack_arrays_min_len).grid(row=2, column=1, sticky="ew", padx=(8, 16), pady=4)
-        ttk.Checkbutton(encoding_group, text="Enable packed arrays", variable=self.pack_arrays).grid(
-            row=2, column=2, columnspan=2, sticky="w", pady=4
-        )
+        ttk.Label(encoding_group, text="Feature sparse threshold").grid(row=1, column=0, sticky="w", pady=4)
+        ttk.Entry(encoding_group, textvariable=self.feature_sparse_zero_threshold).grid(row=1, column=1, sticky="ew", padx=(8, 16), pady=4)
+        ttk.Label(encoding_group, text="Feature manifest path").grid(row=1, column=2, sticky="w", pady=4)
+        ttk.Entry(encoding_group, textvariable=self.feature_manifest_path).grid(row=1, column=3, sticky="ew", pady=4)
 
         neighbor_group = ttk.LabelFrame(self.advanced_content, text="Neighbor Stats", padding=10, style="Card.TLabelframe")
         neighbor_group.pack(fill="x", pady=(0, 10))
@@ -719,28 +693,16 @@ class KaroSpaceExportGUI:
         ttk.Entry(neighbor_group, textvariable=self.neighbor_stats_seed).grid(row=0, column=3, sticky="ew", pady=4)
         ttk.Checkbutton(
             neighbor_group,
-            text="Auto neighbor groupby (use initial color)",
+            text="Auto neighbor annotations (use main cell annotation)",
             variable=self.neighbor_stats_auto,
             command=self._on_neighbor_auto_toggle,
         ).grid(row=1, column=0, columnspan=4, sticky="w", pady=(2, 8))
-        self.neighbor_stats_groupby_editor = SearchableListEditor(
+        self.neighbor_stats_annotations_editor = SearchableListEditor(
             neighbor_group,
-            "Neighbor stats groupby columns",
+            "Neighbor stats annotation columns",
             height=5,
         )
-        self.neighbor_stats_groupby_editor.grid(row=2, column=0, columnspan=4, sticky="ew")
-
-        marker_group = ttk.LabelFrame(self.advanced_content, text="Marker Genes", padding=10, style="Card.TLabelframe")
-        marker_group.pack(fill="x", pady=(0, 10))
-        marker_group.columnconfigure(1, weight=1)
-        ttk.Label(marker_group, text="Marker genes top N").grid(row=0, column=0, sticky="w", pady=4)
-        ttk.Entry(marker_group, textvariable=self.marker_genes_top_n).grid(row=0, column=1, sticky="ew", pady=4)
-        self.marker_genes_groupby_editor = SearchableListEditor(
-            marker_group,
-            "Marker genes groupby columns",
-            height=5,
-        )
-        self.marker_genes_groupby_editor.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 0))
+        self.neighbor_stats_annotations_editor.grid(row=2, column=0, columnspan=4, sticky="ew")
 
         interaction_group = ttk.LabelFrame(self.advanced_content, text="Interaction Markers", padding=10, style="Card.TLabelframe")
         interaction_group.pack(fill="x")
@@ -760,18 +722,6 @@ class KaroSpaceExportGUI:
         ttk.Entry(interaction_group, textvariable=self.interaction_markers_min_neighbors).grid(
             row=1, column=3, sticky="ew", pady=4
         )
-        ttk.Label(interaction_group, text="Method").grid(row=2, column=0, sticky="w", pady=4)
-        ttk.Entry(interaction_group, textvariable=self.interaction_markers_method).grid(
-            row=2, column=1, sticky="ew", padx=(8, 16), pady=4
-        )
-        ttk.Label(interaction_group, text="Layer").grid(row=2, column=2, sticky="w", pady=4)
-        ttk.Entry(interaction_group, textvariable=self.interaction_markers_layer).grid(row=2, column=3, sticky="ew", pady=4)
-        self.interaction_markers_groupby_editor = SearchableListEditor(
-            interaction_group,
-            "Interaction markers groupby columns",
-            height=5,
-        )
-        self.interaction_markers_groupby_editor.grid(row=3, column=0, columnspan=4, sticky="ew", pady=(8, 0))
         self._set_advanced_options_visible(False)
         self._on_neighbor_auto_toggle()
 
@@ -780,7 +730,7 @@ class KaroSpaceExportGUI:
         hint_lines = [
             "1. Start with a preset (Default, Pancreas, Lightweight).",
             "2. Browse to your .h5ad and click Inspect.",
-            "3. Use tabbed editors to add colors, genes, and groupby lists.",
+            "3. Use tabbed editors to add annotations, genes, and section metadata lists.",
             "4. Open Advanced only when needed.",
             "5. Export HTML.",
         ]
@@ -862,8 +812,8 @@ class KaroSpaceExportGUI:
 
     def _on_neighbor_auto_toggle(self) -> None:
         auto_mode = bool(self.neighbor_stats_auto.get())
-        if hasattr(self, "neighbor_stats_groupby_editor"):
-            self.neighbor_stats_groupby_editor.set_enabled(not auto_mode)
+        if hasattr(self, "neighbor_stats_annotations_editor"):
+            self.neighbor_stats_annotations_editor.set_enabled(not auto_mode)
 
     def _set_text_widget(self, widget: tk.Text, content: str) -> None:
         widget.delete("1.0", "end")
@@ -901,20 +851,15 @@ class KaroSpaceExportGUI:
         name = str(preset or "").strip().lower()
 
         common = {
-            "theme": "light",
             "title": "KaroSpace",
-            "groupby": "sample_id",
+            "section_key": "sample_id",
             "spatial_key": "spatial",
             "outline_by": "condition",
             "spot_size": "auto",
-            "gene_encoding": "auto",
-            "gene_storage": "embedded",
-            "gene_aux_path": "",
-            "gene_sparse_zero_threshold": "0.8",
-            "pack_arrays": True,
-            "pack_arrays_min_len": "1024",
-            "interaction_markers_method": "wilcoxon",
-            "interaction_markers_layer": "normalized",
+            "feature_encoding": "auto",
+            "feature_storage": "embedded",
+            "feature_manifest_path": "",
+            "feature_sparse_zero_threshold": "0.8",
         }
         for key, value in common.items():
             attr = getattr(self, key)
@@ -924,13 +869,13 @@ class KaroSpaceExportGUI:
                 attr.set(str(value))
 
         if name == "pancreas":
-            self.groupby.set("sample_id")
-            self.color.set("leiden_2")
+            self.section_key.set("sample_id")
+            self.annotation.set("leiden_2")
             self.outline_by.set("condition")
             self.title.set("KaroSpace")
             self.min_panel_size.set("120")
             self.downsample.set("1000000")
-            self.metadata_columns.set("condition")
+            self.section_metadata.set("condition")
             self.metadata_max_columns.set("")
             self._set_text_widget(self.metadata_value_order_text, '{\n  "stage": []\n}')
             self._merge_json_text_widget(self.metadata_labels_text, '{\n  "condition": "Condition",\n  "stage": "Stage"\n}')
@@ -966,20 +911,14 @@ class KaroSpaceExportGUI:
                 "Ptgds",
                 "Serpina3n",
             ]
-            self.additional_colors_editor.set_items(pancreas_colors)
+            self.cell_annotations_editor.set_items(pancreas_colors)
             self.genes_editor.set_items(pancreas_genes)
-            self.use_hvgs.set(True)
-            self.hvg_limit.set("200")
 
             self.neighbor_stats_auto.set(False)
-            self.neighbor_stats_groupby_editor.set_items(["leiden_2"])
+            self.neighbor_stats_annotations_editor.set_items(["leiden_2"])
             self.neighbor_permutations.set("25")
             self.neighbor_stats_seed.set("42")
 
-            self.marker_genes_groupby_editor.set_items(pancreas_colors)
-            self.marker_genes_top_n.set("50")
-
-            self.interaction_markers_groupby_editor.set_items([])
             self.interaction_markers_top_targets.set("6")
             self.interaction_markers_top_genes.set("15")
             self.interaction_markers_min_cells.set("30")
@@ -988,31 +927,25 @@ class KaroSpaceExportGUI:
             self.status_text.set("Preset applied: Pancreas")
             label = "Pancreas"
         elif name == "lightweight":
-            self.groupby.set("sample_id")
-            self.color.set("leiden")
+            self.section_key.set("sample_id")
+            self.annotation.set("leiden")
             self.outline_by.set("")
             self.title.set("KaroSpace")
             self.min_panel_size.set("140")
             self.downsample.set("50000")
-            self.metadata_columns.set("condition")
+            self.section_metadata.set("condition")
             self.metadata_max_columns.set("2")
             self._set_text_widget(self.metadata_value_order_text, '{\n  "condition": ["control", "treated"]\n}')
             self._merge_json_text_widget(self.metadata_labels_text, '{\n  "condition": "Condition"\n}')
 
-            self.additional_colors_editor.set_items(["leiden_1"])
+            self.cell_annotations_editor.set_items(["leiden_1"])
             self.genes_editor.set_items(["Cd4", "Cd8a", "Mki67"])
-            self.use_hvgs.set(False)
-            self.hvg_limit.set("20")
 
             self.neighbor_stats_auto.set(True)
-            self.neighbor_stats_groupby_editor.set_items([])
+            self.neighbor_stats_annotations_editor.set_items([])
             self.neighbor_permutations.set("0")
             self.neighbor_stats_seed.set("0")
 
-            self.marker_genes_groupby_editor.set_items([])
-            self.marker_genes_top_n.set("20")
-
-            self.interaction_markers_groupby_editor.set_items([])
             self.interaction_markers_top_targets.set("4")
             self.interaction_markers_top_genes.set("10")
             self.interaction_markers_min_cells.set("20")
@@ -1021,32 +954,26 @@ class KaroSpaceExportGUI:
             self.status_text.set("Preset applied: Lightweight")
             label = "Lightweight"
         else:
-            self.groupby.set("sample_id")
-            self.color.set("leiden")
+            self.section_key.set("sample_id")
+            self.annotation.set("leiden")
             self.outline_by.set("condition")
             self.title.set("KaroSpace")
             self.min_panel_size.set("150")
             self.downsample.set("")
-            self.metadata_columns.set("condition")
+            self.section_metadata.set("condition")
             self.metadata_max_columns.set("")
             self._set_text_widget(self.metadata_value_order_text, '{\n  "condition": ["control", "treated"]\n}')
             self._merge_json_text_widget(self.metadata_labels_text, '{\n  "condition": "Condition"\n}')
 
-            self.additional_colors_editor.set_items(["leiden_1", "leiden_2", "gmm_mana_10"])
+            self.cell_annotations_editor.set_items(["leiden_1", "leiden_2", "gmm_mana_10"])
             self.genes_editor.set_items(["Cd4", "Cd8a", "Gfap", "Mki67"])
-            self.use_hvgs.set(True)
-            self.hvg_limit.set("20")
 
             self.neighbor_stats_auto.set(True)
-            self.neighbor_stats_groupby_editor.set_items([])
+            self.neighbor_stats_annotations_editor.set_items([])
             self.neighbor_permutations.set("auto")
             self.neighbor_stats_seed.set("0")
 
-            self.marker_genes_groupby_editor.set_items([])
-            self.marker_genes_top_n.set("30")
-
-            self.interaction_markers_groupby_editor.set_items([])
-            self.interaction_markers_top_targets.set("8")
+            self.interaction_markers_top_targets.set("5")
             self.interaction_markers_top_genes.set("20")
             self.interaction_markers_min_cells.set("30")
             self.interaction_markers_min_neighbors.set("1")
@@ -1184,13 +1111,11 @@ class KaroSpaceExportGUI:
         self._var_names = sorted(set(str(g) for g in var_names))
         self._obsm_keys = sorted(set(str(k) for k in obsm_keys))
 
-        self.groupby_combo.configure(values=self._obs_columns)
+        self.section_key_combo.configure(values=self._obs_columns)
         self.color_combo.configure(values=self._obs_columns)
         self.outline_combo.configure(values=[""] + self._obs_columns)
-        self.additional_colors_editor.set_choices(self._obs_columns)
-        self.neighbor_stats_groupby_editor.set_choices(self._obs_columns)
-        self.marker_genes_groupby_editor.set_choices(self._obs_columns)
-        self.interaction_markers_groupby_editor.set_choices(self._obs_columns)
+        self.cell_annotations_editor.set_choices(self._obs_columns)
+        self.neighbor_stats_annotations_editor.set_choices(self._obs_columns)
         self.genes_editor.set_choices(self._var_names)
         self.spatial_key_combo.configure(values=self._obsm_keys)
 
@@ -1212,17 +1137,17 @@ class KaroSpaceExportGUI:
             if not found_fallback and self._obsm_keys:
                 self.spatial_key.set(self._obsm_keys[0])
 
-        if self.groupby.get() not in self._obs_columns:
+        if self.section_key.get() not in self._obs_columns:
             if "sample_id" in self._obs_columns:
-                self.groupby.set("sample_id")
+                self.section_key.set("sample_id")
             elif self._obs_columns:
-                self.groupby.set(self._obs_columns[0])
+                self.section_key.set(self._obs_columns[0])
 
-        if self.color.get() not in self._obs_columns:
+        if self.annotation.get() not in self._obs_columns:
             if "leiden" in self._obs_columns:
-                self.color.set("leiden")
+                self.annotation.set("leiden")
             elif self._obs_columns:
-                self.color.set(self._obs_columns[0])
+                self.annotation.set(self._obs_columns[0])
 
         if self.outline_by.get() and self.outline_by.get() not in self._obs_columns:
             if "course" in self._obs_columns:
@@ -1264,14 +1189,14 @@ class KaroSpaceExportGUI:
             output_path = (Path.cwd() / output_path).resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-        groupby = self.groupby.get().strip()
-        color = self.color.get().strip()
-        if not groupby:
-            raise ValueError("groupby is required.")
-        if not color:
-            raise ValueError("Initial color is required.")
+        section_key = self.section_key.get().strip()
+        annotation = self.annotation.get().strip()
+        if not section_key:
+            raise ValueError("section_key is required.")
+        if not annotation:
+            raise ValueError("Main cells annotation is required.")
 
-        metadata_columns = _unique(_parse_tokens(self.metadata_columns.get() or ""))
+        section_metadata = _unique(_parse_tokens(self.section_metadata.get() or ""))
         metadata_max_columns_raw = self.metadata_max_columns.get().strip()
         metadata_max_columns = None
         if metadata_max_columns_raw:
@@ -1319,32 +1244,24 @@ class KaroSpaceExportGUI:
         if downsample_raw:
             downsample = _parse_positive_int("Downsample", downsample_raw)
 
-        gene_sparse_zero_threshold = float(self.gene_sparse_zero_threshold.get().strip())
-        if gene_sparse_zero_threshold < 0 or gene_sparse_zero_threshold > 1:
-            raise ValueError("Gene sparse threshold must be between 0 and 1.")
-        gene_storage = self.gene_storage.get().strip() or "embedded"
-        gene_aux_path_raw = self.gene_aux_path.get().strip()
-        gene_aux_path = None
-        if gene_aux_path_raw:
-            gene_aux_path = str(Path(gene_aux_path_raw).expanduser())
+        feature_sparse_zero_threshold = float(self.feature_sparse_zero_threshold.get().strip())
+        if feature_sparse_zero_threshold < 0 or feature_sparse_zero_threshold > 1:
+            raise ValueError("Feature sparse threshold must be between 0 and 1.")
+        feature_storage = self.feature_storage.get().strip() or "embedded"
+        feature_manifest_path_raw = self.feature_manifest_path.get().strip()
+        feature_manifest_path = None
+        if feature_manifest_path_raw:
+            feature_manifest_path = str(Path(feature_manifest_path_raw).expanduser())
 
-        use_hvgs = bool(self.use_hvgs.get())
-        hvg_limit = _parse_non_negative_int("HVG limit", self.hvg_limit.get())
         gene_correlation_top_n = _parse_non_negative_int("Corr. top N", self.gene_correlation_top_n.get())
         spatial_variable_genes_n = _parse_non_negative_int("SVG n", self.spatial_variable_genes_n.get())
-        additional_colors = _unique(self.additional_colors_editor.get_items())
-        genes = _unique(self.genes_editor.get_items())
-        marker_groupby = _unique(self.marker_genes_groupby_editor.get_items())
-        interaction_groupby = _unique(self.interaction_markers_groupby_editor.get_items())
+        cell_annotations = _unique(self.cell_annotations_editor.get_items())
+        features = _unique(self.genes_editor.get_items())
         outline_by = self.outline_by.get().strip() or None
 
-        interaction_markers_method = self.interaction_markers_method.get().strip() or "wilcoxon"
-        interaction_markers_layer_raw = self.interaction_markers_layer.get().strip()
-        interaction_markers_layer = interaction_markers_layer_raw or None
-
         load_kwargs = {
-            "groupby": groupby,
-            "metadata_columns": metadata_columns,
+            "section_key": section_key,
+            "section_metadata": section_metadata,
             "metadata_value_order": metadata_value_order,
             "metadata_max_columns": metadata_max_columns,
             "spatial_key": self.spatial_key.get().strip() or "spatial",
@@ -1352,31 +1269,23 @@ class KaroSpaceExportGUI:
 
         export_kwargs = {
             "output_path": str(output_path),
-            "color": color,
+            "main_cell_annotation": annotation,
             "title": self.title.get().strip() or "KaroSpace",
             "min_panel_size": min_panel_size,
             "spot_size": spot_size,
             "downsample": downsample,
-            "theme": self.theme.get().strip() or "light",
             "outline_by": outline_by,
             "metadata_labels": metadata_labels,
-            "additional_colors": additional_colors,
-            "genes": genes,
-            "use_hvgs": use_hvgs,
-            "hvg_limit": hvg_limit,
+            "cell_annotations": cell_annotations,
+            "features": features,
             "gene_correlation_top_n": gene_correlation_top_n,
             "spatial_variable_genes_n": spatial_variable_genes_n,
-            "gene_encoding": self.gene_encoding.get().strip() or "auto",
-            "gene_storage": gene_storage,
-            "gene_aux_path": gene_aux_path,
-            "gene_sparse_zero_threshold": gene_sparse_zero_threshold,
-            "pack_arrays": bool(self.pack_arrays.get()),
-            "pack_arrays_min_len": _parse_positive_int("Pack arrays min len", self.pack_arrays_min_len.get()),
+            "feature_encoding": self.feature_encoding.get().strip() or "auto",
+            "feature_storage": feature_storage,
+            "feature_manifest_path": feature_manifest_path,
+            "feature_sparse_zero_threshold": feature_sparse_zero_threshold,
             "neighbor_stats_permutations": _parse_neighbor_permutations(self.neighbor_permutations.get()),
             "neighbor_stats_seed": int(self.neighbor_stats_seed.get().strip() or "0"),
-            "marker_genes_groupby": marker_groupby,
-            "marker_genes_top_n": _parse_positive_int("Marker genes top N", self.marker_genes_top_n.get()),
-            "interaction_markers_groupby": interaction_groupby,
             "interaction_markers_top_targets": _parse_positive_int("Interaction top targets", self.interaction_markers_top_targets.get()),
             "interaction_markers_top_genes": _parse_positive_int("Interaction top genes", self.interaction_markers_top_genes.get()),
             "interaction_markers_min_cells": _parse_positive_int("Interaction min cells", self.interaction_markers_min_cells.get()),
@@ -1384,14 +1293,12 @@ class KaroSpaceExportGUI:
                 "Interaction min neighbors",
                 self.interaction_markers_min_neighbors.get(),
             ),
-            "interaction_markers_method": interaction_markers_method,
-            "interaction_markers_layer": interaction_markers_layer,
         }
 
         if bool(self.neighbor_stats_auto.get()):
-            export_kwargs["neighbor_stats_groupby"] = [color]
+            export_kwargs["neighbor_stats_annotations"] = [color]
         else:
-            export_kwargs["neighbor_stats_groupby"] = _unique(self.neighbor_stats_groupby_editor.get_items())
+            export_kwargs["neighbor_stats_annotations"] = _unique(self.neighbor_stats_annotations_editor.get_items())
 
         return str(input_path), load_kwargs, export_kwargs
 
@@ -1407,13 +1314,16 @@ class KaroSpaceExportGUI:
 
         self._set_busy(True, "Exporting...")
         self._log(f"Loading dataset: {input_path}")
-        self._log(f"groupby={load_kwargs['groupby']}, color={export_kwargs['color']}")
-        if export_kwargs.get("additional_colors"):
-            self._log(f"additional_colors={len(export_kwargs['additional_colors'])}")
-        if export_kwargs.get("genes"):
-            self._log(f"genes={len(export_kwargs['genes'])} (manual list)")
-        if export_kwargs.get("gene_storage") == "sidecar":
-            self._log("gene_storage=sidecar (lazy aux loading enabled)")
+        self._log(
+            f"section_key={load_kwargs['section_key']}, "
+            f"main_cell_annotation={export_kwargs['main_cell_annotation']}"
+        )
+        if export_kwargs.get("cell_annotations"):
+            self._log(f"cell_annotations={len(export_kwargs['cell_annotations'])}")
+        if export_kwargs.get("features"):
+            self._log(f"features={len(export_kwargs['features'])} (manual list)")
+        if export_kwargs.get("feature_storage") == "sidecar":
+            self._log("feature_storage=sidecar (lazy aux loading enabled)")
 
         def worker() -> None:
             try:
@@ -1433,11 +1343,11 @@ class KaroSpaceExportGUI:
         self._log(f"Export finished: {output_path}")
         self._set_busy(False, "Export complete.")
         message = f"KaroSpace HTML created:\n{output_path}"
-        if self.gene_storage.get().strip() == "sidecar":
-            aux_path = self.gene_aux_path.get().strip()
+        if self.feature_storage.get().strip() == "sidecar":
+            aux_path = self.feature_manifest_path.get().strip()
             if not aux_path:
-                aux_path = str(Path(output_path).with_suffix(".genes.json"))
-            message += f"\n\nGene sidecar:\n{aux_path}"
+                aux_path = str(Path(output_path).with_suffix(".features.json"))
+            message += f"\n\nFeature sidecar:\n{aux_path}"
         messagebox.showinfo("Export complete", message)
 
     def _on_export_error(self, exc: Exception) -> None:

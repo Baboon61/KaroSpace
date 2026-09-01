@@ -1,163 +1,220 @@
 # KaroSpace Feature Summary
 
-This document summarizes the current capabilities in this repository, focused on what the generated HTML viewer can do and how it is configured.
+This document summarizes what the generated KaroSpace HTML viewer currently displays and how the user is expected to move through it.
 
 ## 1. Product Surfaces
 
-- Python API for loading `.h5ad` and exporting a standalone HTML viewer.
-- Command-line interface (`karospace`) for scriptable exports.
+- Python API for inspecting input metadata, loading `.h5ad`, `AnnData`, or SpatialData input, and exporting an HTML viewer.
+- Command-line interface (`karospace`) for scriptable exports and inspect-only metadata checks.
 - Desktop GUI (`karospace.gui`) for non-code export configuration.
-- Self-contained HTML output for sharing and interactive exploration in a browser.
+- Standalone HTML output that can be opened in a browser without a Python server when all required gene data is embedded.
+- Optional sidecar and `.karospace` package outputs for large gene payloads.
 
-## 2. Data and Export Inputs
+## 2. Input and Export Payload
 
-- Input: AnnData (`.h5ad`) with spatial coordinates in `adata.obsm`.
-- Section grouping by any obs column (`groupby`).
-- Optional metadata columns for filter chips and panel metadata.
-- Optional metadata value ordering for deterministic section/filter order.
-- Optional UMAP support from `adata.obsm["X_umap"]`.
-- Optional neighborhood graph support from `adata.obsp` keys (for graph overlays and neighbor analytics).
+- Input can be an `.h5ad` path, an in-memory `AnnData`, a SpatialData `.zarr` store, or an in-memory SpatialData object.
+- SpatialData input is normalized to one AnnData table via `spatialdata_table` / `--spatialdata-table`.
+- If full SpatialData construction fails because unrelated image or label elements are invalid, KaroSpace can fall back to reading the selected AnnData table directly from `tables/<table>`.
+- `inspect_input_file(...)` / `--inspect-input` reports available `adata.obs` metadata, value types, examples, and missing-value counts without building sections, downsampling, exporting HTML, or running analytics.
+- Section grouping uses `section_key` to group metadata by section.
+- Section metadata is split into `section_metadata` for visual filter chips and `section_metadata_extra` for stored section metadata that is not displayed as filter chips.
+- Cell annotation dropdowns use `main_cell_annotation` plus `cell_annotations`.
+- Optional payloads include UMAP coordinates, neighborhood graphs, image overlays, deconvolution keys, modules, sidecar genes, pseudobulk DE, pathways, spatial genes, category means, and gene correlations.
 
-## 3. HTML Export Characteristics
+## 3. Introduction
 
-- Single-file HTML output with embedded data payload.
-- Optional sidecar gene storage (`gene_storage="sidecar"`) with manifest + shard directory for lazy loading.
-- Optional packing of large per-section arrays into base64 typed arrays (`pack_arrays`) for smaller/faster files.
-- Gene vectors support `dense`, `sparse`, or `auto` encoding.
-- Gene loading can be manual (`genes=[...]`) and/or HVG-driven (`use_hvgs`, `hvg_limit`).
-- Gene discovery can be enriched with correlated-gene suggestions (`gene_correlation_top_n`).
-- Adaptive spot size mode (`spot_size="auto"`), or fixed numeric spot size.
-- Optional exact initial per-section rotations via `section_rotations={section_id: angle}`.
+- The central grid is the primary spatial browsing surface.
+- Each visible section appears as a card with metadata, rotation controls, scalebar, outline color, and a canvas-rendered cell layer.
+- The section filter bar displays exported section-level metadata chips and can reduce the grid to specific stages, samples, conditions, regions, or batches.
+- The status area reports visible sections, exported cells, and exported genes.
+- Downsampling status is displayed when the export contains fewer cells than the original input.
 
-## 4. Grid Viewer Features
+## 4. Helpers
 
-- Responsive multi-section grid rendering.
-- Per-section rotation controls with shared section state between grid and modal views.
-- Metadata filter chips with reset.
-- Dynamic layout behavior:
-  - Single true section dataset gets centered single-section layout.
-  - Filtered-to-one-section view gets capped-width layout (prevents full-page stretch).
-- Category legend with hide/show toggles and spotlight behavior.
-- Theme toggle (light/dark).
-- Screenshot export for current grid view.
-- Category/gene color switching from the top controls.
-- Gene discovery panel with fuzzy search, keyboard navigation, recent genes, saved panels, and marker-driven suggestions.
-- Performance-aware incremental rendering and offscreen skipping.
+- The Info button opens dataset notes, viewer context, and keyboard shortcut reminders.
+- The message-circle-question-mark button opens the button guide.
+- The button guide explains icon-only controls using the actual icons shown in the viewer.
 
-## 5. Modal (Section Detail) Features
+## 5. Session Tools
 
-- Click any section to open detailed modal view.
-- Pan/zoom controls with mouse and buttons.
-- Rotation controls that preserve exact stored per-section angles.
-- Graph and neighbor hover controls when neighbor graph data exists.
-- Magic Wand lasso selection and linked selection summaries.
-- Polygon annotation workflow:
-  - Draw persistent polygon annotations.
-  - Export annotations as JSON.
-  - Clear section or clear all annotations.
-- Compact grouped sample-view toolbar:
-  - Hide/show toggle for the full bottom toolbar.
-  - Draggable dock layout.
-  - Contextual control visibility for selection/type/graph actions.
-- Modal screenshot export.
+- The theme button switches light and dark modes.
+- The screenshot menu exports the current grid view, with size and transparent-background options.
+- Session export downloads a JSON state file containing annotations, hidden categories, and current views.
+- Session import restores a previously exported session JSON.
+- The annotation export menu contains broad data, category, and annotation export actions.
 
-## 6. Split (Variable Slider) Features
+## 6. Visual Setup
 
-- A/B split rendering inside modal:
-  - Each side can be `cell` (categorical column + category) or `gene`.
-  - Split slider controls left/right blend ratio.
-- Per-side gene scale controls (manual min/max and auto percentile).
-- Split gene views lazy-load sidecar genes when needed, so comparison mode can recover without manually reselecting the gene.
-- Split legend in modal reflects active A/B variables.
-- Marker genes integrated into split metadata when side is `cell`:
-  - If side category is `All categories`, marker lists are shown across categories (same source as Insights -> Genes -> Markers).
-  - If a specific category is selected, only that category's marker genes are shown.
+- The visual parameters button opens cell display controls such as size and opacity.
+- Default mode displays one layer across the grid.
+- Split mode compares two aligned visual layers in the same spatial panels.
+- Default source can be a cell annotation layer or a gene/expression layer.
+- The annotation selector chooses which cell-level annotation colors the grid.
+- Split layer A and split layer B can represent annotations, genes, or exported modalities.
+- The split boundary slider controls where layer A ends and layer B begins within each spatial panel.
 
-## 7. UMAP Features
+## 7. Gene Expression
 
-- Optional UMAP panel with toggle button when UMAP exists.
-- Dock positions (corner cycling), panel sizing controls.
-- UMAP pan/zoom and point-size control.
-- Linked lasso selection with grid/modal synchronization.
+- Gene source changes the grid from annotation colors to gene or feature expression.
+- The gene discovery panel supports fuzzy search, keyboard navigation, recent genes, marker suggestions, spatial genes, correlated-gene suggestions, and module-related suggestions when those payloads exist.
+- The gene input accepts embedded genes and sidecar-loadable genes.
+- Gene expression scale controls adjust the visible color range and can be propagated across split gene comparison.
+- Sidecar mode keeps all gene expression vectors outside the HTML and fetches them from nearby sidecar files.
+- Multiple modalities can be selected when exported, for example RNA genes and protein features.
+- Genes not embedded in the HTML can still appear in DE tables or marker lists; sidecar-loadable genes can be fetched on demand.
 
-## 8. Insights Panel Features
+## 8. Spatial Selection
 
-### 8.1 Stats Tab
+- Pan mode is the default movement mode for navigating section panels.
+- Lasso mode selects cells directly in spatial panels.
+- The compare-selection workflow creates Region A and Region B cell sets for side-by-side comparison.
+- Regions can be cleared with the cross-format compare button.
+- Selected cells can be saved as a region annotation.
+- Selected cells can be cleared from the lasso/cross control or from the selection chip.
+- The cell search tool can select cells from annotation values, genes, or section metadata.
 
-- Aggregate summaries by selected metadata column.
-- Expand/collapse grouped summaries.
-- Cell-type trend panel with search.
+## 9. Modal View
 
-### 8.2 Neighbors Tab
+- Clicking a section opens a high-detail modal view.
+- Modal zoom controls change magnification.
+- Modal rotation controls adjust visual section orientation.
+- Neighbor controls appear when a neighbor graph is available and can display graph edges or hover-neighbor rings.
+- H&E/image overlay controls can load and adjust image overlays with opacity, scale, rotation, flip, alignment, and related parameters.
+- Modal display state shares section rotation and selection behavior with the overview grid.
 
-- Neighbor composition stats by categorical color.
-- Optional permutation-based enrichment z-scores.
-- Target search/filter.
-- Interaction browser:
-  - Source/target interaction summaries.
-  - Contact-conditioned marker genes (if precomputed).
-  - Type marker genes per target.
+## 10. Legend
 
-### 8.3 Genes Tab
+- The Legend button shows or hides category rows.
+- Legend rows show category colors and labels for the active annotation.
+- Clicking a category color dot hides or shows that specific category.
+- The global visibility button hides or shows all categories.
+- Spotlight mode focuses one category while muting the rest.
+- Legend export downloads palettes or category labels.
+- Legend import restores previously exported palette or category-label files.
 
-- Dotplot:
-  - Group by categorical color.
-  - Optional metadata-based aggregation filter.
-  - Gene list input (comma-separated).
-  - Dot size as fraction expressing; dot color as mean expression.
-  - Dotplot gene input supports datalist-based suggestions and Tab token autocomplete.
-- Markers:
-  - Marker genes per category for current categorical color.
-  - Search/filter marker output.
-- Discovery:
-  - Fuzzy-searchable top-bar gene picker.
-  - Recent genes and saved gene panels stored per viewer.
-  - Marker-gene and correlated-gene suggestions when available.
-- Compare:
-  - Pairwise cluster-vs-cluster DE for precomputed categorical columns.
-  - Select source cluster and reference cluster within a groupby.
-  - Ranked result table with log fold change, adjusted p-value, score, and percent expressing.
-  - Clicking a DE gene activates that gene in the viewer.
+## 11. UMAP
 
-## 9. Annotation Integration Back to AnnData
+- If `adata.obsm["X_umap"]` was exported, the UMAP button opens a linked embedding panel.
+- The UMAP panel can be docked to corners, resized, and kept pinned while scrolling the grid.
+- UMAP supports pan, zoom, point-size control, and lasso selection.
+- UMAP lasso selections synchronize with the spatial grid.
+- Selected UMAP cells can be saved as a cell-set region, not as a polygon region tied to one section.
 
-- Utility function: `integrate_polygon_annotations(...)`.
-- Imports exported polygon JSON and maps annotation labels back to AnnData obs/uns.
-- Supports global cell index mapping when present.
+## 12. Insights Modes
 
-## 10. Interfaces and Configuration
+- Insights is the workspace for selected cells, regions, gene modules, and built-in analysis panels.
+- Selection mode shows compact summaries for active lasso, UMAP, or cell search selections.
+- Region mode stores, selects, groups, imports, exports, recolors, and deletes user-created spatial regions or cell sets.
+- Module mode creates gene modules and displays module scores like expression layers.
+- Exploration mode contains the Visualization menu tree and the built-in analysis panels.
 
-- API entry points:
-  - `load_spatial_data(...)`
-  - `export_to_html(...)`
-  - `integrate_polygon_annotations(...)`
-- CLI supports core export settings:
-  - color, groupby, panel size, spot size, downsample, theme
-  - gene encoding options
-  - sidecar gene storage options
-  - neighbor stats controls
-  - marker genes groupby
-  - cluster DE groupby/top-N/method/layer/min-cells
-  - interaction markers groupby
-  - section rotations
-- GUI supports:
-  - Searchable list editors for additional colors and genes
-  - Advanced controls for packing, neighbor stats, marker genes, cluster DE, and interaction markers
-  - Inspect/validate + export workflow with logs
+## 13. Selection Workflow
 
-## 11. Reliability and UX Improvements Included
+- The Selection summary reports active selected cells by section and main annotation.
+- Find More opens the full `Compare > Per cell > Selections` workflow.
+- Selection marker genes are calculated from selected cells using a two-sided Welch test.
+- The selection comparison panel displays composition and expression summaries.
+- Expression summaries show mean expression and percent expressed for displayed genes.
 
-- Loading warning no longer persists indefinitely:
-  - startup warning is removable and auto-dismissed
-  - loader cleanup occurs even if init throws
-- Main and modal spot-size sliders are constrained to max `5`.
-- Dotplot genes autocomplete support added.
-- Compare-tab gene clicks now keep the DE view working without a `refreshInsights` runtime error.
-- Sample-view toolbar tightened and made draggable without shrinking text.
-- Example script (`examples/CODEX.py`) now forces local package import and prints correct output filename.
+## 14. Region Workflow
 
-## 12. Practical Notes
+- Region creation starts from selected cells.
+- Regions can be created from cell search tool or lasso selections.
+- Each region row represents a saved spatial region or cell group.
+- Clicking a region row selects its cells.
+- Clicking a group row selects the union of cells from nested regions.
+- Regions can be recolored, grouped, exported, imported, or deleted.
+- Imported region JSON restores saved regions and associated selected cells in the viewer.
+- Region comparison in Exploration uses saved regions.
 
-- Generated HTML is static and self-contained. Re-export is required to pick up new code/features.
-- Old exported files will not gain new behavior automatically.
-- Large datasets may produce very large HTML files; packing, sparse encoding, and downsampling are the primary size/performance levers.
+## 15. Module Workflow
+
+- The module panel has a gene picker.
+- Creating a module scales each gene and computes an average module score.
+- Module scores can be loaded into the spatial viewer like gene expression.
+- Module definitions can be imported or exported as JSON.
+
+## 16. Exploration Menu
+
+- The Visualization menu tree opens Overview, Genes, Compare, and Neighbors panels.
+- Overview summarizes section composition and metadata trends.
+- Genes focuses marker genes, spatial genes, per-cell distributions, and per-sample/category mean expression.
+- Compare contains selection, region, annotation, pseudobulk, pathway, and relationship comparisons.
+- Neighbors contains spatial adjacency enrichment, interaction markers, and dispersion analysis.
+
+## 17. Exploration > Overview
+
+- `Overview > Summary` aggregates cells across section metadata.
+- Summary calculations use cells embedded in the HTML file.
+- The per-annotation trend selector focuses one category across section metadata for abundance checks.
+- `Overview > Sections` compares section-level composition.
+- Section composition can be shown as stacked bars or a heatmap.
+
+## 18. Exploration > Genes
+
+- `Genes > Markers` lists pseudobulk-derived marker genes by category when available.
+- Marker genes can be displayed as compact lists or heatmaps.
+- `Genes > Spatial` shows Moran Index rankings computed at export on the full input cell set.
+- Spatial genes can be displayed as a ranked list or graph.
+- `Genes > Distribution > Per cell` summarizes expression distributions across categories for a selected gene.
+- Per-cell distribution calculations use cells embedded in the HTML.
+- Per-cell distributions can be shown as a table or violin/boxplot.
+- `Genes > Distribution > Per sample` uses pseudobulk/category mean summaries for selected genes.
+- Per-sample/category means can be shown as a table or barplot.
+
+## 19. Exploration > Compare
+
+- `Compare > Per cell > Selections` analyzes active lasso/cell selections and is the detailed view behind Selection Find More.
+- `Compare > Per cell > Regions` compares saved region annotations and can run region comparisons similar to selection comparisons.
+- `Compare > Per cell > Annotations` compares categories within the selected annotation using per-cell summaries.
+- `Compare > Per sample > Simple design` displays category-versus-category pseudobulk DE when exported.
+- Simple design includes raw tables, markers, MA plots, volcano plots, PCA, distance matrix diagnostics, and pathway enrichment.
+- Simple design metrics can be shown as Raw table, Genes, and Samples views.
+- DE genes are filtered with `padj < cutoff` and `abs(log2FC) >= cutoff`.
+- Genes below the minimum percent-expressed threshold in both compared groups are removed before `DeseqStats`, so they do not enter contrast-level multiple-testing correction.
+- The pseudobulk marker lists are ordered by adjusted p-value then log2FC and can expand from the first displayed rows.
+- MA and volcano plots show non-significant genes, minimum-percent-expression filtered genes, and significant genes with updated legends.
+- Pathway Enrichment displays ORA pathways and GSEA enrichment in a separate panel.
+- ORA uses significant DE genes favoring the selected annotation.
+- ORA is shown as a dot plot with GeneRatio on x, pathway labels on y, dot size as gene count, fill color as `-log10(adjusted p-value)`, and border color indicating adjusted p-value threshold.
+- GSEA uses the retained ranked gene list after model and expression-percent filtering.
+- GSEA profiles can be selected from a pathway dropdown and are displayed as enrichment-profile plots with hits and ranked-metric context.
+- ORA and GSEA sections can switch between plot and raw table and include download buttons.
+- `Compare > Relationships` shows how categories from two annotations map to each other, with controls to select the second annotation, swap direction, and export the correspondence table.
+
+## 20. Exploration > Neighbors
+
+- `Neighbors > Enrichment` summarizes which annotation categories are spatially adjacent more or less often than expected.
+- Enrichment can be displayed as a table, network, or chord view.
+- Optional neighbor permutations add enrichment z-scores; with zero permutations, observed counts, shares, cell counts, and mean degree still remain available.
+- `Neighbors > Interactions` compares source cells based on which target categories they touch.
+- Interaction markers are contact-conditioned pseudobulk marker results when exported.
+- Interaction controls choose the source category and filter target names.
+- `Neighbors > Dispersion` summarizes whether categories are clustered, dispersed, or close to random across all cells before HTML downsampling.
+- Dispersion complements immediate neighbor enrichment by describing whole-section spatial arrangement.
+
+## 21. Exported Analytics
+
+- Pseudobulk DE uses raw counts grouped by replicate and annotation.
+- Pseudobulk samples require at least `pseudobulk_min_cells_per_pseudobulk` cells before entering the shared DESeq2 fit.
+- Category-versus-category contrasts are extracted from a shared fit per annotation column.
+- Balanced-rest contrasts compare one category against the equally weighted mean of retained other categories.
+- Pairwise PCA and distance diagnostics are generated for selected pseudobulk comparisons.
+- ORA and GSEA are computed after Simple design pseudobulk DE and feed the Pathway Enrichment panel.
+- Spatially variable genes are computed with Moran's I for up to `spatial_variable_genes_n` variable genes on the full input cell set.
+- Category gene means are derived from embedded pseudobulk DE genes and feed per-sample/category distribution panels.
+- Gene correlations are computed from category means and feed related-gene suggestions.
+- Full-cell spatial dispersion is computed before HTML downsampling for the main cell annotation and requested `cell_annotations`.
+
+## 22. Sharing and Storage
+
+- Embedded HTML stores viewer data directly in the HTML file.
+- Sidecar mode writes all gene expression vectors to a manifest and binary shard directory for lazy loading over HTTP(S).
+- `.karospace` packages wrap sidecar exports into one shareable ZIP-based package with a local or hosted loader.
+- Generated HTML is static; re-export is required to pick up new viewer code or new analytics.
+
+## 23. Practical Notes
+
+- Large datasets may produce large HTML files; downsampling, sparse encoding, sidecar storage, and `.karospace` packages are the main size/performance levers.
+- Sidecar HTML should be served over HTTP(S); direct `file://` loading can block sidecar fetches.
+- Many Exploration panels depend on optional exported payloads. When data is missing, the HTML shows warnings or hides unavailable controls instead of crashing.
