@@ -29,13 +29,20 @@ from .console import log_detail, log_step, log_warning
 sc = ad  # Compatibility alias; this module only needs AnnData/read_h5ad, not Scanpy.
 COMPANION_ANALYTICS_STORAGE = "json-string-v1"
 COMPANION_ANALYTICS_JSON_FIELDS = {
-    "pseudobulk_de_json": "pseudobulk_de",
+    # KaroSpaceCompanion emits cell-level cluster DE under "cluster_de_json"
+    # (t-test / Wilcoxon — the same paradigm as the Python single-sample Welch
+    # fallback), so map it onto the viewer's pseudobulk_de channel; the viewer
+    # derives per-cluster marker genes from this. A future Companion may emit
+    # "pseudobulk_de_json" directly, so support both — the explicit pseudobulk
+    # key is listed last and wins if a file carries both.
+    "cluster_de_json": "pseudobulk_de",
     "pseudobulk_de_json": "pseudobulk_de",
     "neighbor_stats_json": "neighbor_stats",
     "interaction_markers_json": "interaction_markers",
     "gene_correlations_json": "gene_correlations",
     "spatial_variable_genes_json": "spatial_variable_genes",
-    "category_gene_means_json": "category_gene_means",
+    # Companion writes the per-cluster mean matrix as "cluster_gene_means_json".
+    "cluster_gene_means_json": "category_gene_means",
 }
 
 
@@ -2387,10 +2394,7 @@ class SpatialDataset:
             requested_pseudobulk_de_annotations,
         )
         pending_pseudobulk_de_annotations = list(requested_pseudobulk_de_annotations)
-        companion_pseudobulk_de = (
-            companion_analytics.get("pseudobulk_de")
-            or companion_analytics.get("pseudobulk_de")
-        )
+        companion_pseudobulk_de = companion_analytics.get("pseudobulk_de")
         if (
             not replicate_override
             and pending_pseudobulk_de_annotations
