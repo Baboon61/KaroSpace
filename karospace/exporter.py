@@ -34469,6 +34469,63 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 '''
 
 
+def _legacy_export_kwargs_shim(func):
+    """Back-compat wrapper for pre-migration ``export_to_html`` keyword names.
+
+    The gene->feature / marker->pseudobulk API migration renamed or removed many
+    parameters; the bundled example scripts still call the old names. This shim
+    remaps the recoverable ones and warns-and-drops the rest so existing callers
+    keep working. It is intentionally lenient — remove it once callers migrate.
+    """
+    import functools
+    import inspect
+    import warnings as _warnings
+
+    _RENAMES = {
+        "color": "main_cell_annotation",
+        "additional_colors": "cell_annotations",
+        "genes": "features",
+        "gene_encoding": "feature_encoding",
+        "gene_value_encoding": "feature_value_encoding",
+        "gene_storage": "feature_storage",
+        "gene_aux_path": "feature_manifest_path",
+        "gene_manifest_path": "feature_manifest_path",
+        "gene_sidecar_shard_size": "feature_sidecar_shard_size",
+        "gene_sparse_zero_threshold": "feature_sparse_zero_threshold",
+        "neighbor_stats_groupby": "neighbor_stats_annotations",
+        "cluster_de_groupby": "pseudobulk_additional_annotations",
+        "pseudobulk_de_annotations": "pseudobulk_additional_annotations",
+        "marker_gene_annotations": "pseudobulk_additional_annotations",
+        "interaction_marker_annotations": "interaction_markers",
+    }
+    _accepted = set(inspect.signature(func).parameters)
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        out = {}
+        dropped = []
+        for key, value in kwargs.items():
+            if key in _accepted:
+                out.setdefault(key, value)
+                continue
+            new_key = _RENAMES.get(key)
+            if new_key and new_key in _accepted and new_key not in out:
+                out[new_key] = value
+            else:
+                dropped.append(key)
+        if dropped:
+            _warnings.warn(
+                "export_to_html: ignoring legacy keyword(s) removed in the "
+                "gene->feature/pseudobulk API migration: "
+                + ", ".join(sorted(dropped)),
+                stacklevel=2,
+            )
+        return func(*args, **out)
+
+    return wrapper
+
+
+@_legacy_export_kwargs_shim
 def export_to_html(
     dataset: SpatialDataset,
     output_path: str,

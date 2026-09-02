@@ -2522,6 +2522,31 @@ class SpatialDataset:
                 )
                 if annotation_results:
                     pseudobulk_de[annotation_key] = annotation_results
+                elif not sample_metadata_model:
+                    # Pseudobulk DESeq2 needs >= 2 biological replicates. When it
+                    # can't run (e.g. a single-sample dataset), fall back to
+                    # cell-level Welch markers (category vs rest) so the per-
+                    # category marker panel is still populated. Same payload
+                    # schema, so no viewer changes are needed.
+                    from .pseudobulk import compute_cell_level_group_markers
+
+                    fallback_results = compute_cell_level_group_markers(
+                        self.adata,
+                        annotation_key,
+                        expression_layer="normalized",
+                        padj_cutoff=pseudobulk_padj_cutoff_n,
+                        log2fc_cutoff=pseudobulk_log2fc_cutoff_n,
+                        p_adjust_method=pseudobulk_p_adjust_method,
+                        min_cells=pseudobulk_min_cells_n,
+                    )
+                    if fallback_results:
+                        pseudobulk_de[annotation_key] = fallback_results
+                        log_detail(
+                            f"pseudobulk DE unavailable for '{annotation_key}'; used "
+                            "cell-level Welch markers (category vs rest) as a "
+                            "replicate-free fallback.",
+                            level=2,
+                        )
 
         # Compute neighbor composition stats
         neighbor_stats = {}

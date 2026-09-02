@@ -2902,3 +2902,174 @@ def compute_pseudobulk_group_de(
         fit_type=fit_type,
         n_cpus=n_cpus,
     )
+
+
+def compute_cell_level_group_markers(
+    adata,
+    annotation_key: str,
+    *,
+    expression_layer: Optional[str] = "normalized",
+    padj_cutoff: float = 0.05,
+    log2fc_cutoff: float = 0.5,
+    p_adjust_method: str = "fdr_bh",
+    min_cells: int = 20,
+    top_n_per_category: int = 300,
+) -> Optional[Dict[str, Dict[str, Dict[str, Any]]]]:
+    """Replicate-free per-category markers via a Welch t-test (category vs rest).
+
+    Fallback for :func:`compute_pseudobulk_group_de` when pseudobulk DESeq2 DE
+    cannot run (e.g. a single biological replicate). It emits the SAME payload
+    schema — ``{category: {"__rest__": {...}}, "_summary": {"category_gene_means":
+    {...}}}`` — so the viewer's marker and category-mean panels populate
+    identically, no client changes needed.
+
+    Per-gene group/rest means and variances are accumulated from per-category
+    sparse column sums, so the full cell x gene matrix is never densified (some
+    datasets have tens of thousands of genes).
+    """
+    from scipy import stats as _stats
+
+    if annotation_key not in adata.obs.columns:
+        return None
+    col = adata.obs[annotation_key]
+    if pd.api.types.is_numeric_dtype(col):
+        return None
+    if not isinstance(col.dtype, CategoricalDtype):
+        col = col.astype("category")
+    categories = [str(category) for category in col.cat.categories]
+    if len(categories) < 2:
+        return None
+
+    labels = col.astype(str).to_numpy()
+    n_total = int(labels.shape[0])
+
+    layers = getattr(adata, "layers", None) or {}
+    if expression_layer and expression_layer in layers:
+        matrix = layers[expression_layer]
+    else:
+        matrix = adata.X
+    if matrix is None:
+        return None
+    is_sparse = sp.issparse(matrix)
+    if not is_sparse:
+        matrix = np.asarray(matrix, dtype=float)
+    if matrix.shape[0] != n_total:
+        return None
+
+    genes = [str(gene) for gene in adata.var_names]
+    n_genes = len(genes)
+
+    def _sum_sumsq(indices: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        sub = matrix[indices]
+        if sp.issparse(sub):
+            col_sum = np.asarray(sub.sum(axis=0), dtype=float).ravel()
+            col_sumsq = np.asarray(sub.multiply(sub).sum(axis=0), dtype=float).ravel()
+        else:
+            sub = np.asarray(sub, dtype=float)
+            col_sum = sub.sum(axis=0)
+            col_sumsq = (sub * sub).sum(axis=0)
+        return col_sum, col_sumsq
+
+    # Accumulate per-category column sums once; totals are the category sums
+    # combined (categories partition the cells), avoiding a full-matrix pass.
+    cat_sum: Dict[str, np.ndarray] = {}
+    cat_sumsq: Dict[str, np.ndarray] = {}
+    cat_n: Dict[str, int] = {}
+    total_sum = np.zeros(n_genes, dtype=float)
+    total_sumsq = np.zeros(n_genes, dtype=float)
+    for category in categories:
+        idx = np.flatnonzero(labels == category)
+        cat_n[category] = int(idx.size)
+        if idx.size == 0:
+            continue
+        csum, csumsq = _sum_sumsq(idx)
+        cat_sum[category] = csum
+        cat_sumsq[category] = csumsq
+        total_sum += csum
+        total_sumsq += csumsq
+
+    eps = 1e-9
+    min_cells_eff = max(2, int(min_cells))
+    top_n = max(1, int(top_n_per_category))
+    padj_cut = float(padj_cutoff)
+    log2fc_cut = float(log2fc_cutoff)
+
+    overall_mean = total_sum / max(n_total, 1)
+    payload: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    category_means: Dict[str, List[Optional[float]]] = {}
+    kept_gene_idx: set = set()
+
+    for category in categories:
+        n1 = cat_n[category]
+        if n1 == 0:
+            category_means[category] = [0.0 for _ in range(n_genes)]
+            continue
+        s1 = cat_sum[category]
+        mean1 = s1 / n1
+        category_means[category] = [_json_float(v, 6) for v in mean1]
+        n2 = n_total - n1
+        if n1 < min_cells_eff or n2 < 2:
+            continue
+        sq1 = cat_sumsq[category]
+        s2 = total_sum - s1
+        sq2 = total_sumsq - sq1
+        mean2 = s2 / n2
+        # Unbiased sample variances from sums of squares.
+        var1 = np.maximum((sq1 - n1 * mean1 * mean1) / (n1 - 1), 0.0)
+        var2 = np.maximum((sq2 - n2 * mean2 * mean2) / (n2 - 1), 0.0)
+        se1 = var1 / n1
+        se2 = var2 / n2
+        denom = se1 + se2
+        with np.errstate(divide="ignore", invalid="ignore"):
+            tstat = (mean1 - mean2) / np.sqrt(denom)
+            df = denom * denom / (
+                (se1 * se1) / (n1 - 1) + (se2 * se2) / (n2 - 1)
+            )
+            pval = 2.0 * _stats.t.sf(np.abs(tstat), df)
+        pval = np.asarray(pval, dtype=float)
+        # Genes with no variance in both groups carry no signal.
+        pval[~np.isfinite(pval)] = 1.0
+        pval = np.clip(pval, 0.0, 1.0)
+        log2fc = np.log2(mean1 + eps) - np.log2(mean2 + eps)
+        log2fc[~np.isfinite(log2fc)] = 0.0
+        padj = np.asarray(_adjust_pvalues(pval, p_adjust_method), dtype=float)
+        padj[~np.isfinite(padj)] = 1.0
+
+        significant = np.flatnonzero((padj < padj_cut) & (np.abs(log2fc) >= log2fc_cut))
+        if significant.size == 0:
+            continue
+        order = sorted(
+            significant.tolist(), key=lambda i: (padj[i], -abs(log2fc[i]))
+        )[:top_n]
+        kept_gene_idx.update(order)
+        payload[category] = {
+            "__rest__": {
+                "genes": [genes[i] for i in order],
+                "pvals_adj": [_json_float(padj[i], 6) for i in order],
+                "pvalue": [_json_float(pval[i], 6) for i in order],
+                "log2foldchanges": [_json_float(log2fc[i], 4) for i in order],
+                "source": "cell_welch",
+            }
+        }
+
+    if not payload:
+        return None
+
+    # Restrict the category-mean summary to retained marker genes so the embedded
+    # payload scales with marker count, not total gene count.
+    summary_idx = sorted(kept_gene_idx)
+    payload["_summary"] = {
+        "category_gene_means": {
+            "genes": [genes[i] for i in summary_idx],
+            "categories": categories,
+            "means": {
+                category: [values[i] for i in summary_idx]
+                for category, values in category_means.items()
+            },
+            "background": [_json_float(overall_mean[i], 6) for i in summary_idx],
+            "n_cells": {category: int(count) for category, count in cat_n.items()},
+            "source": "cell_welch",
+        },
+        "source": "cell_welch_fallback",
+    }
+    return payload
