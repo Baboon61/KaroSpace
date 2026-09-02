@@ -29,13 +29,20 @@ from .console import log_detail, log_step, log_warning
 sc = ad  # Compatibility alias; this module only needs AnnData/read_h5ad, not Scanpy.
 COMPANION_ANALYTICS_STORAGE = "json-string-v1"
 COMPANION_ANALYTICS_JSON_FIELDS = {
-    "pseudobulk_de_json": "pseudobulk_de",
+    # KaroSpaceCompanion emits cell-level cluster DE under "cluster_de_json"
+    # (t-test / Wilcoxon — the same paradigm as the Python single-sample Welch
+    # fallback), so map it onto the viewer's pseudobulk_de channel; the viewer
+    # derives per-cluster marker genes from this. A future Companion may emit
+    # "pseudobulk_de_json" directly, so support both — the explicit pseudobulk
+    # key is listed last and wins if a file carries both.
+    "cluster_de_json": "pseudobulk_de",
     "pseudobulk_de_json": "pseudobulk_de",
     "neighbor_stats_json": "neighbor_stats",
     "interaction_markers_json": "interaction_markers",
     "gene_correlations_json": "gene_correlations",
     "spatial_variable_genes_json": "spatial_variable_genes",
-    "category_gene_means_json": "category_gene_means",
+    # Companion writes the per-cluster mean matrix as "cluster_gene_means_json".
+    "cluster_gene_means_json": "category_gene_means",
 }
 
 
@@ -2387,10 +2394,7 @@ class SpatialDataset:
             requested_pseudobulk_de_annotations,
         )
         pending_pseudobulk_de_annotations = list(requested_pseudobulk_de_annotations)
-        companion_pseudobulk_de = (
-            companion_analytics.get("pseudobulk_de")
-            or companion_analytics.get("pseudobulk_de")
-        )
+        companion_pseudobulk_de = companion_analytics.get("pseudobulk_de")
         if (
             not replicate_override
             and pending_pseudobulk_de_annotations
@@ -2522,6 +2526,31 @@ class SpatialDataset:
                 )
                 if annotation_results:
                     pseudobulk_de[annotation_key] = annotation_results
+                elif not sample_metadata_model:
+                    # Pseudobulk DESeq2 needs >= 2 biological replicates. When it
+                    # can't run (e.g. a single-sample dataset), fall back to
+                    # cell-level Welch markers (category vs rest) so the per-
+                    # category marker panel is still populated. Same payload
+                    # schema, so no viewer changes are needed.
+                    from .pseudobulk import compute_cell_level_group_markers
+
+                    fallback_results = compute_cell_level_group_markers(
+                        self.adata,
+                        annotation_key,
+                        expression_layer="normalized",
+                        padj_cutoff=pseudobulk_padj_cutoff_n,
+                        log2fc_cutoff=pseudobulk_log2fc_cutoff_n,
+                        p_adjust_method=pseudobulk_p_adjust_method,
+                        min_cells=pseudobulk_min_cells_n,
+                    )
+                    if fallback_results:
+                        pseudobulk_de[annotation_key] = fallback_results
+                        log_detail(
+                            f"pseudobulk DE unavailable for '{annotation_key}'; used "
+                            "cell-level Welch markers (category vs rest) as a "
+                            "replicate-free fallback.",
+                            level=2,
+                        )
 
         # Compute neighbor composition stats
         neighbor_stats = {}

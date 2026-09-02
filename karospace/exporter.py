@@ -4384,6 +4384,35 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             color: var(--text-color);
         }}
         .pseudobulk-de-plot-export {{ margin-left: auto; }}
+        .de-method-badge {{
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-left: 8px;
+            padding: 1px 9px;
+            border-radius: 999px;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.6;
+            vertical-align: middle;
+            border: 1px solid var(--border-color);
+            cursor: help;
+            white-space: nowrap;
+        }}
+        .de-method-badge.de-method-deseq2 {{
+            background: var(--accent-fill);
+            color: var(--accent-on-fill);
+            border-color: transparent;
+        }}
+        .de-method-badge.de-method-welch {{
+            background: color-mix(in srgb, #e2a400 18%, var(--input-bg));
+            color: var(--text-color);
+            border-color: color-mix(in srgb, #e2a400 55%, var(--border-color));
+        }}
+        .de-method-badge .de-method-badge-note {{
+            font-weight: 400;
+            opacity: 0.85;
+        }}
         .pseudobulk-de-panel-mode-switch,
         .neighbor-view-buttons,
         .pathway-panel-mode-switch {{
@@ -19252,6 +19281,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             && Object.keys(groups).some((key) => !String(key).startsWith('_')));
     }}
 
+    function getPseudobulkDEMethodBadge(annotationCol) {{
+        // Distinguish a true DESeq2 pseudobulk fit (>=2 biological replicates)
+        // from the single-sample Welch fallback so the descriptive marker
+        // ranking is never misread as a formal DESeq2 result. Discriminator is
+        // written into _summary.category_gene_means.source by pseudobulk.py.
+        if (!annotationCol || !hasPseudobulkDEForAnnotation(annotationCol)) return '';
+        const key = getPseudobulkDEColorKey(annotationCol);
+        const groups = (DATA.pseudobulk_de || {{}})[key] || {{}};
+        const summary = groups._summary || {{}};
+        const source = String(
+            (summary.category_gene_means && summary.category_gene_means.source)
+            || summary.source
+            || ''
+        );
+        if (source.indexOf('cell_welch') === 0) {{
+            return '<span class="de-method-badge de-method-welch" title="Single-sample data (fewer than 2 biological replicates): per-cluster markers were computed with a Welch t-test, treating each cell as a replicate and testing each category vs the rest. This is a descriptive marker ranking, NOT a DESeq2 pseudobulk result — p-values are anti-conservative (pseudoreplication). Use for marker discovery, not formal inference.">Cluster markers &middot; Welch <span class="de-method-badge-note">(single-sample, descriptive)</span></span>';
+        }}
+        return '<span class="de-method-badge de-method-deseq2" title="Pseudobulk differential expression: cells summed into per-replicate pseudobulk samples and fit with DESeq2 (~ replicate + annotation), then evaluated as a category-vs-category contrast.">Pseudobulk DE &middot; DESeq2</span>';
+    }}
+
     function renderPseudobulkDEWarning(annotationCol) {{
         if (!annotationCol || hasPseudobulkDEForAnnotation(annotationCol)) return '';
         const availableColors = getAvailablePseudobulkDEColors();
@@ -29449,7 +29498,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             ${{controlsHtml}}
             ${{contrastInfo}}
             ${{markerSection}}
-            <div class="selection-summary-title" id="pseudobulk-de-section-title">Pseudobulk gene expression differential analysis${{renderCalcInfoButton('de_genes')}}</div>
+            <div class="selection-summary-title" id="pseudobulk-de-section-title">Pseudobulk gene expression differential analysis${{renderCalcInfoButton('de_genes')}}${{getPseudobulkDEMethodBadge(pseudobulkDeGroupby)}}</div>
             ${{renderPseudobulkDEResultSection(pseudobulkDeGroupby, pseudobulkDeSourceCategory, pseudobulkDeReferenceCategory)}}
             ${{pathwaySection ? '<div class="selection-summary-title" id="pathway-enrichment-title">Pathway Enrichment' + renderCalcInfoButton('pathway_enrichment_section') + '</div>' + pathwaySection : ''}}
         `;
@@ -34672,6 +34721,63 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
 '''
 
 
+def _legacy_export_kwargs_shim(func):
+    """Back-compat wrapper for pre-migration ``export_to_html`` keyword names.
+
+    The gene->feature / marker->pseudobulk API migration renamed or removed many
+    parameters; the bundled example scripts still call the old names. This shim
+    remaps the recoverable ones and warns-and-drops the rest so existing callers
+    keep working. It is intentionally lenient — remove it once callers migrate.
+    """
+    import functools
+    import inspect
+    import warnings as _warnings
+
+    _RENAMES = {
+        "color": "main_cell_annotation",
+        "additional_colors": "cell_annotations",
+        "genes": "features",
+        "gene_encoding": "feature_encoding",
+        "gene_value_encoding": "feature_value_encoding",
+        "gene_storage": "feature_storage",
+        "gene_aux_path": "feature_manifest_path",
+        "gene_manifest_path": "feature_manifest_path",
+        "gene_sidecar_shard_size": "feature_sidecar_shard_size",
+        "gene_sparse_zero_threshold": "feature_sparse_zero_threshold",
+        "neighbor_stats_groupby": "neighbor_stats_annotations",
+        "cluster_de_groupby": "pseudobulk_additional_annotations",
+        "pseudobulk_de_annotations": "pseudobulk_additional_annotations",
+        "marker_gene_annotations": "pseudobulk_additional_annotations",
+        "interaction_marker_annotations": "interaction_markers",
+    }
+    _accepted = set(inspect.signature(func).parameters)
+
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        out = {}
+        dropped = []
+        for key, value in kwargs.items():
+            if key in _accepted:
+                out.setdefault(key, value)
+                continue
+            new_key = _RENAMES.get(key)
+            if new_key and new_key in _accepted and new_key not in out:
+                out[new_key] = value
+            else:
+                dropped.append(key)
+        if dropped:
+            _warnings.warn(
+                "export_to_html: ignoring legacy keyword(s) removed in the "
+                "gene->feature/pseudobulk API migration: "
+                + ", ".join(sorted(dropped)),
+                stacklevel=2,
+            )
+        return func(*args, **out)
+
+    return wrapper
+
+
+@_legacy_export_kwargs_shim
 def export_to_html(
     dataset: SpatialDataset,
     output_path: str,
